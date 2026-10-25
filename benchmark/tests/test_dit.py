@@ -57,6 +57,10 @@ class Pipe:
     def maybe_free_model_hooks(self):
         pass
 
+    def register_modules(self, **modules):
+        for name, module in modules.items():
+            setattr(self, name, module)
+
     def __call__(self, **kwargs):
         self.calls.append(kwargs)
         return SimpleNamespace(images=[Image.new("RGB", (kwargs["width"], kwargs["height"]))
@@ -149,7 +153,7 @@ class DiTTests(unittest.TestCase):
 
     def test_balanced_placement_keeps_map_and_uses_native_execution_device(self):
         with tempfile.TemporaryDirectory() as temp:
-            for model in DIT_MODELS:
+            for model in ("sd30_medium", "sd35_medium"):
                 with self.subTest(model=model):
                     cfg = self.config(model, Path(temp))
                     cfg["sampling"]["device"] = "cuda:0"
@@ -173,6 +177,77 @@ class DiTTests(unittest.TestCase):
                         self.assertEqual(pipe.calls[-1]["latents"].device.type, "cpu")
                     adapter.close()
 
+    def test_flux_transformer_layers_split_after_resident_components(self):
+        from safetensors.torch import save_file
+        GiB = 1024 ** 3
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            checkpoint = root / "transformer.safetensors"
+            save_file({"weight": torch.ones(2, 2)}, str(checkpoint))
+            for model in ("flux1_dev", "flux1_schnell"):
+                for kind in ("original", "diffusers", "transformer", "lora"):
+                    with self.subTest(model=model, kind=kind):
+                        cfg = self.config(model, root)
+                        cfg["sampling"].update(device="cuda:0", device_map="auto",
+                                               max_memory={"0": "16GiB", "1": "16GiB"})
+                        cfg["adapter"].update(kind=kind, checkpoint=str(checkpoint), model_path="edited-flux")
+                        events = []
+                        class Component(torch.nn.Linear):
+                            def __init__(self, name):
+                                super().__init__(2, 2)
+                                self.name = name
+                            def to(self, device):
+                                self.requested_device = str(device)
+                                events.append(self.name)
+                                return self
+                            def enable_slicing(self):
+                                pass
+                        pipe = Pipe(True)
+                        pipe.text_encoder, pipe.text_encoder_2, pipe.vae = (
+                            Component(name) for name in ("CLIP", "T5", "VAE"))
+                        pipe._execution_device = torch.device("cpu")
+                        transformer = pipe.transformer
+                        transformer.hf_device_map = {"transformer_blocks.0": 0, "single_transformer_blocks.0": 1}
+                        def memory(device):
+                            events.append(f"memory-{device}")
+                            return (14 * GiB if device == 0 else 24 * GiB, 24 * GiB)
+                        def load(*args, **kwargs):
+                            events.append("transformer-load")
+                            self.assertEqual(kwargs["max_memory"], {0: 12 * GiB, 1: 16 * GiB})
+                            self.assertEqual(kwargs["device_map"], "auto")
+                            self.assertEqual(args[0], "edited-flux" if kind == "diffusers" else MODEL_IDS[model])
+                            return transformer
+                        with patch("torch.cuda.is_available", return_value=True), \
+                             patch("torch.cuda.device_count", return_value=2), \
+                             patch("torch.cuda.mem_get_info", side_effect=memory), \
+                             patch("diffusers.FluxPipeline.from_pretrained", return_value=pipe) as factory, \
+                             patch("diffusers.FluxTransformer2DModel.from_pretrained", side_effect=load), \
+                             patch.object(pipe, "to", side_effect=AssertionError("must preserve layer hooks")):
+                            adapter = DiTAdapter(cfg)
+                            self.assertIsNone(factory.call_args.kwargs["transformer"])
+                            self.assertNotIn("device_map", factory.call_args.kwargs)
+                            self.assertEqual(events, ["CLIP", "T5", "VAE", "memory-0", "memory-1", "transformer-load"])
+                            self.assertEqual(pipe.text_encoder.requested_device, "cuda:0")
+                            self.assertEqual(adapter.runtime_info["scope"], "transformer_blocks")
+                            if kind == "transformer":
+                                torch.testing.assert_close(pipe.transformer.weight, torch.ones(2, 2))
+                            elif kind == "lora":
+                                self.assertEqual(pipe.loaded_lora, str(checkpoint))
+                            adapter.generate([{"prompt": "layer placement fixture", "seed": 2}], cfg["sampling"])
+                            adapter.close()
+
+    def test_flux_memory_budget_limits_and_headroom(self):
+        from benchmark.flux_placement import transformer_memory_budget
+        GiB = 1024 ** 3
+        with patch("torch.cuda.device_count", return_value=2), \
+             patch("torch.cuda.mem_get_info", return_value=(10 * GiB, 24 * GiB)):
+            self.assertEqual(transformer_memory_budget({}), {0: 8 * GiB, 1: 8 * GiB})
+            self.assertEqual(transformer_memory_budget({"max_memory": {"1": "6GiB"}}), {1: 6 * GiB})
+            with self.assertRaisesRegex(ValueError, "not visible"):
+                transformer_memory_budget({"max_memory": {"2": "6GiB"}})
+            with self.assertRaisesRegex(ValueError, "insufficient free memory"):
+                transformer_memory_budget({"gpu_memory_reserve_gib": 11})
+
     def test_placement_cli_and_conflicts(self):
         args = parser().parse_args(["dit", "--model", "flux1_dev", "--device-map", "balanced",
                                     "--max-memory", '{"0":"22GiB","1":"22GiB"}'])
@@ -189,7 +264,9 @@ class DiTTests(unittest.TestCase):
             get_config(args)
         for opts in ({"device_map": "balanced", "device": "cpu"},
                      {"max_memory": {"0": "22GiB"}},
-                     {"device_map": "balanced", "max_memory": {"gpu0": "22GiB"}}):
+                     {"device_map": "balanced", "max_memory": {"gpu0": "22GiB"}},
+                     {"device_map": "balanced", "max_memory": {"cpu": "22GiB"}},
+                     {"gpu_memory_reserve_gib": float("nan")}):
             with self.subTest(opts=opts), self.assertRaises(ValueError):
                 configuration(task="i2p", base={"model_name": "flux1_dev", "sampling": opts})
 
@@ -270,6 +347,7 @@ class DiTTests(unittest.TestCase):
             manifest = load_manifest(prepare(cfg))
             selected = []
             class Adapter:
+                runtime_info = {"scope": "temporary-test-fixture"}
                 def generate(self, records, opts):
                     return [Image.new("RGB", (512, 512)) for _ in records]
                 def close(self):
@@ -280,6 +358,9 @@ class DiTTests(unittest.TestCase):
             with patch("benchmark.adapters.create_adapter", side_effect=create):
                 sample_manifest(manifest)
             self.assertEqual(selected, [("flux1_dev", "original"), ("flux1_dev", "plugin")])
+            for field in ("reference", "image"):
+                runtime_path = Path(manifest["records"][0][field]).parent / "sampling-runtime.json"
+                self.assertEqual(read_json(runtime_path), Adapter.runtime_info)
 
     def test_sd14_migration_preserves_images_scores_and_feature_cache(self):
         with tempfile.TemporaryDirectory() as temp:

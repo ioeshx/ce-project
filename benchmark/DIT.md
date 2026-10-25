@@ -19,11 +19,13 @@ SD3.0使用官方的`stable-diffusion-3-medium-diffusers`仓库加载；配置�
 
 每个record使用独立CPU seed，先生成float32噪声再转为采样精度。FLUX随后按原生2×2格式打包latent；batch划分和补缺图不会改变单条记录的初始噪声。CPU验证显式指定`--dtype float32`。`--cpu-offload`可用于CUDA执行时的模型CPU offload。
 
-**双卡加载：**`--device-map balanced`启用Diffusers原生pipeline组件分配。使用`CUDA_VISIBLE_DEVICES=0,1`选择两张卡；这是单进程加载同一个模型，不需要`torchrun`或多进程`accelerate launch`。不再调用整条pipeline的`.to(cuda:0)`，latent跟随原生执行设备，实际分配会打印为`[device_map]`。`--device cuda:0`仍指定指标模型使用的设备；采样组件由device map决定。
+**FLUX双卡加载：**`--device-map balanced`或`--device-map auto`对`FluxTransformer2DModel`内部按Transformer block切分，适用于dev和schnell。使用`CUDA_VISIBLE_DEVICES=0,1`选择两张卡；这是单进程加载同一个模型，不需要`torchrun`或多进程`accelerate launch`。
 
-可用`--max-memory '{"0":"22GiB","1":"22GiB"}'`限制每卡的权重内存预算；数字应按实际显存和空闲量设置，并给运行时激活留空间。GPU编号是`CUDA_VISIBLE_DEVICES`映射后的逻辑编号。`--device-map`不能与`--cpu-offload`同时使用；两种设置不改变prompt、seed、精度或采样步数，完整执行选项保存在计划及清单的`config.sampling`中。
+先把CLIP文本编码器、T5和VAE放到`--device`指定的GPU（默认逻辑GPU 0），再读取各卡真实剩余显存。`gpu_memory_reserve_gib`默认每卡预留2 GiB给运行时激活；剩余显存用于推导Transformer层的分配预算。不会再将完整Transformer和VAE一起塞到GPU 0，也不对已切分的整条pipeline调用`.to()`。
 
-pipeline级`balanced`分配整个Transformer、文本编码器和VAE，**不拆分单个Transformer内部的层**。因此不能保证任意两张卡都能运行：单个组件也放不进任一卡时，需要Transformer层级device map或进一步offload。启动日志中的实际map可确认组件是否分到了CPU。[Diffusers官方说明](https://huggingface.co/docs/diffusers/en/optimization/memory#device-placement)
+可用`--max-memory '{"0":"16GiB","1":"16GiB"}'`进一步限制**Transformer权重**在各GPU上的预算，实际取该上限和“组件加载后剩余显存减预留量”中的较小值。它不是整卡占用上限；GPU 0上的文本编码器、VAE和其他进程占用另计。`--gpu-memory-reserve 3`可将每卡激活预留增加到3 GiB。GPU编号是`CUDA_VISIBLE_DEVICES`映射后的逻辑编号。GPU预算不足以容纳Transformer时明确报错。
+
+SD3系列的`--device-map balanced`仍使用pipeline组件级分配，`--max-memory`对应整个组件预算。多卡device map与`--cpu-offload`互斥。采样prompt、seed、精度、步数、文本长度保持所选profile的设置，参数保存在计划及清单`config.sampling`中；FLUX实际层分配和有效预算同时打印，并保存到图片目录的`sampling-runtime.json`。[Diffusers模型级设备分配说明](https://huggingface.co/docs/diffusers/main/en/using-diffusers/models#device-placement)
 
 `prepare`只需要小型scheduler配置，不加载完整生成模型；`sample`才加载模型权重。使用Hub模型需要已有访问权限或本地完整模型，`--offline`要求相应配置和权重都已缓存。指定本地基础模型时，在JSON中同时设置`model_name`和`base_model`。
 
@@ -77,6 +79,16 @@ CUDA_VISIBLE_DEVICES=0 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
 CUDA_VISIBLE_DEVICES=0 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
   --model sd35_medium --method original --device cuda:0
 ```
+
+两张24 GiB卡也可显式采用`flux_dev.py`的Transformer预算上限；同一条命令即可执行两个任务：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
+  --model flux1_dev --method original --device-map auto --device cuda:0 \
+  --max-memory '{"0":"16GiB","1":"16GiB"}' --gpu-memory-reserve 2
+```
+
+`flux_dev.py`使用256文本长度且仅测试一条prompt，其峰值显存不能直接等同于本benchmark的FLUX-dev默认512文本长度及完整数据集。这里复用其按层切分思路；512评测默认不启用VAE tiling，避免引入不同的解码行为。已有采样协议与原图缓存继续复用。
 
 SD3若需要减小单卡显存，可增加`--cpu-offload`，或同样选择两张卡并增加`--device-map balanced`。完整命令按各自profile采样，不自动启动擦除算法。原模型COCO的FID是原图与同一原图的自比较，预期接近零；保留评测需后续接入擦除方法。
 

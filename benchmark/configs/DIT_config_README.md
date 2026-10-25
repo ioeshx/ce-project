@@ -19,6 +19,8 @@ FLUX 的 `guidance_scale` 按官方原生输入记录；`true_cfg_scale=1.0`、`
 
 FLUX的文本长度取模型卡示例值；SD3系列取`StableDiffusion3Pipeline`的T5默认值256。该字段不改变CLIP指标模型的原生77-token上限。
 
+FLUX的`gpu_memory_reserve_gib=2.0`是多卡加载的每卡激活预留，CLI可通过`--gpu-memory-reserve`覆盖。`--device-map balanced/auto`切分Transformer内部block：先放置文本编码器与VAE，再按剩余显存减预留量计算预算；`--max-memory`可进一步限制Transformer权重预算。它属于执行设置，不改变采样协议和既有参考图缓存。有效预算和实际层分布保存到图片目录的`sampling-runtime.json`。SD3的balanced仍分配完整pipeline组件。
+
 `benchmark.model_profiles`读取这些profile；`benchmark.dit_adapter`选择原生FLUX/SD3 pipeline。`prepare`读取并记录基础模型的完整scheduler配置，原模型与擦除版本共享；不会用SD1的DPM覆盖Flow Matching。`sd3_medium`仍可在JSON的`model_name`中作为旧别名，标准目录名和CLI选择统一为`sd30_medium`。
 
 官方依据：

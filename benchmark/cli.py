@@ -35,9 +35,12 @@ def parser():
         q.add_argument("--width", type=int)
         q.add_argument("--guidance-scale", type=float)
         q.add_argument("--cpu-offload", action="store_true", help="DiT模型CPU offload；降低显存需求")
-        q.add_argument("--device-map", choices=("balanced",), help="DiT：将pipeline组件分配到可见GPU")
+        q.add_argument("--device-map", choices=("balanced", "auto"),
+                       help="FLUX按Transformer层切分；SD3支持balanced组件分配")
         q.add_argument("--max-memory", type=json.loads,
-                       help='DiT：各GPU权重内存预算JSON，例如 \'{"0":"22GiB","1":"22GiB"}\'')
+                       help='FLUX为Transformer预算，SD3为组件预算，例如 \'{"0":"16GiB","1":"16GiB"}\'')
+        q.add_argument("--gpu-memory-reserve", dest="gpu_memory_reserve_gib", type=float,
+                       help="FLUX按层切分时每卡为激活预留的GiB，默认2；在已加载文本编码器/VAE后计算")
         q.add_argument("--cache-dir", type=Path)
         q.add_argument("--original-dir", type=Path, help="原模型图片目录，默认benchmark/original")
         if name in {"prepare", "run"}:
@@ -91,7 +94,7 @@ def get_config(args, manifest=None):
             config["sampling"][key] = value
     if getattr(args, "cpu_offload", False):
         config["sampling"]["cpu_offload"] = True
-    for key in ("device_map", "max_memory"):
+    for key in ("device_map", "max_memory", "gpu_memory_reserve_gib"):
         if getattr(args, key, None) is not None:
             config["sampling"][key] = getattr(args, key)
     for key in ("limit_prompts", "max_records"):
@@ -164,13 +167,13 @@ def main(argv=None):
             if any(getattr(args, key, None) for key in ("adapter", "checkpoint", "model_path", "factory", "limit_prompts", "max_records", "seeds", "targets", "method")):
                 raise ValueError("With an existing manifest, change sampling/data/method via a new prepare command.")
             scientific = lambda s: {k: v for k, v in s.items() if k not in {
-                "device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory"}}
+                "device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory", "gpu_memory_reserve_gib"}}
             if (scientific(config["sampling"]) != scientific(manifest["config"]["sampling"])
                     or config["adapter"] != manifest["config"]["adapter"]
                     or config["dataset"] != manifest["config"]["dataset"]):
                 raise ValueError("Config changes a prepared sampling protocol. Prepare a new manifest first.")
             for group in ("sampling", "evaluation"):
-                for key in ("device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory"):
+                for key in ("device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory", "gpu_memory_reserve_gib"):
                     if key in config[group]:
                         manifest["config"][group][key] = config[group][key]
         if not getattr(args, "import_casu", None):

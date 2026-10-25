@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 from typing import Protocol
 
-from .common import locked, read_json
+from .common import locked, read_json, write_json
 from .data import valid_image
 
 
@@ -184,6 +184,8 @@ def sample_manifest(manifest, mode="both"):
                 cfg["adapter"] = {"kind": "original"}
             adapter = create_adapter(cfg)
             try:
+                if getattr(adapter, "runtime_info", None):
+                    write_json(lock_root / "sampling-runtime.json", adapter.runtime_info)
                 size = cfg["sampling"]["batch_size"]
                 for start in range(0, len(missing), size):
                     batch = missing[start:start + size]

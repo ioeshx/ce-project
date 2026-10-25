@@ -12,6 +12,7 @@ class DiTAdapter:
         from diffusers import FluxPipeline, StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
 
         self.config = copy.deepcopy(config)
+        self.runtime_info = None
         resolve_scheduler(self.config)
         opts, spec = self.config["sampling"], self.config["adapter"]
         if spec["kind"] not in {"original", "diffusers", "transformer", "lora"}:
@@ -33,9 +34,13 @@ class DiTAdapter:
                 # JSON keys are strings; Accelerate expects integer GPU indices.
                 placement["max_memory"] = {int(k) if str(k).isdigit() else k: v
                                            for k, v in opts["max_memory"].items()}
-        self.pipe = cls.from_pretrained(source, torch_dtype=self.dtype,
-                                       local_files_only=opts["local_files_only"], revision=opts.get("model_revision"),
-                                       **placement)
+        load_kwargs = dict(torch_dtype=self.dtype, local_files_only=opts["local_files_only"],
+                           revision=opts.get("model_revision"))
+        if self.flux and placement:
+            from .flux_placement import load_sharded_flux
+            self.pipe, self.runtime_info = load_sharded_flux(source, opts, load_kwargs)
+        else:
+            self.pipe = cls.from_pretrained(source, **load_kwargs, **placement)
         # An edited Diffusers directory must use the SAME original-model schedule.
         self.pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(opts["scheduler_config"])
         if spec["kind"] == "transformer":
@@ -47,7 +52,11 @@ class DiTAdapter:
             # .to() would undo the map or raise. Accelerate's native hooks route
             # inputs between components; create latents on their execution device.
             self.device = self.pipe._execution_device
-            print(f"[device_map] {self.pipe.hf_device_map}", flush=True)
+            if self.runtime_info:
+                print(f"[components] {self.runtime_info['components']}", flush=True)
+                print(f"[transformer device_map] {self.runtime_info['transformer_device_map']}", flush=True)
+            else:
+                print(f"[device_map] {self.pipe.hf_device_map}", flush=True)
         elif opts.get("cpu_offload", False):
             if self.device.type != "cuda":
                 raise ValueError("Model CPU offload needs a CUDA execution device.")

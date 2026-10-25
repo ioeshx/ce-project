@@ -5,6 +5,7 @@ import contextlib
 import csv
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -163,8 +164,9 @@ def configuration(path=None, task=None, base=None, model=None):
     if not isinstance(result["targets"], list) or not isinstance(result["method"], str) or not result["method"].strip():
         raise ValueError("targets must be a list and method must be a nonempty string.")
     if s.get("device_map") is not None:
-        if name not in DIT_MODELS or s["device_map"] != "balanced":
-            raise ValueError("device_map=balanced is supported by the native DiT adapter only.")
+        strategies = {"balanced", "auto"} if name.startswith("flux1_") else {"balanced"}
+        if name not in DIT_MODELS or s["device_map"] not in strategies:
+            raise ValueError("Native DiT device_map supports balanced; FLUX also supports auto for transformer layers.")
         if not str(s["device"]).startswith("cuda") or s.get("cpu_offload"):
             raise ValueError("device_map needs CUDA and cannot be combined with cpu_offload.")
     if s.get("max_memory") is not None:
@@ -175,6 +177,12 @@ def configuration(path=None, task=None, base=None, model=None):
                not (isinstance(v, str) and v.strip() or type(v) is int and v > 0)
                for k, v in memory.items()):
             raise ValueError('max_memory uses GPU indices or cpu as keys and memory sizes as values, e.g. {"0":"22GiB"}.')
+        if name.startswith("flux1_") and "cpu" in memory:
+            raise ValueError("FLUX transformer splitting takes GPU-only max_memory budgets.")
+    if "gpu_memory_reserve_gib" in s:
+        reserve = s["gpu_memory_reserve_gib"]
+        if not isinstance(reserve, (int, float)) or not math.isfinite(reserve) or reserve < 0:
+            raise ValueError("gpu_memory_reserve_gib must be finite and nonnegative.")
     if name in DIT_MODELS:
         native_architecture = "flux" if name.startswith("flux1_") else "sd3"
         if s.get("architecture") not in {"dit", native_architecture} or s.get("scheduler") != "FlowMatchEulerDiscreteScheduler":
