@@ -1,0 +1,29 @@
+papers/
+aaai27/
+*.pdf
+
+# Python 缓存和虚拟环境
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# 实验输出和模型权重
+runs/
+logs/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+
+# 下载的论文
+/papers/downloads/
+
+# 本地环境和凭据
+.env
+.vscode/
+/.aws/
+/.codex/
+/.agents/
+
