@@ -17,7 +17,7 @@ import torch
 
 from benchmark.cli import get_config, parser
 from benchmark.common import configuration, read_json, write_csv, write_json
-from benchmark.data import load_manifest, prepare, prompt_records
+from benchmark.data import load_manifest, prepare, prompt_records, sampling_protocol
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.dit_experiments import plans
 from benchmark.metrics import feature_fingerprint
@@ -146,6 +146,52 @@ class DiTTests(unittest.TestCase):
                 else:
                     self.assertEqual(factory.call_args.args[0], "edited-directory")
                 adapter.close()
+
+    def test_balanced_placement_keeps_map_and_uses_native_execution_device(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for model in DIT_MODELS:
+                with self.subTest(model=model):
+                    cfg = self.config(model, Path(temp))
+                    cfg["sampling"]["device"] = "cuda:0"
+                    original_protocol = sampling_protocol(cfg)
+                    cfg["sampling"].update(device_map="balanced", max_memory={"0": "22GiB", "1": "22GiB"})
+                    cfg = configuration(task="mscoco", base=cfg)
+                    self.assertEqual(sampling_protocol(cfg), original_protocol)
+                    pipe = Pipe(model.startswith("flux"))
+                    # CPU fixture stands in for the hook-derived execution
+                    # device. Moving the whole pipeline would invalidate the map.
+                    pipe._execution_device = torch.device("cpu")
+                    pipe.hf_device_map = {"transformer": 1, "text_encoder": 0, "vae": 0}
+                    cls = "FluxPipeline" if model.startswith("flux") else "StableDiffusion3Pipeline"
+                    with patch("torch.cuda.is_available", return_value=True), \
+                         patch(f"diffusers.{cls}.from_pretrained", return_value=pipe) as factory, \
+                         patch.object(pipe, "to", side_effect=AssertionError("must preserve device map")):
+                        adapter = DiTAdapter(cfg)
+                        self.assertEqual(factory.call_args.kwargs["device_map"], "balanced")
+                        self.assertEqual(factory.call_args.kwargs["max_memory"], {0: "22GiB", 1: "22GiB"})
+                        adapter.generate([{"prompt": "placement fixture", "seed": 2}], cfg["sampling"])
+                        self.assertEqual(pipe.calls[-1]["latents"].device.type, "cpu")
+                    adapter.close()
+
+    def test_placement_cli_and_conflicts(self):
+        args = parser().parse_args(["dit", "--model", "flux1_dev", "--device-map", "balanced",
+                                    "--max-memory", '{"0":"22GiB","1":"22GiB"}'])
+        args.task = "i2p"  # The paired runner selects each task before get_config.
+        cfg = get_config(args)
+        self.assertEqual(cfg["sampling"]["device_map"], "balanced")
+        self.assertEqual(cfg["sampling"]["max_memory"]["1"], "22GiB")
+        evaluate_args = parser().parse_args(["evaluate", "--task", "i2p", "--device", "cpu"])
+        evaluated = get_config(evaluate_args, {"task": "i2p", "config": cfg})
+        self.assertEqual(evaluated["sampling"]["device"], "cuda")
+        self.assertEqual(evaluated["evaluation"]["device"], "cpu")
+        args.cpu_offload = True
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            get_config(args)
+        for opts in ({"device_map": "balanced", "device": "cpu"},
+                     {"max_memory": {"0": "22GiB"}},
+                     {"device_map": "balanced", "max_memory": {"gpu0": "22GiB"}}):
+            with self.subTest(opts=opts), self.assertRaises(ValueError):
+                configuration(task="i2p", base={"model_name": "flux1_dev", "sampling": opts})
 
     def test_real_tiny_transformers_flow_sampling_and_vae_decode_on_cpu(self):
         # Exercise real Diffusers denoising/decoding, with tiny random weights

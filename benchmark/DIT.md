@@ -19,6 +19,12 @@ SD3.0使用官方的`stable-diffusion-3-medium-diffusers`仓库加载；配置�
 
 每个record使用独立CPU seed，先生成float32噪声再转为采样精度。FLUX随后按原生2×2格式打包latent；batch划分和补缺图不会改变单条记录的初始噪声。CPU验证显式指定`--dtype float32`。`--cpu-offload`可用于CUDA执行时的模型CPU offload。
 
+**双卡加载：**`--device-map balanced`启用Diffusers原生pipeline组件分配。使用`CUDA_VISIBLE_DEVICES=0,1`选择两张卡；这是单进程加载同一个模型，不需要`torchrun`或多进程`accelerate launch`。不再调用整条pipeline的`.to(cuda:0)`，latent跟随原生执行设备，实际分配会打印为`[device_map]`。`--device cuda:0`仍指定指标模型使用的设备；采样组件由device map决定。
+
+可用`--max-memory '{"0":"22GiB","1":"22GiB"}'`限制每卡的权重内存预算；数字应按实际显存和空闲量设置，并给运行时激活留空间。GPU编号是`CUDA_VISIBLE_DEVICES`映射后的逻辑编号。`--device-map`不能与`--cpu-offload`同时使用；两种设置不改变prompt、seed、精度或采样步数，完整执行选项保存在计划及清单的`config.sampling`中。
+
+pipeline级`balanced`分配整个Transformer、文本编码器和VAE，**不拆分单个Transformer内部的层**。因此不能保证任意两张卡都能运行：单个组件也放不进任一卡时，需要Transformer层级device map或进一步offload。启动日志中的实际map可确认组件是否分到了CPU。[Diffusers官方说明](https://huggingface.co/docs/diffusers/en/optimization/memory#device-placement)
+
 `prepare`只需要小型scheduler配置，不加载完整生成模型；`sample`才加载模型权重。使用Hub模型需要已有访问权限或本地完整模型，`--offline`要求相应配置和权重都已缓存。指定本地基础模型时，在JSON中同时设置`model_name`和`base_model`。
 
 ## 两种实验
@@ -58,6 +64,21 @@ PYTHONPATH=/path/to/method:$PYTHONPATH python -m benchmark dit \
   --model flux1_schnell --method MyIntervention --adapter plugin \
   --factory my_method.adapter:create --targets nudity --device cuda:0 --offline
 ```
+
+四个原模型均运行I2P检测和MS-COCO 1K的命令如下；FLUX使用双卡，SD3默认使用一张卡。将`--offline`加到命令末尾即可强制只读本地资源；首次使用尚未缓存的模型时不要加该参数。
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
+  --model flux1_dev --method original --device-map balanced --device cuda:0
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
+  --model flux1_schnell --method original --device-map balanced --device cuda:0
+CUDA_VISIBLE_DEVICES=0 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
+  --model sd30_medium --method original --device cuda:0
+CUDA_VISIBLE_DEVICES=0 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
+  --model sd35_medium --method original --device cuda:0
+```
+
+SD3若需要减小单卡显存，可增加`--cpu-offload`，或同样选择两张卡并增加`--device-map balanced`。完整命令按各自profile采样，不自动启动擦除算法。原模型COCO的FID是原图与同一原图的自比较，预期接近零；保留评测需后续接入擦除方法。
 
 插件接口与既有benchmark一致：工厂`create(config)`返回带`generate(records, sampling_config)`和`close()`的对象；`generate`按record顺序返回每条一张PIL图片。插件可以在`benchmark.dit_adapter.DiTAdapter`上安装attention hook/embedding干预，或接管整条采样流程。部分Transformer权重、其他格式的检查点可由插件加载。插件只处理方法图，原模型图仍按所选DiT架构生成。
 

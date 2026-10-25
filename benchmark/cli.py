@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .common import ROOT, TASKS, configuration, read_json
@@ -24,7 +25,7 @@ def parser():
         q.add_argument("--manifest", type=Path, help="prepare输出清单；其他命令输入清单")
         q.add_argument("--method", help="结果CSV中唯一的方法名；同名成功结果覆盖旧行")
         q.add_argument("--targets", help="以逗号分隔；例如 Snoopy,Mickey")
-        q.add_argument("--device", help="同时设置采样及指标设备，如 cpu 或 cuda:0")
+        q.add_argument("--device", help="采样及指标设备；evaluate仅设置指标设备，如 cpu 或 cuda:0")
         q.add_argument("--batch-size", type=int)
         q.add_argument("--cpu-threads", type=int, default=4)
         q.add_argument("--offline", action="store_true")
@@ -34,6 +35,9 @@ def parser():
         q.add_argument("--width", type=int)
         q.add_argument("--guidance-scale", type=float)
         q.add_argument("--cpu-offload", action="store_true", help="DiT模型CPU offload；降低显存需求")
+        q.add_argument("--device-map", choices=("balanced",), help="DiT：将pipeline组件分配到可见GPU")
+        q.add_argument("--max-memory", type=json.loads,
+                       help='DiT：各GPU权重内存预算JSON，例如 \'{"0":"22GiB","1":"22GiB"}\'')
         q.add_argument("--cache-dir", type=Path)
         q.add_argument("--original-dir", type=Path, help="原模型图片目录，默认benchmark/original")
         if name in {"prepare", "run"}:
@@ -75,7 +79,7 @@ def get_config(args, manifest=None):
     if getattr(args, "targets", None):
         config["targets"] = [x.strip() for x in args.targets.split(",") if x.strip()]
     for group in ("sampling", "evaluation"):
-        if getattr(args, "device", None):
+        if getattr(args, "device", None) and (group != "sampling" or args.command != "evaluate"):
             config[group]["device"] = args.device
         if getattr(args, "batch_size", None) is not None:
             config[group]["batch_size"] = args.batch_size
@@ -87,6 +91,9 @@ def get_config(args, manifest=None):
             config["sampling"][key] = value
     if getattr(args, "cpu_offload", False):
         config["sampling"]["cpu_offload"] = True
+    for key in ("device_map", "max_memory"):
+        if getattr(args, key, None) is not None:
+            config["sampling"][key] = getattr(args, key)
     for key in ("limit_prompts", "max_records"):
         if getattr(args, key, None) is not None:
             config["dataset"][key] = getattr(args, key)
@@ -156,13 +163,14 @@ def main(argv=None):
             # Sampling parameters and adapter belong to the prepared plan; only execution overrides are safe.
             if any(getattr(args, key, None) for key in ("adapter", "checkpoint", "model_path", "factory", "limit_prompts", "max_records", "seeds", "targets", "method")):
                 raise ValueError("With an existing manifest, change sampling/data/method via a new prepare command.")
-            scientific = lambda s: {k: v for k, v in s.items() if k not in {"device", "batch_size", "local_files_only", "cpu_offload"}}
+            scientific = lambda s: {k: v for k, v in s.items() if k not in {
+                "device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory"}}
             if (scientific(config["sampling"]) != scientific(manifest["config"]["sampling"])
                     or config["adapter"] != manifest["config"]["adapter"]
                     or config["dataset"] != manifest["config"]["dataset"]):
                 raise ValueError("Config changes a prepared sampling protocol. Prepare a new manifest first.")
             for group in ("sampling", "evaluation"):
-                for key in ("device", "batch_size", "local_files_only", "cpu_offload"):
+                for key in ("device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory"):
                     if key in config[group]:
                         manifest["config"][group][key] = config[group][key]
         if not getattr(args, "import_casu", None):

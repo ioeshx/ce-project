@@ -1,6 +1,12 @@
 # 面向 Flow Matching DiT 的概念擦除方法构思
 
-当前只展开一种方法：**保留约束的 CFG 概率流擦除**，工作名 **CFG-PTE**（Preservation-constrained Transport Erasure under CFG）。
+当前优先方案是 **CFTR：反事实轨迹回填擦除**。根据 2026-10-25 的讨论，新方案优先免训练、无反向传播，通过实际生成结果验证干预；CFG-PTE 留作历史构思。
+
+- [CFTR：方法、创新边界、实现流程与实验设计](./CFTR_PROPOSAL.zh-CN.md)
+
+CFTR 先生成不含目标概念的反事实参考，再逐块测试能否从原始中间状态恢复非目标内容。每次候选都完成正常 flow 续程，以目标是否重现、保留是否改善来决定接受或拒绝。无需训练控制器或探针，使用冻结评估器；主要代价是多次候选续程。目前尚未进行真实 DiT 实验。
+
+以下是历史方案 **CFG-PTE**（Preservation-constrained Transport Erasure under CFG）的材料，不代表当前优先方向。
 
 - [完整方法、推导、相关工作与实验设计](./CFG_PTE_PROPOSAL.zh-CN.md)
 - [二维解析检验脚本](./toy_transport_check.py)

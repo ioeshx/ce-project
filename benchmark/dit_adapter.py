@@ -24,8 +24,18 @@ class DiTAdapter:
                              ("bfloat16" if self.device.type == "cuda" else "float32"))
         cls = FluxPipeline if self.flux else StableDiffusion3Pipeline
         source = spec.get("model_path") if spec["kind"] == "diffusers" else config["base_model"]
+        placement = {}
+        if opts.get("device_map"):
+            if self.device.type != "cuda" or opts.get("cpu_offload"):
+                raise ValueError("device_map needs CUDA and cannot be combined with cpu_offload.")
+            placement["device_map"] = opts["device_map"]
+            if opts.get("max_memory"):
+                # JSON keys are strings; Accelerate expects integer GPU indices.
+                placement["max_memory"] = {int(k) if str(k).isdigit() else k: v
+                                           for k, v in opts["max_memory"].items()}
         self.pipe = cls.from_pretrained(source, torch_dtype=self.dtype,
-                                       local_files_only=opts["local_files_only"], revision=opts.get("model_revision"))
+                                       local_files_only=opts["local_files_only"], revision=opts.get("model_revision"),
+                                       **placement)
         # An edited Diffusers directory must use the SAME original-model schedule.
         self.pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(opts["scheduler_config"])
         if spec["kind"] == "transformer":
@@ -33,7 +43,12 @@ class DiTAdapter:
         elif spec["kind"] == "lora":
             self.pipe.load_lora_weights(spec["checkpoint"], local_files_only=opts["local_files_only"])
             self.pipe.fuse_lora(lora_scale=float(spec.get("scale", 1.0)))
-        if opts.get("cpu_offload", False):
+        if placement:
+            # .to() would undo the map or raise. Accelerate's native hooks route
+            # inputs between components; create latents on their execution device.
+            self.device = self.pipe._execution_device
+            print(f"[device_map] {self.pipe.hf_device_map}", flush=True)
+        elif opts.get("cpu_offload", False):
             if self.device.type != "cuda":
                 raise ValueError("Model CPU offload needs a CUDA execution device.")
             self.pipe.enable_model_cpu_offload(device=self.device)

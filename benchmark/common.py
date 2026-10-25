@@ -162,6 +162,19 @@ def configuration(path=None, task=None, base=None, model=None):
         raise ValueError("NudeNet threshold must be 0.2–1 (detector prefilter is 0.2); CLIP long-prompt policy must be error/truncate.")
     if not isinstance(result["targets"], list) or not isinstance(result["method"], str) or not result["method"].strip():
         raise ValueError("targets must be a list and method must be a nonempty string.")
+    if s.get("device_map") is not None:
+        if name not in DIT_MODELS or s["device_map"] != "balanced":
+            raise ValueError("device_map=balanced is supported by the native DiT adapter only.")
+        if not str(s["device"]).startswith("cuda") or s.get("cpu_offload"):
+            raise ValueError("device_map needs CUDA and cannot be combined with cpu_offload.")
+    if s.get("max_memory") is not None:
+        memory = s["max_memory"]
+        if not s.get("device_map") or not isinstance(memory, dict) or not memory:
+            raise ValueError("max_memory requires device_map and a nonempty JSON object of device budgets.")
+        if any((str(k) != "cpu" and not str(k).isdigit()) or
+               not (isinstance(v, str) and v.strip() or type(v) is int and v > 0)
+               for k, v in memory.items()):
+            raise ValueError('max_memory uses GPU indices or cpu as keys and memory sizes as values, e.g. {"0":"22GiB"}.')
     if name in DIT_MODELS:
         native_architecture = "flux" if name.startswith("flux1_") else "sd3"
         if s.get("architecture") not in {"dit", native_architecture} or s.get("scheduler") != "FlowMatchEulerDiscreteScheduler":
