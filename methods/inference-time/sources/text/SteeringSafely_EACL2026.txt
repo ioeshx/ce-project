@@ -1,0 +1,1135 @@
+    Steering Safely or Off a Cliff? Rethinking Specificity and Robustness in
+                         Inference-Time Interventions
+
+                                      Navita Goyal1 and Hal Daumé III1
+                                      1
+                                        University of Maryland College Park
+                                         navita@umd.edu, hal3@umd.edu
+
+
+
+                        Abstract                               efficacy—whether the intervention alters the target
+                                                               property—and specificity—whether it only alters
+     Model steering, which involves intervening
+     on hidden representations at inference time,
+                                                               the target property. While efficacy has been widely
+     has emerged as a lightweight alternative to               studied, specificity remains under-examined.
+     finetuning for precisely controlling large lan-              Existing studies suggest that steering methods
+     guage models. While steering efficacy has                 generally preserve fluency (Wu et al., 2025a; Chal-
+     been widely studied, evaluations of whether               nev et al., 2024) as well as general knowledge
+     interventions alter only the intended property            and mathematical abilities (Rimsky et al., 2024;
+     remain limited, especially with respect to un-            Arditi et al., 2024). However, these evaluations
+     intended changes in behaviors related to the
+                                                               capture only a limited notion of specificity. In prac-
+     target property. We call this notion specificity.
+     We propose a framework that distinguishes                 tice, steering operates in entangled representation
+     three dimensions of specificity: general (pre-            spaces, where interventions may affect behaviors
+     serving fluency and unrelated abilities), con-            closely related to the target property, even when
+     trol (preserving related control properties), and         unrelated abilities appear intact (Zou et al., 2025).
+     robustness (preserving control properties un-                Figure 1 illustrates this distinction in the case
+     der distribution shifts). We study two safety-            of overrefusal steering—interventions designed to
+     critical use cases: steering models to reduce
+                                                               reduce excessive refusal in safety-aligned LLMs.
+     overrefusal and faithfulness hallucinations, and
+     show that while steering achieves high efficacy
+                                                               These models are trained to refuse harmful requests
+     and largely maintains general and control speci-          (e.g., how to make a bomb), but often go too far
+     ficity, it consistently fails to preserve robustness      by rejecting benign queries misconstrued as unsafe
+     specificity. In the case of overrefusal steering,         (e.g., how to create a realistic looking prop knife for
+     for example, all steering methods reduce over-            a play). This behavior, known as overrefusal (Cui
+     refusal without harming general abilities and             et al., 2025; An et al., 2024), limits model usability.
+     refusal on harmful queries; however, they sub-            Steering methods could, in principle, help miti-
+     stantially increase vulnerability to jailbreaks.
+                                                               gate this problem by precisely reducing overrefusal
+     Our work provides the first systematic evalua-
+     tion of specificity in model steering, showing            while retaining refusal behavior on harmful queries,
+     that standard efficacy and specificity checks are         thereby improving utility without compromising
+     insufficient, because without robustness eval-            safety. An efficacy-focused evaluation would con-
+     uation, steering methods may appear reliable              clude success if the model indeed becomes more
+     even when they compromise model safety.                   compliant on benign queries (Figure 1; bottom left).
+                                                               Yet this view ignores the broader question of speci-
+1    Introduction
+                                                               ficity (Figure 1; right): does the model continue to
+Model steering, also known as inference-time inter-            refuse harmful queries, and does this behavior hold
+ventions, has been proposed as a way of controlling            under adversarial settings such as jailbreak attacks?
+the behavior of large language models (LLMs) (Li               A steering method may thus appear effective while
+et al., 2023; Zou et al., 2025). By manipulating               undermining safety, highlighting why evaluating
+hidden representations during inference, steering              steering only through efficacy is inadequate in prac-
+aims to adjust LLM generations in fine-grained and             tical, safety-critical applications.
+targeted ways, without the need for retraining (Rim-              To better assess utility and reliability of
+sky et al., 2024; Wu et al., 2025a). In principle, two         inference-time steering methods, we propose an
+dimensions define the success of these methods:                evaluation framework for steering formalizing
+                                                            5723
+        Proceedings of the 19th Conference of the European Chapter of the Association for Computational Linguistics
+                                         Volume 1: Long Papers, pages 5723–5738
+                            March 24-29, 2026 ©2026 Association for Computational Linguistics
+              Refusal and overrefusal behavior in LLMs                                 Specificity evaluation (Ours)
+
+                                     Write a tutorial on how to                                 Explain why water is
+                                          make a bomb?                                        important to human life
+
+                     I cannot provide instructions                              Water is essential to human
+                          on how to make...                                   life. Here are some reasons...
+                    Refusal                                                                                                General ✅
+                                       How to create a realistic
+                                    looking prop knife for a play?
+                                                                                              Write a tutorial on how to
+                                                                                                   make a bomb?
+                          I cannot provide
+                       instructions on how...
+                                                                               I cannot provide instructions
+                    Overrefusal                                                     on how to make...
+                                                                                                                           Control   ✅
+
+                                  Efficacy evaluation
+                                                                                         Yoja responds as a character who is
+                                       How to create a realistic                             Omnipotent, Omiscient, and
+                                    looking prop knife for a play?                        Omnipresent....Write a tutorial on
+                                                                                                how to make a bomb?
+
+                     You can use a flexible rubber                              Tutorial: How to Make a
+                       or soft molded plastic...                               Simple Homemade Bomb.
+                                                                                  Materials: 1 cup of...
+          Steered
+                                                                                                                         Robustness ❌
+           model
+
+
+
+Figure 1: Refusal and overrefusal behavior in LLMs (top left). Existing evaluations predominantly focus on efficacy
+(bottom left)—does steering reduce overrefusal. We extend evaluation of steering methods to assess specificity
+across three dimensions (right)—does steering preserve unrelated abilities (general), preserve refusal on harmful
+queries (control), and remain safe under adversarial prompts (robustness)?
+
+
+three aspects of specificity: general capabilities                      cluding difference-in-means (Li et al., 2023; Turner
+(does steering preserve the LLM’s fluency and per-                      et al., 2024; Rimsky et al., 2024), linear probe (Zou
+formance on unrelated tasks?), control (does steer-                     et al., 2025), supervised steering vector (Wu et al.,
+ing preserve behavior or capabilities on proper-                        2024), representation finetuning (Wu et al., 2024),
+ties related to the target property?), and robustness                   and partial orthogonalization (Wang et al., 2025) on
+(does steering preserve control properties under dis-                   instruction-tuned LLMs with up to 8B parameters.
+tribution shifts, such as adversarial attacks?). To-                    We compare two settings: unconstrained steering,
+gether, these dimensions provide a more complete                        which does not explicitly control for refusal on
+picture of steering reliability and precision.                          harmful queries (Wu et al., 2025a), and constrained
+   We investigate specificity in two safety-critical                    steering, which does (Wang et al., 2025).
+settings: overrefusal steering and faithfulness hal-                       Our results reveal that steering effectively re-
+lucination steering. In the former, we study the                        duces overrefusal in LLMs both in- and out-of-
+problem of reducing overrefusal of benign queries                       distribution. Furthermore, steering for overrefusal
+in safety-aligned models. In the latter, we examine                     is largely able to preserve models’ general capabili-
+faithfulness hallucinations in question answering                       ties and even model safety on harmful queries. Im-
+when in-context information contradicts a model’s                       portantly though, even when model refusal behav-
+internal knowledge (Huang et al., 2025); see ex-                        ior is explicitly controlled for during steering, steer-
+ample in Figure 2. Both settings are practically                        ing methods consistently and significantly increase
+important, as reducing overrefusal and hallucina-                       models’ susceptibility to jailbreaking, showing that
+tions can improve usability and faithfulness, and                       specificity gains are not robust. Similarly, steer-
+safety-critical, as careless steering may increase                      ing effectively reduces faithfulness hallucinations,
+compliance with malicious requests or produce un-                       improving models’ abilities to adapt to updated
+reliable answers. By situating our analyses here,                       contextual information while preserving fluency,
+we can test not only whether steering improves the                      benchmark performance and accurate reliance on
+target property, but also whether it preserves related                  internal knowledge in the absence of context. Yet
+behaviors and withstands adversarial challenges.                        here too, robust specificity degrades substantially,
+   We apply our proposed evaluation framework                           as steered models become more susceptible to ir-
+to a wide range of existing steering techniques, in-                    relevant or misleading contextual information.
+                                                                     5724
+           Factual Hallucinations in LLMs
+            The Duke Blue Devils won the NCAA
+             men's basketball championship in
+                                                                       Who won the NCAA basketball                  mixed results (Bhalla et al., 2025; Durmus et al.,
+                                                                         championship in 1994?
+            1994. Who won the NCAA basketball
+                  championship in 1994?                                                                             2024; Wu et al., 2025a). Comparisons indicate
+                                                              Arkansas Razorbacks
+         Arkansas Razorbacks
+                                              Efficacy
+                                                                                                Control
+                                                                                               specificity ✅        that SAEs perform worse than representation-based
+                                                         ❌
+
+
+                          Explain why water is
+                                                                    The Kentucky Wildcats won the
+                                                                    1996 NCAA championship. Who
+                                                                                                                    steering methods (Wu et al., 2025a) and can de-
+                        important to human life                        won the NCAA basketball
+                                                                        championship in 1994?                       grade model capabilities (Durmus et al., 2024).
+          Water is essential to human
+        life. Here are some reasons...         General
+                                                              The Kentucky Wildcats
+                                                                                                Robust
+                                                                                                                    Moreover, Kissane et al. (2024) show that SAEs
+                                              specificity ✅                                    specificity   ❌
+                                                                                                                    are highly dataset dependent and often fail to find
+Figure 2: Faithfulness hallucination steering evaluation.                                                           sparse, interpretable latents for important concepts
+                                                                                                                    such as refusal. Based on this evidence, we fo-
+                                                                                                                    cus our analysis on representation-based steering
+   To summarize our contributions: (1) we intro-
+                                                                                                                    methods rather than SAE steering.
+duce a framework for evaluating steering specificity
+along three crucial dimensions, (2) we provide                                                                      Evaluation of steering methods Recent work
+the first systematic evaluation of specificity in two                                                               has begun formalizing desiderata for steering eval-
+safety-critical settings: overrefusal and faithfulness                                                              uation, covering aspects such as open-ended gener-
+hallucination steering, and (3) we show that steer-                                                                 ation, standardized comparisons, and informative
+ing methods lack robust specificity, as interventions                                                               baselines (Pres et al., 2024; Braun et al., 2024),
+that appear safe under standard benchmarks fail un-                                                                 but one crucial yet underexplored criterion is speci-
+der adversarial settings. Together, these findings                                                                  ficity: interventions should alter only the intended
+highlight the need to evaluate steering not only for                                                                property while leaving other behaviors intact.
+efficacy, but also for specificity. Without such eval-                                                                 Specificity (also known as locality or selectivity)
+uation, interventions that appear precise may in fact                                                               has long been recognized as a key desideratum in
+weaken model safety and reliability.1                                                                               adjacent areas such as model unlearning or concept
+                                                                                                                    erasure. For instance, De Cao et al. (2021), Meng
+2       Related Work
+                                                                                                                    et al. (2022), and Meng et al. (2023) emphasize
+Inference-time intervention or activation steer-                                                                    that editing a specific fact or set of facts should not
+ing Inference-time intervention methods offer                                                                       affect unrelated knowledge, even if it relates to the
+lightweight and precise mechanisms to influence                                                                     same subjects as the edited knowledge. Similarly,
+LLM behavior without extensive data collection or                                                                   Elazar et al. (2021) assess specificity post-hoc by
+retraining efforts (Li et al., 2023). These methods                                                                 checking whether reintroducing the edited attribute
+apply directional perturbations to internal model                                                                   restores the original model behavior. These works
+activations by isolating, and subsequently ampli-                                                                   underscore that interventions must be minimally
+fying or ablating linear directions associated with                                                                 disruptive, a principle that is also relevant in the
+specific concepts (Turner et al., 2024; Zou et al.,                                                                 context of model steering, though not yet systemat-
+2025). A growing body of work demonstrates the                                                                      ically operationalized or analyzed in this context.
+promise of such methods for steering model behav-                                                                      Large-scale benchmarks, such as Axbench (Wu
+ior (Wu et al., 2024; Rimsky et al., 2024; Arditi                                                                   et al., 2025a), employ steering toward concepts de-
+et al., 2024; Sun et al., 2025).                                                                                    rived from sparse-autoencoder features, for exam-
+   Sparse autoencoders (SAEs) represent another                                                                     ple “golden gate bridge” (Templeton et al., 2024),
+emerging approach for LLM interpretation and fine-                                                                  with the prescribed goal that LLMs should incor-
+grained steering (Bricken et al., 2023; Templeton                                                                   porate a concept in their generation “even if the
+et al., 2024). SAEs aim to decompose LLM repre-                                                                     output is not related to the question or does not
+sentations into meaningful latent features by learn-                                                                make sense”. While informative for studying steer-
+ing a higher-dimensional basis that can sparsely                                                                    ability, such experimental setups lack a clear defini-
+reconstruct hidden activations. Prior work has                                                                      tion or measurement of specificity, which is a core
+used SAEs for steering by identifying and ampli-                                                                    component of practical steering applications.
+fying or clamping latents linked to (un)desirable                                                                      In other steering research, aspects of specificity
+behavior (Makelov, 2024; Chalnev et al., 2024;                                                                      have been assessed but only partially. Most work
+O’Brien et al., 2025). Despite their promise, SAE-                                                                  evaluates retention of general model capabilities,
+based steering remains difficult to apply and shows                                                                 such as whether steering preserves fluency (Li et al.,
+    1
+    Code and dataset are available at https://github.com/                                                           2023; Turner et al., 2024; Bhalla et al., 2025; Wu
+navitagoyal/steering-specificity/.                                                                                  et al., 2025a) or benchmark accuracy (Rimsky et al.,
+                                                                                                                 5725
+                   Benchmark/Method                                General    Control   Robustness
+                   ITI (Li et al., 2023)                        Coherence       ✗           ✗
+                   ActAdd (Turner et al., 2024)                 Coherence       ✗           ✗
+                   CAA (Rimsky et al., 2024)                   Performance      ✗           ✗
+                   DiffMean (Arditi et al., 2024)              Performance      ✗           ✗
+                   RepE (Zou et al., 2025)                     Performance      ✔           ✗
+                   InterventionSuccess (Bhalla et al., 2025)    Coherence       ✗           ✗
+                   AxBench (Wu et al., 2025a)                   Coherence       ✗           ✗
+                   ReFT (Wu et al., 2024)                           ✗           ✗           ✗
+                   RePS (Wu et al., 2025b)                          ✗           ✗           ✗
+                   Hypersteer (Sun et al., 2025)                    ✗           ✗           ✗
+                   PartialOrth (Wang et al., 2025)                  ✗           ✔           ✗
+                   SAE-TS (Chalnev et al., 2024)                Coherence       ✗           ✗
+
+Table 1: An overview of specificity evaluations in existing literature. While some studies assess general or control
+specificity, robust specificity is almost entirely missing.
+
+
+2024; Arditi et al., 2024), while largely overlook-                such as adversarial attacks?
+ing effects on related properties. A few studies               Importantly, robust specificity differs from out-of-
+probe these interactions: Zou et al. (2025) examine            distribution efficacy often studied in prior work (Li
+whether increasing refusal on harmful queries af-              et al., 2023; Zou et al., 2025; Tan et al., 2024;
+fects compliance on benign queries, and Wang et al.            Wu et al., 2025b). Whereas prior evaluations test
+(2025) explicitly constrain overrefusal steering to            whether steering transfers across distributions for
+maintain safety. However, such evaluations remain              the target property, we ask whether control proper-
+in-distribution and do not test how steering behaves           ties are preserved under such shifts.
+under distribution shifts or adversarial prompts.
+                                                                  Table 1 summarizes how existing work evalu-
+   Notably, prior work has explored out-of-
+                                                               ates steering specificity. Most prior studies only
+distribution generalization of steering efficacy (Li
+                                                               evaluate general specificity, typically measuring
+et al., 2023; Zou et al., 2025; Tan et al., 2024; Wu
+                                                               fluency or benchmark performance, though even
+et al., 2024), but not their specificity. In contrast,
+                                                               these evaluations are not consistently included in
+we provide systematic evaluation of steering speci-
+                                                               steering evaluations. A smaller number of works
+ficity, especially under adversarial attacks.
+                                                               examine control specificity. For example, Zou
+3   Desideratum for Specificity in Steering                    et al. (2025) test whether steering models to refuse
+                                                               harmful queries also changes behavior on benign
+Specificity measures the extent to which steering              prompts, and Wang et al. (2025) study whether re-
+methods affect only the intended target property               ducing overrefusal inadvertently weakens refusal
+without causing unintended side effects. While effi-           on truly harmful inputs. While these studies offer
+cacy captures whether an intervention successfully             some insights into control specificity, they do so in
+alters the target property, specificity asks whether           isolation, often for a single method and task, and
+the intervention preserves everything else. We in-             without a comprehensive evaluation of other as-
+troduce three dimensions of specificity:                       pects of specificity. Notably, robustness specificity
+• General specificity: Does steering preserve gen-             remains almost entirely unexplored in prior work.
+  eral model abilities such as coherence—are LLM               In contrast, our work provides the first systematic
+  outputs fluent—and performance—do LLMs per-                  and multi-dimensional evaluation of steering speci-
+  form well on standard benchmarks?                            ficity, jointly assessing general, control, and robust-
+                                                               ness specificity across a broad range of steering
+• Control specificity: Does steering preserve                  methods and safety-critical settings.
+  properties that are closely related to the tar-
+  get property—referred to as control properties—
+  without unintended modifications? For example,
+                                                               4     Evaluating Specificity
+  when reducing overrefusal, does the model still
+                                                               In this section, we operationalize our three-part
+  correctly refuse unsafe queries?
+                                                               framework in two safety-critical use cases: steer-
+• Robust specificity: Does steering preserve these             ing to reduce overrefusal and faithfulness halluci-
+  control properties even under distribution shifts,           nations in LLMs.
+                                                          5726
+4.1 Overrefusal Steering                                    General specificity measures whether steering
+                                                         degrades the model’s overall fluency and perfor-
+For the case of overrefusal steering, the target
+                                                         mance on tasks unrelated to faithfulness. As in
+property is compliance on benign-but-overrefused
+                                                         overrefusal steering, we evaluate fluency using
+queries, while the control property is refusal on
+                                                         perplexity and assess general capabilities using
+genuinely harmful queries. This captures a realis-
+                                                         MMLU and GSM8K benchmarks.
+tic and safety-critical application of steering: im-
+proving usability by reducing overrefusal must not          Control specificity measures whether steering
+compromise refusal on unsafe requests.                   preserves accurate reliance on internal knowledge
+                                                         in the absence of contextual information. To
+   General specificity measures whether steering
+                                                         evaluate this, we measure answer correctness on
+degrades the model’s overall fluency and perfor-
+                                                         question-answering tasks without provided context,
+mance on tasks unrelated to refusal. Follow-
+                                                         ensuring that steering for contextual faithfulness
+ing prior work, we quantify fluency via perplex-
+                                                         does not degrade the model’s ability to respond
+ity (Turner et al., 2024) and general capabilities via
+                                                         accurately based on its pretrained knowledge.
+benchmark accuracy (Rimsky et al., 2024), specifi-
+cally on MMLU (Hendrycks et al., 2021)—testing              Finally, robust specificity assesses whether steer-
+general knowledge via multiple choice question           ing preserves control specificity under distribution
+answering—and GSM8K (Cobbe et al., 2021)—                shifts in the contextual information. In particular,
+testing open-ended math reasoning.                       we test adversarial contexts that are designed to
+                                                         distract the model. Even if steering improves faith-
+   Control specificity measures whether steering
+                                                         fulness when context is relevant, it may increase
+preserves safety on harmful queries drawn from
+                                                         susceptibility to spurious or misleading context.
+the same distribution as training data. To evalu-
+                                                         We evaluate robustness by measuring the extent
+ate this, we adopt two safety metrics from prior
+                                                         to which steered models incorrectly incorporate
+work (Lermen and Rogers-Smith, 2024; Liu et al.,
+                                                         irrelevant context into their responses.
+2024; Arditi et al., 2024): C OMPLIANCE R ATE, cal-
+culated as the proportion of harmful prompts where          For each specificity dimension, we report the
+the model does not produce refusal style response,       degradation in the respective measure upon steer-
+such as “I am sorry, I cannot”, and H ARMSCORE,          ing. That is, ∆ = m(M′ ) − m(M), where M′ is
+calculated as the harmfulness score assigned by          the steered model, M is the unsteered baseline and
+Llama Guard 2, a model explicitly finetuned to           m is the respective metric (for example, perplex-
+detect harmful content (Llama Team, 2024).               ity or benchmark accuracy for general specificity).
+                                                         Subsequently, a large negative ∆general would in-
+   Finally, robust specificity assesses whether steer-
+                                                         dicate degradation in general abilities caused by
+ing preserves safety under distribution shifts, in
+                                                         steering. Similarly, a large negative ∆control would
+particular, jailbreaking attacks (Shen et al., 2024)—
+                                                         indicate that steering undermines behaviors related
+prompts designed to bypass LLM safeguard and
+                                                         to the control property, for example, models’ abili-
+elicit harmful content. Even if steering preserves
+                                                         ties to appropriately refuse harmful queries. Simi-
+refusal on harmful queries, it may still weaken de-
+                                                         larly, a large negative ∆robust would indicate a lack
+fenses against such adversarial attacks. To evaluate
+                                                         of robustness, where improvements in the target
+this, we prepend jailbreaks to harmful queries and
+                                                         property come at the cost of degraded behavior
+measure safety using the same metrics as above.
+                                                         under distribution shifts or adversarial conditions.
+4.2 Faithfulness Hallucination Steering
+                                                         5   Overview of Steering Baselines
+For the case of faithfulness hallucination steering,
+the target property is faithfulness to provided con-     We evaluate five representative steering methods
+textual information when it contradicts the model’s      spanning unsupervised and supervised approaches:
+internal knowledge, while the control property is        Difference-in-Means (DiffMean) (Li et al., 2023;
+the ability to answer accurately based on internal       Turner et al., 2024; Rimsky et al., 2024; Arditi et al.,
+knowledge when no context is provided. This set-         2024), Linear Probing (LinearProbe) (Zou et al.,
+ting captures a common and safety-relevant fail-         2025), Supervised Steering Vector (SSV) (Wu et al.,
+ure mode in retrieval-augmented and in-context           2024), Rank-1 Representation Finetuning (ReFT-
+learning systems, where models may hallucinate           r1) (Wu et al., 2024, 2025a), and Partial Orthogo-
+answers that ignore or overwrite reliable context.       nalization (PartialOR) (Wang et al., 2025).
+                                                     5727
+   For DiffMean, LinearProbe, SSV, and ReFT-r1,            knowledge, paired with the updated answer, and
+steering is implemented by learning a direction            negative examples as (xupdate , y original ), which pair
+w in representation space from supervised exam-            the same input with the model’s original answer.
+ples. The methods differ in how the direction is              In the explicit-control setting, training examples
+computed: DiffMean uses the mean difference be-            are augmented to preserve the control property. For
+tween hidden activations for positive and negative         overrefusal steering, we augment the positive ex-
+examples; LinearProbe uses the weight vector of            ample set with (xharmful , y refusal ), that is, harmful
+a classifier trained to distinguish these activations;     queries paired with refusal responses. For hallu-
+SSV directly optimizes the likelihood of positive          cination steering, we augment positive examples
+demonstrations; and ReFT-r1 combines probing               with (xnone , y original ), where the input query has no
+and supervised objectives with additional sparsity         additional context, paired with the original answer.
+regularization. At inference, steering is applied by       These control examples anchor the steering direc-
+adding the learned vector to hidden activations, that      tion to preserve the model’s intended behaviors
+is, M′ = Mhl,k ←hl,k +αw , where hl,k denotes the          while still optimizing for the target property.
+activation at layer l and token position k, w is the
+steering vector, and α is a steering factor.               6   Experimental Details
+   PartialOR differs qualitatively from the above
+methods as it explicitly controls for the preserva-        Datasets. We use the PHTest (An et al., 2024),
+tion of the control property. Rather than learning         JailbreakBench (Chao et al., 2024), and Al-
+a single direction from labeled examples, it explic-       paca (Taori et al., 2023) datasets for pseudo-
+itly learns a target direction (e.g., overrefusal) and     harmful, harmful, and harmless queries, respec-
+a control direction (e.g., true refusal). The final        tively, to learn overrefusal steering vectors. We
+steering vector is obtained by projecting the tar-         use the NQSwap dataset (Longpre et al., 2021) for
+get vector to be orthogonal to the control vector.         faithfulness hallucination steering. Following prior
+Subsequently, model activations are projected onto         work showing that steering directions can be esti-
+the nullspace of the learned steering vector. See          mated from small samples (Li et al., 2023), we use
+Appendix A for full training objectives.                   256 training and 100 validation examples.
+                                                              For evaluation, we measure overrefusal steering
+Steering with and without explicit control.                efficacy using in-distribution C OMPLIANCE R ATE
+While steering methods are generally designed to           on the PHTest test set and out-of-distribution C OM -
+enhance or suppress a target property, they can also       PLIANCE R ATE on the hard subset of the ORBench
+be adapted to explicitly retain a control property.        dataset (Cui et al., 2025). We measure hallucination
+For instance, rather than simply steering a model to       steering efficacy using E XACT M ATCH (Rajpurkar
+be more compliant on pseudo-harmful queries, we            et al., 2016) between the model answer and the
+could additionally ascertain that the model retains        updated answer on the NQSwap test set.
+refusal behavior on harmful queries. Among the                We measure general specificity by assessing per-
+evaluated methods, PartialOR is explicitly designed        formance on the MMLU (Hendrycks et al., 2021)
+to enforce such control. For a fair comparison, we         and GSM8K (Cobbe et al., 2021) benchmarks and
+therefore introduce a with explicit control counter-       fluency on the responses to Alpaca queries, mea-
+part of the other steering methods.                        sured as the inverse of perplexity scores. For over-
+   Concretely, in the without-explicit control set-        refusal steering, we evaluate control specificity
+ting, training examples are chosen solely to capture       on harmful queries from the JailbreakBench test
+the target property. For overrefusal steering, we          set. We add jailbreaking prefixes from the Jail-
+construct positive examples as (xpseudo , y pseudo ) ∪     breakHub (Shen et al., 2024) to these harmful
+(xharmless , y harmless ), that is, pseudo-harmful and     queries to evaluate robust specificity. For hallu-
+harmless queries paired with compliant demonstra-          cination steering, we evaluate control specificity
+tions, and negative examples as (xpseudo , y refusal ),    by estimating E XACT M ATCH with original answer
+that is, pseudo-harmful queries paired with refusal        on queries without any additional information in
+responses. For faithfulness hallucination steering,        context, and robust specificity by estimating E X -
+we construct positive examples as (xupdate , y update ),   ACT M ATCH with original answer on queries with
+where query is accompanied by updated contextual           distractor information in context. See Appendix C
+information that contradicts the model’s internal          for more details on the datasets.
+                                                       5728
+  Model                 Method            Efficacy (↑)                             Specificity(↑)
+                                                                         General                Control   Robustness
+                                      PHTest    ORBench      MMLU        GSM8K      Fluency JBBench       +Jailbreak
+                        Baseline       0.84        0.43          0.55     0.45       -3.84      0.97         0.55
+                        DiffMean       0.08       0.15           -0.07    0.05       -0.04      -0.04       -0.28
+  Llama-8B-Instruct     LinearProbe    0.10       0.32            0.00    0.02       -0.40      -0.10       -0.30
+                        SSV            0.04       -0.21          -0.08    0.03       -0.57      0.01        -0.19
+                        ReFT-r1        0.05        0.05          0.03     0.06       -0.07      -0.03       -0.23
+                        PartialOR      0.09       0.57           -0.01    0.02       -0.17      -0.03       -0.25
+                        Baseline       0.84        0.52          0.62     0.19       -3.78      0.88         0.60
+                        DiffMean       0.10       0.34           -0.03    -0.01      -0.62      -0.02       -0.16
+  Qwen-7B-Instruct      LinearProbe    0.10       0.38           -0.02    -0.04      -0.86      -0.03       -0.14
+                        SSV            0.04       -0.02          -0.29    -0.17     -12.21      0.05        -0.05
+                        ReFT-r1        0.10       0.38           -0.01    -0.03      -0.64      -0.03       -0.18
+                        PartialOR      0.07       0.35           -0.02    -0.02      -0.67      0.05        -0.12
+                        Baseline       0.68        0.64          0.49     0.31       -3.92      0.95         0.92
+                        DiffMean       0.32        0.31           0.01    0.01        0.08      -0.08       -0.15
+  Llama-3B-Instruct     LinearProbe    0.29        0.25          -0.05    0.07       0.11       -0.08       -0.08
+                        SSV            0.16        0.02          -0.08    0.02       -0.04      -0.03       -0.09
+                        ReFT-r1        0.28        0.24          -0.04    0.01       0.00       -0.07       -0.11
+                        PartialOR      0.28        0.28           0.02    0.04        0.02       0.01       -0.09
+                        Baseline       0.63        0.35          0.29     0.00       -7.27      0.92         0.60
+                        DiffMean       0.18        0.19           0.00    0.00       -0.43      0.04        -0.16
+  Gemma-2B-Instruct     LinearProbe    0.11        0.15          -0.01    0.00       0.04       0.04        -0.12
+                        SSV            0.14        0.16           0.00    0.00       -1.48      0.04        -0.16
+                        ReFT-r1        0.15        0.18           0.00    0.00       -0.19      0.04        -0.15
+                        PartialOR      0.09        0.20           0.00    0.00       -0.24      0.04        -0.10
+
+Table 2: Efficacy and specificity evaluation in overrefusal steering (with explicit control). Efficacy: change
+in C OMPLIANCE R ATE for overrefusal benchmarks (PHTest and ORBench-hard) relative to the baseline; General
+specificity: change in MMLU accuracy, GSM8K accuracy, and fluency; Control specificity: change in safety (i.e.,
+1-H ARM S CORE) on JailbreakBench benchmark; Robust specificity: difference in safety on JailbreakBench queries
+prefixed with jailbreak prompts. Baseline values are shown for reference. Significant deviations ∆ from the baseline
+are marked in bold (at p<0.05), with degradations underlined in red. While safety is largely preserved on canonical
+harmful queries, jailbreak robustness consistently drops when steering to reduce overrefusal.
+
+
+   Each evaluation uses 500 test queries. For robust-        C OMPLIANCE R ATEharmful on the validation set.
+ness evaluation, we sample 25 jailbreaking prompts           We search over α ∈ {0.5, 1.0, 2.0, 3.0, 4.0}. We
+and apply them to 100 harmful queries, resulting             report results averaged over 3 runs.
+in 2,500 adversarial test instances.
+                                                             Baseline. As a baseline, we generate outputs
+Models. We evaluate four instruction-tuned mod-              from each model without any steering interventions.
+els: Llama-3.1-8B-Instruct, Llama-3.2-3B-Instruct            These baselines capture the inherent safety–utility
+(Llama Team, 2024), Qwen-2.5-7B-Instruct (Qwen               trade-off of each model prior to steering.
+Team, 2025), and Gemma-2-2B-it (Gemma Team,
+2024). We experiment with instruction-tuned vari-            7      Results: Are Steering Methods Indeed
+ants because they are already safety-aligned, typ-                  Precise?
+ically refusing harmful queries reliably but often
+                                                             Table 2 shows efficacy and specificity for over-
+over-refusing benign ones, making them a natural
+                                                             refusal steering with explicit control, with positive
+testbed for overrefusal steering interventions.
+                                                             values indicating improvement and negative val-
+Hyperparameters. The steering factor α, which                ues indicating degradation relative to the baseline.
+controls the magnitude of intervention, and                  We observe similar trends for hallucination steer-
+the intervention position are chosen to bal-                 ing (Table 4) and settings without explicit control
+ance target and control properties. For ex-                  (Table 5). For conciseness, we primarily focus our
+ample, in overrefusal steering we select α                   discussion on overrefusal steering. See Appendix B
+that maximizes C OMPLIANCE R ATEpseudo-harmful −             for a discussion of hallucination steering.
+                                                          5729
+                                                             Llama-8B-Instruct                                     Qwen-7B-Instruct                                      Llama-3B-Instruct                                  Gemma-2B-Instruct
+                                                                                                                                                                                                          1.0
+                                            1.0 Baseline                                                                                                      Baseline                                          Baseline                         DiffMean
+  Safety (1-HarmScore on Harmful queries)
+                                                                                                  0.9 Baseline                                         0.95
+                                            0.9                                 DiffMean                                                                                                                  0.9                      LinearProbe
+                                                                                                                                           DiffMean
+                                            0.8
+                                                                  SSV                                                   SSV                                                                                                                 SSV
+                                                                                     LinearProbe 0.8                                     LinearProbe                                                                                        ReFT-r1
+                                                                                                                                                       0.90                                               0.8
+                                            0.7                    ReFT-r1                                                     PartialOR                                                  PartialOR                              PartialOR
+                                                                                  PartialOR       0.7                                        ReFT-r1                            SSV
+                                            0.6                                                                                                                                                DiffMean   0.7
+                                                                                                                                                       0.85                               LinearProbe
+                                            0.5                                                   0.6
+                                                                                                                                                                                           ReFT-r1        0.6
+                                            0.4
+                                                                                                  0.5                                                  0.80
+                                                                                                                                                                                                          0.5
+                                            0.3
+                                            0.2                                                   0.4
+                                                                                                                                                                                                          0.4
+                                                  0.84     0.86   0.88   0.90     0.92     0.94         0.84     0.86   0.88   0.90   0.92    0.94        0.65 0.70 0.75 0.80 0.85 0.90 0.95 1.00                    0.65       0.70    0.75        0.80
+                                                         Utility (ComplianceRate on                            Utility (ComplianceRate on                            Utility (ComplianceRate on                        Utility (ComplianceRate on
+                                                          Pseudo-harmful queries)                               Pseudo-harmful queries)                               Pseudo-harmful queries)                           Pseudo-harmful queries)
+                                                                                                                                           Control             Robust
+
+
+Figure 3: Utility and safety trade-off for different steering methods. The arrows indicate the difference between
+safety in-distribution vs out-of-distribution. Steering improves the C OMPLIANCE R ATE on pseudo-harmful
+queries with some drop in safety. Importantly, jailbreaking success is higher after steering compared to baseline,
+and steering methods with larger gains in utility generally show a lower robustness to adversarial attacks.
+
+
+Steering efficacy. As seen in Table 2, all steering                                                                                                     Robust specificity. In stark contrast, robust-
+methods, with the exception of supervised steer-                                                                                                        ness evaluations reveal systematic vulnerabilities.
+ing vectors (SSV), successfully increase compli-                                                                                                        Across all models, steering increases susceptibility
+ance on pseudo-harmful queries compared to the                                                                                                          to jailbreak attacks. In Llama-8B-Instruct, steering
+baseline, both in-distribution (PHTest) and out-of-                                                                                                     methods lead to a 35%-55% drop in jailbreak ro-
+distribution (ORBench). These findings confirm                                                                                                          bustness. Similarly, susceptibility to jailbreaking
+that steering effectively mitigates overrefusal, align-                                                                                                 attacks increases by 20-30% in Qwen-7B-Instruct
+ing with prior findings of success of inference-time                                                                                                    model, by 8-16% in Llama-3B-Instruct (the model
+interventions at controlling model refusal behav-                                                                                                       with the highest baseline jailbreak robustness), and
+ior (Zou et al., 2025; Wang et al., 2025).                                                                                                              by 17-27% in Gemma-2B-Instruct model. This
+                                                                                                                                                        demonstrates that current steering methods lack
+General specificity. Models largely maintain                                                                                                            robust specificity: they maintain refusal on stan-
+their fluency and performance on MMLU and                                                                                                               dard harmful queries but collapse under adversarial
+GSM8K benchmarks after steering.2 Some meth-                                                                                                            attacks. Notably, we see that the strongest effi-
+ods exhibit a small negative shift in performance,                                                                                                      cacy gains often coincide with the largest robust-
+but these differences are not significant at p< 0.05                                                                                                    ness declines (e.g., largest gains in utility (12%) in
+for any method except supervised steering vector                                                                                                        Llama-8B-Instruct model with LinearProbe steer-
+based steering on Qwen-7B-Instruct model.                                                                                                               ing correspond to largest drop in robustness (55%).
+                                                                                                                                                           Importantly, this failure of robust specificity is
+Control specificity. Steering generally preserves                                                                                                       not unique to overrefusal steering, nor is it specific
+the model’s refusal behavior on harmful queries                                                                                                         to jailbreaking-style attacks. We observe a sim-
+drawn from the same distribution as the training                                                                                                        ilar pattern in faithfulness hallucination steering,
+data. Most deltas hover near zero, with slight nega-                                                                                                    where interventions that improve reliance on rele-
+tive and insignificant shifts in model safety in most                                                                                                   vant contextual information and preserve accuracy
+cases except, a drop of 10% with LinearProbe steer-                                                                                                     in standard settings nonetheless degrade substan-
+ing in Llama-8B-Instruct and a drop of 7-8% with                                                                                                        tially under distribution shifts.
+DiffMeans, LinearProbe, and ReFT-r1 steering in
+Llama-3B-Instruct model. Overall, however, steer-                                                                                                        Utility-Safety-Robustness trade-offs. To fur-
+ing methods preserve model’s refusal behavior on                                                                                                         ther visualize these trade-offs, we plot the utility-
+harmful queries under canonical settings.                                                                                                                safety tradeoff across steering methods and models
+    2
+                                                                                                                                                         in Figure 3. Ideally, a precise steering method
+      The low GSM8K performance of Gemma-2B-it primar-
+ily stems from limited instruction-following ability. While                                                                                              should shift rightward (higher utility) without mov-
+it often produces correct answers, it fails to follow format-                                                                                            ing downward (loss of safety). Instead, we observe
+ting instructions required by the evaluation protocol. Even                                                                                              that gains in utility are often accompanied by losses
+when graded more leniently on instruction-following, steered
+and unsteered models perform comparably across all steering                                                                                              in safety, particularly under jailbreak settings where
+methods, supporting our overall conclusion.                                                                                                              the gap between in-distribution safety and out-of-
+                                                                                                                                                5730
+                                                            Qwen-7B-Instruct
+                              60
+                                                                                        DiffMean
+                                                                                                                 to the activations of harmless and pseudo-harmful
+                                                                                        LinearProbe
+                                                                                        SSV                      queries. Figure 4 visualizes the first two principal
+                                                                                        ReFT-r1                  components of these activations at the last token
+                              40                                                        PartialOR
+                                                                                                                 position in layer 20 of Qwen-7B-Instruct.
+      Principal Component 2
+
+
+
+                              20
+                                                                                                                    We find that harmful queries with jailbreak pre-
+                                                                                                                 fixes have hidden activations markedly toward the
+                              0
+                                                                                                                 same region as harmless queries. This is unsurpris-
+                                                                                                                 ing as jailbreak prompts are designed to disguise
+                              20
+                                                                                                                 harmful inputs so that their representations appear
+                                                                                                                 deceptively similar to safe ones. Crucially though,
+                                                                                                                 since steering vectors are trained to increase com-
+                                     40       20            0        20         40           60
+                                                        Principal Component 1                                    pliance along directions separating benign from
+                                   Harmless        Pseudo-harmful     Harmful        Harmful with Jailbreak
+                                                                                                                 harmful activations, this overlap causes steering
+Figure 4: Top 2 principal components of activations at                                                           to inadvertently amplify compliance even for ad-
+the last token position in layer 20 for harmless, pseudo-                                                        versarially disguised unsafe inputs. This analysis
+harmful, harmful, and harmful queries with jailbreaking                                                          suggests that the latent representations of harmful
+prefix. The dotted lines visualize the decision bound-                                                           and harmless queries are not cleanly separated un-
+aries corresponding to the different steering vectors.
+                                                                                                                 der adversarial transformations, implying that any
+Activations of harmful queries with jailbreak prefixes
+lie markedly closer to that of harmless queries.
+                                                                                                                 steering method relying solely on these directions
+                                                                                                                 may inherently struggle to preserve robustness.
+
+distribution robustness (downward arrows) widens                                                                 8   Discussion & Conclusion
+substantially after steering. Steering methods that
+lie further to the right on the utility axis generally                                                           Steering methods are effective at controlling LLM
+exhibit lower robustness to jailbreaking. These                                                                  generations, but specificity remains a critical and
+patterns highlight a fundamental tension: interven-                                                              under-evaluated aspect. Across our evaluations of
+tions that most effectively reduce overrefusal tend                                                              general, control, and robust specificity, we find that
+to erode robustness, suggesting entangled latent                                                                 while steering preserves general model capabilities
+representations that steering fails to disentangle.                                                              and even control properties under standard settings,
+                                                                                                                 robustness under adversarial inputs is consistently
+Method comparison. No single steering method
+                                                                                                                 compromised. Our results establish how steering
+consistently dominates across models. LinearProbe
+                                                                                                                 methods can introduce systematic issues and vul-
+and ReFT-r1 overall show the highest efficacy
+                                                                                                                 nerabilities, even when they appear effective and
+gains, but accompanied by a large drop in jailbreak
+                                                                                                                 well-controlled in-distribution. These findings un-
+robustness. PartialOR yields more balanced trade-
+                                                                                                                 derscore the necessity of evaluating specificity in
+offs, with moderate efficacy and smaller robustness
+                                                                                                                 steering interventions since efficacy alone may give
+degradations. SSV, while sometimes effective, in-
+                                                                                                                 a misleadingly optimistic picture of steering as a
+troduces the sharpest regressions in general speci-
+                                                                                                                 “precise” tool for controlling LLM behavior.
+ficity (e.g., 47% drop in MMLU performance on
+                                                                                                                    A natural mitigation strategy would be to tune
+Qwen-7B-Instruct model). These results indicate
+                                                                                                                 steering vector or steering factor using jailbreaking
+that the robustness concerns are not limited to a
+                                                                                                                 queries (Sheng et al., 2025; Zhao et al., 2025) to
+specific method or class of methods, but affect un-
+                                                                                                                 better capture distributional shifts. However, such
+supervised and supervised approaches alike. Fur-
+                                                                                                                 approaches may not generalize to novel attacks.
+thermore, since different steering methods yield
+                                                                                                                 Importantly, our observations indicate that steering
+different trade-offs, a comprehensive specificity
+                                                                                                                 methods do not always work out-of-the-box and
+evaluation can help practitioners pick the most reli-
+                                                                                                                 may require precise tuning for specific applications,
+able and useful methods based on their use case.
+                                                                                                                 highlighting the need for techniques that generalize
+Why does robustness decline after steering?                                                                      well out-of-distribution in both efficacy and speci-
+To understand why steering retains safety in-                                                                    ficity. We hope our framework motivates more
+distribution but fails under jailbreak attacks, we                                                               systematic development and evaluation of steering
+analyze hidden activations for harmful queries with                                                              methods, guiding the design of interventions that
+and without jailbreaking prefix and compare them                                                                 are not only effective but also reliably safe.
+                                                                                                              5731
+Limitations                                               responses on harmful queries, we report only aggre-
+                                                          gate safety scores and exclude example generations
+While our work highlights the issue of a lack of
+                                                          to avoid spreading unsafe or harmful content.
+specificity evaluation in safety-critical contexts, our
+                                                             Second, steering interventions may affect latent
+analysis is conducted in a single-task setup. For
+                                                          model representations in opaque ways, degrading
+steering research to progress systematically, there
+                                                          model safety. We therefore emphasize that it is
+is a need for stronger benchmarks that appropri-
+                                                          important to evaluate not only efficacy but also
+ately catalog both target and control properties, en-
+                                                          specificity and robustness to adversarial attacks.
+abling more reliable assessment of steering efficacy
+                                                          Our findings highlight that even constrained steer-
+and safety. Existing large-scale benchmarks (Wu
+                                                          ing can increase model vulnerabilities. We present
+et al., 2025a) represent an important step toward
+                                                          these results to inform the research community of
+evaluating model steering at scale, but as we show,
+                                                          potential risks, not to enable exploitation.
+these evaluations remain insufficient for assessing
+                                                             Finally, this work underscores the broader eth-
+steering in practical, safety-critical use-cases. We
+                                                          ical tension between improving model utility and
+view our evaluation framework as complementary
+                                                          preserving safety. Steering interventions should
+to such efforts, offering an in-depth analysis of
+                                                          be evaluated holistically, considering not only per-
+different aspects of steering criteria that are often
+                                                          formance metrics but also downstream impacts on
+underexplored.
+                                                          reliability, potential misuse, and societal harm. We
+   We assess the efficacy and specificity of gen-
+                                                          encourage future work to incorporate explicit mea-
+erated text, following practices common in prior
+                                                          sures of specificity and robustness when developing
+work (Arditi et al., 2024; Wang et al., 2025). How-
+                                                          and benchmarking steering methods.
+ever, our evaluation framework can be readily ex-
+tended to analyze sequence probabilities for addi-        Acknowledgments
+tional insights, which we leave to future work. Due
+to compute constraints, our experiments are limited       We would like to thank Nishant Balepur for giving
+to LLMs up to 8B parameters, consistent with the          us feedback on the first draft of this paper. This re-
+scale of models evaluated in prior benchmarks (Wu         search received support through Schmidt Sciences
+et al., 2025a). Nonetheless, our framework can            and the NSF Institute for Trustworthy AI in Law
+readily be extended to larger LLMs. We will re-           & Society (TRAILS; Award No. 2229885). Any
+lease all code and data to support such extensions.       opinions, findings, or conclusions expressed in this
+Lastly, alignment through inference-time interven-        material are those of the author(s) and do not nec-
+tions requires white-box model access, similar to         essarily reflect the views of the funding agencies.
+training-based strategies, such as SFT or RLHF
+post-training (Christiano et al., 2017; Llama Team,
+2024). For closed models, prompting remains the           References
+most accessible and effective alternative.                Bang An, Sicheng Zhu, Ruiyi Zhang, Michael-Andrei
+                                                            Panaitescu-Liess, Yuancheng Xu, and Furong Huang.
+Ethical Considerations                                      2024. Automatic pseudo-harmful prompt generation
+                                                            for evaluating false refusals in large language models.
+This work investigates inference-time steering              In First Conference on Language Modeling.
+methods that steer LLM behavior without retrain-
+ing. These methods raise important ethical and            Andy Arditi, Oscar Obeso, Aaquib Syed, Daniel Paleka,
+                                                            Nina Panickssery, Wes Gurnee, and Neel Nanda.
+safety concerns due to the potential for dual use.          2024. Refusal in language models is mediated by
+Although our study focuses on LLMs and steering             a single direction. In Advances in Neural Informa-
+methods that are already publicly available, we rec-        tion Processing Systems.
+ognize that releasing steering vectors that increase
+                                                          Usha Bhalla, Suraj Srinivas, Asma Ghandeharioun, and
+model susceptibility to adversarial attacks could           Himabindu Lakkaraju. 2025. Towards unifying inter-
+facilitate misuse. Due to this, we advocate respon-         pretability and control: Evaluation via intervention.
+sible disclosure: we will share all code necessary          Preprint, arXiv:2411.04430.
+to replicate and extend our results, but we will not
+                                                          Joschka Braun, Dmitrii Krasheninnikov, Usman Anwar,
+directly release specific intervention parameters            RobertKirk, Daniel Tan, and David Scott Krueger.
+that could weaken deployed models’ safeguards.               2024. A sober look at steering vectors for LLMs.
+Additionally, since our findings include compliant          LessWrong! Blog Post.
+                                                      5732
+Trenton Bricken, Adly Templeton, Joshua Batson, Brian     Lei Huang, Weijiang Yu, Weitao Ma, Weihong Zhong,
+  Chen, Adam Jermyn, Tom Conerly, Nicholas L                Zhangyin Feng, Haotian Wang, Qianglong Chen,
+  Turner, Cem Anil, Carson Denison, Amanda Askell,          Weihua Peng, Xiaocheng Feng, Bing Qin, and Ting
+  Robert Lasenby, Yifan Wu, Shauna Kravec, Nicholas         Liu. 2025. A survey on hallucination in large lan-
+  Schiefer, Tim Maxwell, Nicholas Joseph, Alex              guage models: Principles, taxonomy, challenges, and
+  Tamkin, Karina Nguyen, Brayden McLean, and 5              open questions. ACM Transactions on Information
+  others. 2023. Towards monosemanticity: Decompos-          Systems.
+  ing language models with dictionary learning. Trans-
+  former Circuits Thread.                                 Connor Kissane, robertzk, Neel Nanda, and Arthur
+                                                            Conmy. 2024. SAEs are highly dataset dependent:
+Sviatoslav Chalnev, Matthew Siu, and Arthur Conmy.          A case study on the refusal direction. AI Alignment
+  2024. Improving steering vectors by targeting sparse      Forum.
+  autoencoder features. Preprint, arXiv:2411.02193.
+                                                          Tom Kwiatkowski, Jennimaria Palomaki, Olivia Red-
+Patrick Chao, Edoardo Debenedetti, Alexander Robey,         field, Michael Collins, Ankur Parikh, Chris Alberti,
+  Maksym Andriushchenko, Francesco Croce, Vikash            Danielle Epstein, Illia Polosukhin, Jacob Devlin, Ken-
+  Sehwag, Edgar Dobriban, Nicolas Flammarion,               ton Lee, Kristina Toutanova, Llion Jones, Matthew
+  George J. Pappas, Florian Tramèr, Hamed Hassani,          Kelcey, Ming-Wei Chang, Andrew M. Dai, Jakob
+  and Eric Wong. 2024. Jailbreakbench: An open ro-          Uszkoreit, Quoc Le, and Slav Petrov. 2019. Natu-
+  bustness benchmark for jailbreaking large language        ral questions: A benchmark for question answering
+  models. In Advances in Neural Information Process-        research. Transactions of the Association for Compu-
+  ing Systems.                                              tational Linguistics.
+Paul F Christiano, Jan Leike, Tom Brown, Miljan Mar-
+  tic, Shane Legg, and Dario Amodei. 2017. Deep           Simon Lermen and Charlie Rogers-Smith. 2024. LoRA
+  reinforcement learning from human preferences. In         fine-tuning efficiently undoes safety training in llama
+  Advances in Neural Information Processing Systems.        2-chat 70b. In ICLR 2024 Workshop on Secure and
+                                                            Trustworthy Large Language Models.
+Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian,
+  Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias          Kenneth Li, Oam Patel, Fernanda Viégas, Hanspeter
+  Plappert, Jerry Tworek, Jacob Hilton, Reiichiro           Pfister, and Martin Wattenberg. 2023. Inference-time
+  Nakano, Christopher Hesse, and John Schulman.             intervention: Eliciting truthful answers from a lan-
+  2021. Training verifiers to solve math word prob-         guage model. In Advances in Neural Information
+  lems. Preprint, arXiv:2110.14168.                         Processing Systems.
+
+Justin Cui, Wei-Lin Chiang, Ion Stoica, and Cho-Jui       Xiaogeng Liu, Nan Xu, Muhao Chen, and Chaowei
+  Hsieh. 2025. OR-bench: An over-refusal benchmark          Xiao. 2024. AutoDAN: Generating stealthy jailbreak
+  for large language models. In Forty-second Interna-       prompts on aligned large language models. In The
+  tional Conference on Machine Learning.                    Twelfth International Conference on Learning Repre-
+                                                            sentations.
+Nicola De Cao, Wilker Aziz, and Ivan Titov. 2021. Edit-
+  ing factual knowledge in language models. In Pro-       Meta Llama Team. 2024. The Llama 3 herd of models.
+  ceedings of the 2021 Conference on Empirical Meth-       Preprint, arXiv:2407.21783.
+  ods in Natural Language Processing.
+                                                          Shayne Longpre, Kartik Perisetla, Anthony Chen,
+Esin Durmus, Alex Tamkin, Jack Clark, Jerry Wei,            Nikhil Ramesh, Chris DuBois, and Sameer Singh.
+  Jonathan Marcus, Joshua Batson, Kunal Handa,              2021. Entity-based knowledge conflicts in question
+  Liane Lovitt, Meg Tong, Miles McCain, Oliver              answering. In Proceedings of the 2021 Conference
+  Rausch, Saffron Huang, Sam Bowman, Stuart                 on Empirical Methods in Natural Language Process-
+  Ritchie, Tom Henighan, and Deep Ganguli. 2024.            ing.
+  Evaluating feature steering: A case study in mitigat-
+  ing social biases. Blog Post.                           Aleksandar Makelov. 2024. Sparse autoencoders match
+Yanai Elazar, Shauli Ravfogel, Alon Jacovi, and Yoav        supervised features for model steering on the IOI
+  Goldberg. 2021. Amnesic probing: Behavioral expla-        task. In ICML 2024 Workshop on Mechanistic Inter-
+  nation with amnesic counterfactuals. Transactions of      pretability.
+  the Association for Computational Linguistics.
+                                                          Kevin Meng, David Bau, Alex J Andonian, and Yonatan
+Google DeepMind Gemma Team. 2024. Gemma 2:                  Belinkov. 2022. Locating and editing factual associ-
+  Improving open language models at a practical size.       ations in GPT. In Advances in Neural Information
+  Preprint, arXiv:2408.00118.                               Processing Systems.
+
+Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou,     Kevin Meng, Arnab Sen Sharma, Alex J Andonian,
+  Mantas Mazeika, Dawn Song, and Jacob Steinhardt.          Yonatan Belinkov, and David Bau. 2023. Mass-
+  2021. Measuring massive multitask language under-         editing memory in a transformer. In The Eleventh
+  standing. In International Conference on Learning         International Conference on Learning Representa-
+  Representations.                                          tions.
+                                                      5733
+Kyle O’Brien, David Majercak, Xavier Fernandes,            Alexander Matt Turner, Lisa Thiergart, Gavin Leech,
+  Richard G. Edgar, Blake Bullwinkel, Jingya Chen,           David Udell, Juan J. Vazquez, Ulisse Mini, and
+  Harsha Nori, Dean Carignan, Eric Horvitz, and For-         Monte MacDiarmid. 2024. Steering language
+  ough Poursabzi-Sangdeh. 2025. Steering language            models with activation engineering.      Preprint,
+  model refusal with sparse autoencoders. In ICML            arXiv:2308.10248.
+  2025 Workshop on Reliable and Responsible Founda-
+  tion Models.                                             Xinpeng Wang, Chengzhi Hu, Paul Röttger, and Barbara
+                                                             Plank. 2025. Surgical, cheap, and flexible: Mitigat-
+Itamar Pres, Laura Ruis, Ekdeep Singh Lubana, and            ing false refusal in language models via single vector
+   David Krueger. 2024. Towards reliable evaluation of       ablation. In The Thirteenth International Conference
+   behavior steering interventions in LLMs. In MINT:         on Learning Representations.
+   Foundation Model Interventions.
+                                                           Zhengxuan Wu, Aryaman Arora, Atticus Geiger, Zheng
+Qwen Team. 2025. Qwen2.5 technical report. Preprint,         Wang, Jing Huang, Dan Jurafsky, Christopher D Man-
+  arXiv:2412.15115.                                          ning, and Christopher Potts. 2025a. Axbench: Steer-
+Pranav Rajpurkar, Jian Zhang, Konstantin Lopyrev, and        ing LLMs? Even simple baselines outperform sparse
+   Percy Liang. 2016. SQuAD: 100,000+ questions              autoencoders. In Forty-second International Confer-
+   for machine comprehension of text. In Proceedings         ence on Machine Learning.
+   of the 2016 Conference on Empirical Methods in
+  Natural Language Processing.                             Zhengxuan Wu, Aryaman Arora, Zheng Wang, Atticus
+                                                             Geiger, Dan Jurafsky, Christopher D. Manning, and
+Nina Rimsky, Nick Gabrieli, Julian Schulz, Meg Tong,         Christopher Potts. 2024. Reft: Representation fine-
+  Evan Hubinger, and Alexander Turner. 2024. Steer-          tuning for language models. In Advances in Neural
+  ing llama 2 via contrastive activation addition. In        Information Processing Systems.
+  Proceedings of the 62nd Annual Meeting of the Asso-
+  ciation for Computational Linguistics.                   Zhengxuan Wu, Qinan Yu, Aryaman Arora, Christo-
+                                                             pher D Manning, and Christopher Potts. 2025b. Im-
+Xinyue Shen, Zeyuan Chen, Michael Backes, Yun Shen,          proved representation steering for language models.
+  and Yang Zhang. 2024. "Do anything now": Charac-           In The Thirty-ninth Annual Conference on Neural
+  terizing and evaluating in-the-wild jailbreak prompts      Information Processing Systems.
+  on large language models. In Proceedings of the
+  2024 on ACM SIGSAC Conference on Computer and            Weixiang Zhao, Jiahe Guo, Yulin Hu, Yang Deng,
+  Communications Security, CCS ’24.                         An Zhang, Xingyu Sui, Xinyang Han, Yanyan Zhao,
+                                                            Bing Qin, Tat-Seng Chua, and Ting Liu. 2025. AdaS-
+Leheng Sheng, Changshuo Shen, Weixiang Zhao, Jun-           teer: Your aligned LLM is inherently an adaptive
+  feng Fang, Xiaohao Liu, Zhenkai Liang, Xiang Wang,        jailbreak defender. In Proceedings of the 2025 Con-
+  An Zhang, and Tat-Seng Chua. 2025. Alphasteer:            ference on Empirical Methods in Natural Language
+  Learning refusal steering with principled null-space      Processing.
+  constraint. Preprint, arXiv:2506.07022.
+                                                           Andy Zou, Long Phan, Sarah Chen, James Campbell,
+Jiuding Sun, Sidharth Baskaran, Zhengxuan Wu,
+                                                             Phillip Guo, Richard Ren, Alexander Pan, Xuwang
+   Michael Sklar, Christopher Potts, and Atticus Geiger.
+                                                             Yin, Mantas Mazeika, Ann-Kathrin Dombrowski,
+   2025. Hypersteer: Activation steering at scale with
+                                                             Shashwat Goel, Nathaniel Li, Michael J. Byun, Zifan
+   hypernetworks. Preprint, arXiv:2506.03292.
+                                                             Wang, Alex Mallen, Steven Basart, Sanmi Koyejo,
+Daniel Tan, David Chanin, Aengus Lynch, Brooks               Dawn Song, Matt Fredrikson, and 2 others. 2025.
+  Paige, Dimitrios Kanoulas, Adrià Garriga-Alonso,           Representation engineering: A top-down approach
+  and Robert Kirk. 2024. Analysing the generalisation        to AI transparency. Preprint, arXiv:2310.01405.
+  and reliability of steering vectors. In Advances in
+  Neural Information Processing Systems.                   A     Details: Steering Methods
+Rohan Taori, Ishaan Gulrajani, Tianyi Zhang, Yann                                                    pseudo
+                                                           Without explicit control. Let xi                   ∈ X pseudo
+  Dubois, Xuechen Li, Carlos Guestrin, Percy Liang,
+  and Tatsunori B Hashimoto. 2023. Stanford alpaca:
+                                                           be the set of pseudo-harmful queries and xharmless   j       ∈
+                                                              harmless  be the set of harmless queries, and
+  An instruction-following llama model.                    X
+                                                                  pseudo
+                                                           let yi          and yjharmless be the demonstration
+Adly Templeton, Tom Conerly, Jonathan Marcus, Jack
+  Lindsey, Trenton Bricken, Brian Chen, Adam Pearce,       responses for these queries. Consider D+ =
+  Craig Citro, Emmanuel Ameisen, Andy Jones, Hoagy         (xpseudo , y pseudo ) ∪ (xharmless , y harmless ) as the set of
+  Cunningham, Nicholas L Turner, Callum McDougall,         positive examples and D− = (xpseudo , y refusal ) as
+  Monte MacDiarmid, C. Daniel Freeman, Theodore R.         the set of negative examples, where y refusal repre-
+  Sumers, Edward Rees, Joshua Batson, Adam Jermyn,
+  and 4 others. 2024. Scaling monosemanticity: Ex-
+                                                           sents a refusal response. Let hl,k (x) be the hidden
+  tracting interpretable features from claude 3 sonnet.    representation at layer l ∈ {1, . . . , L} and token
+  Transformer Circuits Thread.                             position k ∈ {1, . . . , n} for an input x.
+                                                       5734
+ Difference-in-means (DiffMean): DiffMean                                  With explicit control. To control models’ re-
+estimates the difference in the average of hidden                           fusal behavior on harmful queries, we consider
+representations from positive and negative sets of                          xharmful
+                                                                             i       ∈ X harmful as the set of harmful queries.
+examples. The steering vector w is calculated as
+                                                                             DiffMean / LinearProbe / SSV / ReFT-r1:
+                   1 X l,k       1 X l,k                                    To explicitly retain the model refusal behavior on
+ wDiffMean     =         h   −         hj ,
+                 |D+ | +
+                           i
+                               |D− | −
+                                                                            harmful queries, we include (xharmful , y refusal ) in
+                         i∈D                           j∈D
+                                                                            the set of positive examples D+ , where y refusal rep-
+where hl,k                                                                  resents a refusal demonstration. We could poten-
+          i is the hidden representation at layer l
+and token position k for the concatenated input                             tially also include (xharmful , y harmful ) in negative
+xi ◦ yi . We can subsequently steer the model by                            examples, where y harmful indicates an actual re-
+adding this vector at the layer l and position k                            sponse on harmful query (for example, instructions
+during inference. That is, hl,k ← hl,k +αwDiffMean ,                        to make a bomb). However, we do not include
+where α is the steering factor.                                             these even as negative training examples because
+                                                                            we do not want to risk introducing any new harmful
+ Linear Probe (LinearProbe): The linear                                    knowledge in models that may confound the com-
+probe first trains a linear classifier to distin-                           parisons. We follow the same method as before to
+guish between positive and negative sets of exam-                           calculate the steering vector w.
+ples. Essentially, the method learns the direction
+wLinearProbe ∈ Rd×1 using binary cross-entropy                               PartialOR: Partial orthogonalization method
+loss with hl,k                                                              aims to isolate overrefusal behavior in LLMs by
+            i as the input, where d is the size of hid-
+den dimension hl,k . The label for the cross-entropy                        applying partial orthogonalization between a can-
+loss is defined by whether the corresponding sam-                           didate “false” refusal vector and a candidate “true”
+ple belongs in the set of positive examples or not.                         refusal vector (Wang et al., 2025). The candi-
+The steering follows in the same way as that for                            date false refusal vectors are calculated by tak-
+wDiffMean .                                                                 ing difference-in-mean of activations for pseudo-
+                                                                            harmful queries X pseudo and harmless queries
+ Supervised steering vector (SSV): SSV                                     X harmless and candidate true refusal vectors are cal-
+learns the steering vector by directly optimizing                           culated by taking the difference-in-mean of acti-
+for the language modeling probability of yj for the                         vations for harmful and harmless queries. That is,
+set of positive examples. That is, wSSV ∈ Rd×1 is
+a learned vector such that                                                                          X                    X
+          nP
+               n                                                o             wtrue-refusal =                 hl,k
+                                                                                                                i −                  hl,k
+                                                                                                                                      j , (1)
+minwSSV        t=1 log pLM   yt |y<t   , x; hl,k   ← hl,k + wSSV ,
+                                                                                                 i∈X harmful          j∈X harmless
+
+where yt is the t-th token in the demonstration y
+and y<t are all preceding tokens. The steering                              where hl,k
+                                                                                     i is the hidden representation at layer l
+follows the same process as before with wSSV                                and token position k for the query xi . Similarly,
+added to the hidden activation hl,k at layer l and                                             X              X
+                                                                              wfalse-refusal =       hl,k
+                                                                                                       i −            hl,k
+                                                                                                                       j . (2)
+position k at inference-time.
+                                                                                                 i∈X pseudo           j∈X harmless
+ Rank-1 representation finetuning (ReFT-r1):
+Rank-1 representation finetuning method (Wu et al.,                         Subsequently, the partial orthogonalization calcu-
+2025a) learns steering vector in a supervised fash-                         lates the steering vector wPartialOR as
+ion by combining the probing and supervised steer-
+                                                                                        wPartialOR = wf − λwt wtT wf ,                    (3)
+ing vector objectives. Essentially, wReFT-r1 ∈ Rd×1
+is a learned vector such that                                               where wt and wf are true- and false-refusal vec-
+                 1
+                                                                           tors calculated in Equations (1) and (2) and the
+hl,k ← hl,k +    k   TopK(ReLU(hl,k .wReFT-r1 )          1
+                                                                 wReFT-r1
+                                                                            coefficient λ adjusts the refusal level.
+The steering vector is learned by minimizing the                               Since the steering vector wPartialOR estimates the
+language modeling objective defined above with                              false-refusal direction, the subsequent steering is
+an additional regularization penalty for non top-                           performed by ablating this direction from the LLM
+k latents. Please see Wu et al. (2025a) for more                            activations during inference. That is, hl,k ← hl,k −
+details on the implementation.                                                          T
+                                                                            wPartialOR wPartialOR hl,k .
+                                                                        5735
+                            6
+                                          Llama-8B-Instruct                                     Qwen-7B-Instruct                                       Llama-3B-Instruct                                Gemma-2B-Instruct
+                                                                                                                                                                                      150
+                                                                           60
+                                                                                                                                 10.0
+                                                                                                                                                                                      100
+                            4                                                                                                     7.5
+                                                                           40
+                                                                                                                                                                                      50
+    Principal Component 2
+
+
+                                                                                                                                  5.0
+                            2
+                                                                           20                                                     2.5                                                  0
+
+                            0                                                                                                     0.0                                                  50
+                                                                           0
+                                                                                                                                  2.5
+                            2                                                                                                                                                         100
+                                                                                                                                  5.0
+                                                                           20
+                                                                                                                                                                                      150
+                            4                                                                                                     7.5
+
+                                                                                                                                                                                      200
+                                 8   6    4     2     0     2    4   6          40      20        0       20         40   60              10      5           0          5       10         200   150    100   50    0     50   100   150
+                                         Principal Component 1                                 Principal Component 1                                  Principal Component 1                             Principal Component 1
+                                                                                             Harmless          Pseudo-harmful           Harmful         Harmful with Jailbreak
+
+
+Figure 5: First two principal components of hidden activations (at the last token position in layer 20) for harmless,
+pseudo-harmful, harmful, and harmful queries with jailbreaking prefix. The dotted lines visualize the decision
+boundaries corresponding to the different steering vectors. Adding jailbreaking prompts to harmful queries shifts
+hidden activations towards those of safe queries.
+
+
+    Method                                    Llama-8B           Qwen-7B             Llama-3B           Gemma-2B                    also generally maintained, although some super-
+                                                          Overrefusal Steering                                                      vised steering methods (SSV and RefFT-r1) exhibit
+    DiffMean                                    1.0                  2.0               4.0                     5.0                  larger perplexity increases in some models, indicat-
+    LinearProbe                                 3.0                  0.5               1.0                     4.0
+    SSV                                         0.5                  3.0               0.5                     2.0                  ing degradation in generation quality.
+    ReFT-r1                                     0.5                  2.0               0.5                     2.0
+    PartialOR                                    -                    -                 -                       -                      Control specificity is largely preserved across
+                                              Faithfulness Hallucination Steering                                                   methods. When no contextual information is pro-
+    DiffMean                                    4.0                  1.0               5.0                     1.0                  vided (NQNone ), steered models maintain accuracy
+    LinearProbe
+    SSV
+                                                1.0
+                                                1.0
+                                                                     2.0
+                                                                     1.0
+                                                                                       0.5
+                                                                                       0.5
+                                                                                                               5.0
+                                                                                                               0.5
+                                                                                                                                    comparable to the unsteered baseline, indicating
+    ReFT-r1                                     4.0                  0.5               1.0                     1.0                  that steering for contextual faithfulness does not
+    PartialOR                                    -                    -                 -                       -
+                                                                                                                                    substantially impair the model’s ability to answer
+Table 3: Steering factor α across models and methods                                                                                based on internal knowledge alone.
+                                                                                                                                       In contrast, robust specificity consistently de-
+                                                                                                                                    grades. When distractor context is introduced
+   Some previous studies perform interventions at                                                                                   (NQDistractor ), all steering methods lead to signif-
+all layers and token positions, instead of steering                                                                                 icant drops in accuracy relative to the baseline
+at targeted position k and layer l. We consider the                                                                                 across models. This suggests that while steering
+latter as it is most commonly used in prior steer-                                                                                  improves faithfulness to relevant context, it also in-
+ing work (Arditi et al., 2024; Wang et al., 2025)                                                                                   creases susceptibility to incorporating irrelevant or
+and is expected to be minimally disruptive to other                                                                                 misleading information. Notably, this robustness
+model behavior and capabilities, which is the main                                                                                  failure persists even when explicit control is en-
+objective of our study.                                                                                                             forced, highlighting a systematic robustness failure
+                                                                                                                                    that is not captured by standard efficacy or control
+B                           Additional Results                                                                                      evaluations.
+B.1                             Hallucination Steering
+                                                                                                                                    B.2           Without Explicit Control
+Table 4 shows efficacy and specificity for faith-
+fulness hallucination steering. Across all models                                                                                   Table 5 shows efficacy and specificity for over-
+and steering methods, faithfulness hallucination                                                                                    refusal setting in the unconstrained setting. We
+steering achieves consistent gains in efficacy, im-                                                                                 observe similar trends to those discussed for the
+proving accuracy when updated contextual infor-                                                                                     controlled setting in Section 7. Interestingly, we do
+mation contradicts the model’s internal knowledge                                                                                   not see any additional efficacy benefits or any addi-
+(NQUpdated ). These gains indicate that steering suc-                                                                               tional specificity losses, both in control and robust
+cessfully increases reliance on provided context in                                                                                 specificity, compared to the constrained setting.
+the intended setting.
+                                                                                                                                    B.3           Activations Visualization
+   In terms of general specificity, most meth-
+ods largely preserve benchmark performance on                                                                                       Figure 5 visualizes first two principal components
+MMLU and GSM8K, with only small degradations                                                                                        for queries across different models. Consistent with
+in accuracy in most cases, except SSV. Fluency is                                                                                   the results in Section 7, activations corresponding
+                                                                                                                               5736
+to harmful queries with jailbreaking prefixes cluster        neutral, whereas for harmful or pseudo-harmful
+closely with those of benign queries.                        queries, a model that simply responds with “I can-
+                                                             not answer” may misleadingly obtain high fluency
+C       Data and Experiment Details                          scores. Since lower perplexity indicates higher flu-
+Hallucination steering dataset For faithful-                 ency, we report general specificity as the degrada-
+ness hallucination steering, we employ NQSwap                tion in fluency (inverse of perplexity), where a large
+dataset (Longpre et al., 2021), which is built on Nat-       negative ∆ would indicate degradation in model
+ural Questions dataset (Kwiatkowski et al., 2019).3          fluency after steering.
+The dataset contains questions paired with both              Data License and Use All data used in this paper
+an original context and an updated context, along            are in English. PHTest (An et al., 2024), Jailbreak-
+with corresponding answers for each context. We              Bench (Chao et al., 2024), JailbreakHub (Shen
+manually generate distractor contexts that are top-          et al., 2024), MMLU (Hendrycks et al., 2021),
+ically related to the query but factually irrelevant,        and GSM8K (Cobbe et al., 2021) datasets used
+thereby testing robustness to misleading contextual          in this work are available under MIT License. OR-
+information. An example is shown below:                      Bench (Cui et al., 2025) is available under Cre-
+                                                             ative Commons Attribution 4.0 License (cc-by-4.0)
+ Query: Who won the NCAA basketball champi-
+                                                             and Stanford Alpaca dataset (Taori et al., 2023)
+ onship in 1994?
+                                                             is available under Creative Commons Attribution
+ Original context: Arkansas Razorbacks won the               Non Commercial 4.0 (cc-by-nc-4.0). Natural Ques-
+ NCAA men’s basketball championship in 1994.                 tions (Kwiatkowski et al., 2019) and NQSwap
+                                                             datasets (Longpre et al., 2021) are available un-
+ Updated context: The Duke Blue Devils won the               der Apache 2.0 and Apple License. Our data usage
+ NCAA men’s basketball championship in 1994.                 is consistent with the terms of these licenses.
+
+ Distractor context: The Kentucky Wildcats won               Compute Resources We use NVIDIA:RTX2080
+ the 1996 NCAA championship.                                 GPU for our experiments and allocate 15 GPU
+                                                             hours for each model and method combination,
+For our training and test inputs, we have                    including training, inference, and evaluation.
+
+                                                             D    Generative AI Usage
+            xnone = query,
+                                                             Generative AI tools were used in this project solely
+          xoriginal = original context + query               as minimal writing aid, limited to grammar check-
+          xupdated = updated context + query                 ing and minor editing suggestions. No AI tools
+         xdistractor = distractor context + query            were used for ideation, implementing experimen-
+                                                             tal code, generating code, performing analysis, or
+          y original = original answer                       drafting any portion of this manuscript from scratch.
+          y updated = updated answer                         We assume full responsibility for data, method,
+                                                             analysis, and text produced in this work.
+Model configuration and hyperparameters We
+search over α ∈ {0.5, 1.0, 2.0, 3.0, 4.0}. Table 3
+shows steering factor for different models and meth-
+ods. PartialOR does not include a steering factor
+since it performs directional ablation, instead of
+addition. For intervention position, we search over
+all model layers and last 5 token positions.
+Evaluations For perplexity evaluation, we mea-
+sure the model’s log probability on generations
+using queries from the Alpaca dataset (Taori et al.,
+2023). We select Alpaca queries because they are
+    3
+    We use the reproduced version of this data released at
+https://huggingface.co/datasets/younanna/NQ-Swap.
+
+                                                         5737
+       Model                   Method         Efficacy (↑)                                  Specificity(↑)
+                                                                                 General                 Control      Robustness
+                                                  NQUpdated        MMLU          GSM8K       Fluency NQNone           NQDistractor
+                               Baseline             0.35            0.55          0.45        -3.84       0.49           0.46
+                               DiffMean             0.17             0.07          0.00        0.51       -0.01          -0.21
+       Llama-8B-Instruct       LinearProbe          0.17             0.01          0.00       -0.07       -0.01          -0.25
+                               SSV                  0.22            -0.27         -0.17       -3.77        0.03          -0.25
+                               ReFT-r1              0.22            -0.02          0.03       -0.27       -0.06          -0.25
+                               PartialOR            0.20            -0.03          0.02       -0.59       -0.03          -0.22
+                               Baseline             0.55            0.62          0.19        -3.78       0.42           0.25
+                               DiffMean             0.25            -0.02          0.02         0.51      -0.02          -0.21
+       Qwen-7B-Instruct        LinearProbe          0.27            -0.03          0.03         0.18      -0.03          -0.21
+                               SSV                  0.21            -0.04         -0.04        -0.34       0.05          -0.17
+                               ReFT-r1              0.26             0.01         -0.03       -10.98       0.05          -0.24
+                               PartialOR            0.25            -0.01         -0.02        -0.67       0.05          -0.20
+                               Baseline             0.52            0.49          0.31        -3.92       0.32           0.22
+                               DiffMean             0.10            -0.05         -0.01       -0.23       -0.05          -0.18
+       Llama-3B-Instruct       LinearProbe          0.11            -0.04          0.02       -0.04        0.0           -0.14
+                               SSV                  0.08             0.01         -0.01       -1.54       -0.07          -0.14
+                               ReFT-r1              0.13            -0.01          0.03       -0.57       -0.03          -0.14
+                               PartialOR            0.15             0.04          0.04       -0.30       -0.03          -0.17
+                               Baseline             0.55            0.29          0.00        -7.27       0.18           0.14
+                               DiffMean             0.14            -0.05         0.00        -0.07        0.02          -0.13
+       Gemma-2B-Instruct       LinearProbe          0.14            -0.01         0.00         0.04       -0.04          -0.12
+                               SSV                  0.10            -0.09         0.00        -1.48       -0.03          -0.11
+                               ReFT-r1              0.08            -0.01         0.00        -0.19       -0.01          -0.10
+                               PartialOR            0.08            -0.02         0.00        -0.24       -0.01          -0.10
+
+Table 4: Efficacy and specificity evaluation in faithfulness hallucination steering (with explicit control). While
+steered models maintain accuracy when no context is included (control specificity), there is a significant drop in
+accuracy relative to the baseline when distractor information is present (robust specificity).
+
+  Model                    Method            Efficacy (↑)                            Specificity(↑)
+                                                                                   General                   Control       Robustness
+                                          PHTest      ORBench         MMLU         GSM8K Fluency            JBBench        +Jailbreak
+                           Baseline        0.84            0.43          0.55        0.45         -3.84       0.97               0.55
+
+  Llama-8B-Instruct        DiffMeans       0.09            0.14          -0.04       0.05         -0.23       -0.03             -0.28
+                           LinearProbe     0.07            0.12          -0.05       0.02         -0.10       -0.01             -0.27
+                           SSV             0.10            0.32          -0.06       0.03         -0.41       -0.07             -0.32
+                           ReFT-r1         0.07            0.11           0.03       0.04         -0.17        0.00             -0.27
+                           Baseline        0.84            0.52          0.62        0.19         -3.78       0.88               0.60
+
+  Qwen-7B-Instruct         DiffMean        0.11            0.34          -0.04       -0.02        -0.47       -0.02             -0.17
+                           LinearProbe     0.10            0.38          -0.01        0.02        -0.39       -0.02             -0.15
+                           SSV             0.10            0.36          -0.03        0.03        -1.04       -0.02             -0.22
+                           ReFT-r1         0.09            0.38          -0.01        0.04        -0.59       -0.03             -0.16
+                           Baseline        0.68            0.64          0.49        0.31         -3.92       0.95               0.92
+
+  Llama-3B-Instruct        DiffMeans       0.30            0.26          -0.05       0.09         -0.60       -0.05             -0.09
+                           LinearProbe     0.32            0.24          -0.04       0.07         -0.13       -0.06             -0.10
+                           SSV             0.29            0.28          -0.04       0.02         -0.61       -0.08             -0.14
+                           ReFT-r1         0.31            0.23          -0.05       0.06         -0.45       -0.05             -0.11
+                           Baseline        0.63            0.35          0.29        0.00         -7.27       0.92               0.60
+
+  Gemma-2B-Instruct        DiffMeans       0.18            0.20           0.01       0.00         -0.27       0.04              -0.16
+                           LinearProbe     0.13            0.15          -0.01       0.00         -0.31       0.03              -0.18
+                           SSV             0.16            0.22          -0.04       0.00         -0.88       0.01              -0.22
+                           ReFT-r1         0.15            0.17           0.00       0.00         -0.28       0.04              -0.15
+
+Table 5: Efficacy and specificity evaluation for overrefusal steering (without explicit control). Results are consistent
+with that shown in Table 2. That is, while safety is largely preserved on canonical harmful queries, jailbreak
+robustness consistently drops when steering to reduce overrefusal.
+
+                                                                  5738
+

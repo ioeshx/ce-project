@@ -1,0 +1,759 @@
+Proceedings of Machine Learning Research vol 331:1–15, 2026   8th Annual Conference on Learning for Dynamics and Control
+
+
+
+
+   Safe Control using Learned Safety Filters and Adaptive Conformal
+                              Inference
+
+Sacha Huriot                                                                               H . SACHA @ WUSTL . EDU
+Ihab Tabbara                                                                          I . K . TABBARA @ WUSTL . EDU
+Hussein Sibai                                                                                  SIBAI @ WUSTL . EDU
+Computer Science & Engineering, Washington University in St. Louis
+
+
+Editors: G. Sukhatme, L. Lindemann, S. Tu, A. Wierman, N. Atanasov
+
+
+                                                        Abstract
+           Safety filters have been shown to be effective tools to ensure the safety of control systems with
+      unsafe nominal policies. To address scalability challenges in traditional synthesis methods, learning-
+      based approaches have been proposed for designing safety filters for systems with high-dimensional
+      state and control spaces. However, the inevitable errors in the decisions of these models raise
+      concerns about their reliability and the safety guarantees they offer. This paper presents Adaptive
+      Conformal Filtering (ACoFi), a method that combines learned Hamilton-Jacobi reachability-based
+      safety filters with adaptive conformal inference. Under ACoFi, the filter dynamically adjusts its
+      switching criteria based on the observed errors in its predictions of the safety of actions. The range
+      of possible safety values of the nominal policy’s output is used to quantify uncertainty in safety
+      assessment. The filter switches from the nominal policy to the learned safe one when that range
+      suggests it might be unsafe. We show that ACoFi guarantees that the rate of incorrectly quantifying
+      uncertainty in the predicted safety of the nominal policy is asymptotically upper bounded by a
+      user-defined parameter. This gives a soft safety guarantee rather than a hard safety guarantee. We
+      evaluate ACoFi in a Dubins car simulation and a Safety Gymnasium environment, empirically
+      demonstrating that it significantly outperforms the baseline method that uses a fixed switching
+      threshold by achieving higher learned safety values and fewer safety violations, especially in
+      out-of-distribution scenarios.
+     Keywords: Conformal prediction, safety filters, safe control
+
+1. Introduction
+Assuring safety is essential for deploying safety-critical control systems, such as self-driving cars
+(Chen et al., 2024) and surgical robots (Haidegger, 2019). Safety filters are prominent tools for
+ensuring their safety. Control barrier functions (CBFs) (Ames et al. (2019)) and Hamilton–Jacobi
+(HJ) reachability value functions (Bansal et al. (2017)) have been used to design safety filters that
+guarantee safe operation of control systems by adjusting their unsafe nominal actions to safe ones.
+However, traditional methods for synthesizing CBFs, such as sum-of-squares programming (Zhang
+et al. (2023); Clark (2021)), and for computing HJ reachability value functions, such as dynamic
+programming (Mitchell et al. (2005)), suffer from the curse-of-dimensionality. This motivated
+data-driven approaches for learning safety filters (Ganai et al. (2024); Tabbara and Sibai (2025); Li
+et al. (2025); So et al. (2024); Alan et al. (2023)).
+    In our work, without loss of generality, we focus on designing reliable safety filters relying on
+a learned HJ reachability value function Vθ . An instance of such filters evaluates the safety of the
+nominal control action at every state reached, and if it considers it unsafe, it switches to the learned
+safe policy that optimizes Vθ . Importantly, this backup is not assumed to be a perfect safe policy for
+
+© 2026 S. Huriot, I. Tabbara & H. Sibai.
+                                       H URIOT TABBARA S IBAI
+
+
+
+
+the true system, but rather the safest policy induced by the current learned approximation of the safety
+value function. Our goal is therefore not to construct a perfect safety filter, but to determine when to
+switch from task execution to using this safest policy available. Existing methods that rely on such
+safety filters use fixed thresholds for the value functions evaluating the safety of proposed actions to
+switch between the nominal and learned safe policies. However, when a HJ value function is learned
+from data, it is not guaranteed to be correct, and it is expected to be more erroneous in regions of
+the state space that are poorly represented during training, making fixed thresholds unreliable (Chen
+et al. (2018); Fisac et al. (2019); Lin et al. (2024); Tabbara et al. (2025a)).
+     In order to quantify the uncertainties of black-box predictors, conformal prediction (Gammerman
+et al. (1998); Vovk and Bendtsen (2018)) has emerged as a statistical framework for generating
+confidence regions called conformal sets. Given a desired miscoverage rate α, calibration data, and
+a predictor input x, the corresponding real output y will belong to the conformal set generated by
+conformal prediction with at least 1 − α probability. This method relies on the exchangeability
+assumption, i.e., that the joint distribution of the calibration data and the new test point is invariant
+under any permutation. However, the states and actions in trajectories are not exchangeable. Adaptive
+Conformal Inference (ACI) extends the application of conformal prediction to time-dependent data
+(Gibbs and Candes (2021)). In ACI settings, time series data, such as trajectories of dynamical
+systems, are considered. At each time step, the black-box predictor predicts the data point in the next
+time step and then the true data point is observed at that time step, i.e., ground-truth is observed in a
+delayed manner. ACI results in time-dependent conformal sets which guarantee that the average rate
+of miscoverage over time is bounded by a user-defined parameter α.
+     To address the failure of existing data-driven safety filters in accounting for their prediction
+errors, we propose Adaptive Conformal Filtering (ACoFi), a method that dynamically adjusts the
+criteria according to which these filters switch from the nominal policies to the learned safe ones. By
+monitoring the difference between the learned safety value at the current state and the updated one
+after receiving the observation at the next state, ACoFi adapts the threshold for switching from the
+nominal policy to the learned safe one corresponding to the HJ value function, providing probabilistic
+guarantees on the average rate of actions taken over time that are deemed unsafe by the learned safety
+value function, while minimizing unnecessary switching. We evaluate ACoFi in two vision-based
+navigation tasks. We show that ACoFi outperforms fixed threshold-based switching baselines by
+achieving higher safety values and performing fewer unsafe actions without excessive switching to
+the learned safe policy.
+     Our contributions are: (1) we introduce ACoFi, a method that uses ACI to account for the
+prediction errors of learned safety filters and provides formal guarantees, and (2) we empirically
+demonstrate ACoFi’s effectiveness in high-dimensional control settings.
+
+
+1.1. Related work
+Safe control under uncertainty has been widely explored, particularly for high dimensional systems
+prone to operating in out-of-distribution (OOD) conditions ((Seo et al., 2025; Singletary et al., 2022;
+Sadigh and Kapoor, 2016; Wang and Wen, 2025; Daş and Burdick, 2025; Tabbara et al., 2025b; Hu
+et al., 2025; Michaux et al., 2025)). In (Huriot and Sibai (2025)), we used the theory of conformal
+decision policies (CDPs) (Lekeufack et al. (2024)) to account for the uncertainty in the trajectory
+predictions of other agents in multi-agent environments while using CBFs to maintain collision
+avoidance. CDPs offer deterministic guarantees, in contrast with the probabilistic guarantees of
+
+                                                   2
+                     S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+ACI, on the average-over-time of the number of violations of the uncertainty bounds. In that setting,
+the ground-truth trajectories are observed after one time step, in contrast with the setting of this
+paper where the state is only partially observed and the ground-truth is not revealed. Another
+close work to ours is UNISafe (Seo et al. (2025)), which extends traditional latent safety filters by
+accounting for epistemic uncertainty to avoid regions with OOD dynamics, and thus unseen hazards,
+and provides safety guarantees using conformal prediction. Before deployment, it calibrates an
+uncertainty threshold via conformal prediction, defining an OOD region in the latent space that is
+added to the failure set for which the HJ value function is learned. While this approach enables
+avoidance of previously unknown failures, it can be overly conservative, preventing entering unseen
+regions even when that is not safety-violating. In contrast, our method applies adaptive conformal
+inference at deployment time, not during training. A Hamilton-Jacobi reachability value function is
+first learned without modeling uncertainty, then the safety filter is designed by dynamically adjusting
+the threshold value for switching based on observed prediction errors.
+     Moreover, Kim et al. (2025) train neural control barrier-value functions (CBVFs) and use
+conformal prediction to expand their level sets. Then, they solve quadratic programs online to
+compute the closest safe control to the nominal one. On the other hand, Lin and Bansal (2024) use
+conformal prediction to verify super-level sets of learned BRTs. Other existing works that use HJ
+value functions as safety filters typically switch to the safe controller whenever the predicted HJ
+value function evaluated at the next time-step is greater than some user-defined threshold, without
+formal guidance on how to choose the threshold (Nakamura et al. (2025); Tabbara et al. (2025a)).
+These methods do not provide formal guarantees on the safety when following the resulting policy
+that arises from switching between the nominal and the learned HJ-based safe controllers.
+
+
+2. Preliminaries
+Consider a control system, or agent, operating in an environment described by unobserved states
+z ∈ Z, relying on high-dimensional observations Obs(z) ∈ X to pick control actions in a control space,
+a compact set U ⊂ Rm , in order to accomplish a task while avoiding a set of unsafe states Zunsafe :=
+{z ∈ Z | lZ (z) < 0}, for some lZ : Z → R. An encoder Eφ can then be used to generate latent states
+in a low-dimensional space Y. After each observation xt = Obs(zt ) of the environment, the encoder
+combines it with the previous latent state yt−1 and returns the current one yt ∼ Eφ (yt | yt−1 , xt ). Such
+an encoder is usually trained as a component of a world model (Bar et al. (2025)).
+
+2.1. Hamilton-Jacobi value function
+Given a set F of failure states, a Hamilton-Jacobi reachability value function V and its associated safe
+policy π safe define the Backward Reachable Tube (BRT) of F for the control system. The BRT is the
+set of states starting from which the system inevitably eventually enter F using any policy. Moreover,
+when starting from a state in the complement of the BRT and following π safe , the system never
+reaches F (Bansal et al. (2017)). Nakamura et al. (2025) and Tabbara et al. (2025a) train a classifier
+l : Y → R over the latent space that defines the failure set F := {y ∈ Y | l(y) < 0}. Then, they conduct
+approximate HJ reachability analysis in the latent space to train both a HJ reachability value function
+Vθ : Y → R and a corresponding safety-preserving policy πθsafe : Y → U. For y ∈ Y, the HJ value
+function is defined as Vθ (y) := maxu∈U Qθ (y, u), and the policy as πθsafe (y) := arg maxu∈U Qθ (y, u),
+where Qθ is the associated Q-function. This Q-function Qθ is learned by employing reinforcement
+
+                                                    3
+                                           H URIOT TABBARA S IBAI
+
+
+
+
+learning methods such as DDPG (Lillicrap et al. (2015)) and DDQN (Van Hasselt et al. (2016)) to
+minimize the following loss function:
+
+                          L(θ ) = E(yt ,ut ,yt+1 )∼D (Qθ (yt , ut ) − R(yt , ut , yt+1 ))2 ,
+                                                                                         
+                                                                                                             (1)
+
+where R is the target function and is defined as follows:
+                                                                                        
+                    R(yt , ut , yt+1 ) := (1 − γ)l(yt ) + γ min l(yt ), max Qθ (yt+1 , u) ,                  (2)
+                                                                           u∈U
+
+
+where γ ∈ (0, 1) is a discounting parameter. The policy πθsafe can either be computed at runtime when
+the action space is finite and small or can be a learned along with the Q-function using actor-critic
+methods, otherwise. One can then plug πθsafe in the second argument of Qθ to compute Vθ .
+
+2.2. Adaptive conformal inference
+Consider data points in the form of (X,Y ) ∈ X × Y sampled from an unknown distribution for some
+sets X and Y. Given a predictor µ : X → Y, the conformal prediction framework uses a calibration
+dataset {(Xn ,Yn )}n∈[N] , a score function s : Y2 → R, and a miscoverage rate α, to compute the
+(1 − α)-quantile q of the set of conformal scores {s(µ(Xn ),Yn )}n∈[N] . If the joint distribution from
+which the calibration data set and fresh data points are sampled is invariant under permutations, it is
+called exchangeable. In that case, for any freshly sampled data point (X ′ ,Y ′ ), Y ′ is guaranteed to
+belong to the conformal set IN+1 := {Y ∈ Y | s(µ(X ′ ),Y ) ≤ q} with probability at least 1 − α over
+the joint distribution of the calibration set and the fresh data point Angelopoulos and Bates (2023).
+    Adaptive Conformal Inference (ACI) (Gibbs and Candes (2021)) extends this method to repeated
+predictions in a time-series {(Xt ,Yt )}t∈N≥1 , even under distribution shift. In ACI, the true output is
+observed in a delayed fashion, e.g., at the next step. For step t ≥ 1, the series’s history {(Xt ′ ,Yt ′ )}t ′ <t
+is considered as the calibration dataset, and an effective miscoverage rate αt is used to define the
+quantile qt of the set of conformal scores. This rate adapts to the observed prediction errors using
+the update rule αt+1 := αt + λ (α − errt ), with a fixed user-defined learning rate λ and target
+miscoverage rate α. The error term is defined as errt := 1[Yt ̸∈ It ] = 1[s(µ(Xt ),Yt ) > qt ]. The target
+miscoverage rate serves as the limit of the average error rate as stated by the following theorem.
+
+Theorem 1 Long-term error rate bound (Gibbs and Candes (2021)): Fix a user-defined miscoverage
+rate α ∈ [0, 1] and a learning rate λ ∈ R>0 , and consider the update rule for αt . Then, with
+probability 1, T1 ∑t=1
+                   T
+                       errt = α + o(1), as T → ∞. More precisely, the following holds:
+
+                             1 T
+                                                                        
+                                              max{α1 , 1 − α1 } + λ     1
+                     ∀T ∈ N,   ∑   errt − α ≤                       =O     ,
+                             T t=1                    Tλ                T
+
+where α1 is the user-initialized value of αt .
+
+
+3. Methodology
+In this section, we describe ACoFi and discuss its guarantees.
+
+                                                          4
+                       S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+3.1. Safe control while accounting for prediction errors
+The safety constraint the agent aims to maintain for the system is Vθ (yt ) > 0. Without uncertainty,
+the previously described Qθ and policy πθsafe can be used for runtime safety filtering by considering
+the value of Qθ (y, π task (y)). This takes the form of a switching strategy, using πθsafe at y when
+Qθ (y, π task (y)) is below a fixed user-defined threshold ε > 0 as follows:
+              π fixed (y) =1[Qθ (y, π task (y)) ≥ ε] · π task (y) + 1[Qθ (y, π task (y)) < ε] · πθsafe (y).
+    However, Qθ (yt , ut ) is not necessarily equal to the target function value R(yt , u, yt+1 ) because
+of generalization errors in in-distribution and out-of-distribution states. Our method quantifies how
+such errors affect safety and accounts for them in the switching strategy. At step t + 1, when the new
+latent state yt+1 is obtained from the new observation at time t + 1, the target function value at time t
+Rt = R(yt , ut , yt+1 ) can be computed. Moreover,
+                 Rt = (1 − γ)l(yt ) + γ min {l(yt ),Vθ (yt+1 )} ≤ (1 − γ)l(yt ) + γVθ (yt+1 ).
+Hence, if ut is chosen so that Rt ≥ γε +(1−γ)l(yt ), for some ε > 0, then Vθ (yt+1 ) ≥ 1γ (Rt − (1 − γ)l(yt ))
+≥ ε, satisfying the safety constraint.
+
+3.2. Adaptive conformal filtering
+Since we are only concerned with the uncertainty which negatively affects safety, we use the
+conformal score St = s(Qθ (yt , ut ), Rt ) = max{Qθ (yt , ut ) − Rt , 0}. Our safety filter, Algorithm 1,
+tracks the (1 − αt )-quantile of the score history {St ′ }t ′ ≤t . This defines the following interval:
+     It = {r ∈ R | s(Qθ (yt , ut ), r) ≤ qt } = {r ∈ R | Qθ (yt , ut ) − r ≤ qt } = [Qθ (yt , ut ) − qt , +∞) .
+Then, at the next step, the error term errt = 1[Rt ̸∈ It ] is used to update the effective miscoverage
+level to αt+1 . We want to pick a control ut such that the safety constraint Vθ (yt+1 ) ≥ ε is satisfied.
+Accordingly, our method tests whether ut satisfies the Q-value constraint. The initialization of the
+algorithm consists of assigning the values l(y1 ), 0,    / and 0, to the variables l1 , S, and q1 , respectively.
+The algorithm runs until the agent accomplishes the task or the run ends, which is encoded by
+Terminating. Although this is not required, the first control input u1 should ideally be safe
+to use in state y1 , since there is no prior history to evaluate the accuracy of Qθ at the start. The
+function StepAndEncode(yt , ut ) allows the system to use control ut , observe xt+1 = Obs(zt+1 ),
+and encode yt+1 ∼ Eφ (yt , xt+1 ). Insert updates S while maintaining it in sorted order for easy
+                                                                                                           |S|
+quantile computation. The function Quantile(S, p) returns 0 for p < 0, +∞ for p > |S|+1                          , and
+the ⌈p · (|S| + 1)⌉-th element of S, otherwise. This can be interpreted as follows:
+    • If αt+1 > 1, then the target values {Rt ′ }t ′ ≤t have satisfied the inequalities Qθ (yt ′ , ut ′ ) − qt ′ ≤ Rt ′
+       enough times to be confident that the safety estimate is currently accurate, i.e., that Rt+1 will
+       satisfy the inequality Qθ (yt+1 , π task (yt+1 )) ≤ Rt+1 with high probability. Hence, the quantile
+       qt+1 gets assigned the value 0. That encourages less conservative control, improving task
+       performance.
+    • If αt+1 < 1/(|S| + 1), then the target values {Rt ′ }t ′ ≤t have violated the conformal bounds
+       Qθ (yt ′ , ut ′ ) − qt ′ ≤ Rt ′ enough times to be confident that Qθ (yt+1 , π task (yt+1 )) is not a good
+       estimate of the safety of following π task . Thus, the algorithm prioritizes safety by setting the
+       quantile qt+1 to +∞, ensuring that errt+1 = 0 and ensuring a switch to π safe at the current step.
+
+
+                                                           5
+                                         H URIOT TABBARA S IBAI
+
+
+
+
+   Algorithm 1: Adaptive Conformal Filtering (ACoFi) Algorithm
+   input :Starting latent state y1 , control u1 , and miscoverage rate α1
+ 1 while ¬ Terminating(yt ) do
+ 2     yt+1 ←StepAndEncode(yt , ut )
+ 3     Rt ← (1 − γ)lt + γ min {lt , Vθ (yt+1 )}
+ 4     errt ← 1[s(Qθ (yt , ut ), Rt ) > qt ]
+ 5     αt+1 ← αt + λ (α − errt )
+ 6     Insert(s(Qθ (yt , ut ), Rt ), S)
+ 7     qt+1 ←Quantile(S, 1 − αt+1 )
+ 8     lt+1 ← l(yt+1 )
+ 9     if Qθ (yt+1 , π task (yt+1 )) ≥ qt+1 + γε + (1 − γ)lt+1 then
+10         ut+1 ← π task (yt+1 )
+11     else
+12         ut+1 ← πθsafe (yt+1 )
+13     end
+14 end
+
+
+
+
+Finally, from the test statement at the end, we identify the expression qt+1 + γε + (1 − γ)lt+1 as the
+adaptive threshold that the Q-value of the task policy must pass to be used.
+
+3.3. Conformal safety guarantee
+Our adaptive policy is guaranteed to have its average error rate upper bounded by α + o(1). This
+means that, in the long term, α +o(1) is an upper bound on the proportion of steps which followed the
+nominal policy and resulted in a Q-value under the threshold qt+1 + γε + (1 − γ)lt+1 . We formalize
+this in our main theorem, whose proof is in Appendix C, and its corollary.
+
+Theorem 2 When using Algorithm 1, with probability one, the computed bound on the next safety
+value will hold for a proportion of 1 − α + o(1) of the history. More precisely,
+
+                               1 T
+                                                                       
+                                                                       1
+                                 ∑   1 [Vθ (yt+1 ) ≥ Bt ] ≥ 1 − α + O     ,
+                               T t=1                                   T
+
+where the lower bound Bt := γ −1 (Qθ (yt , ut ) − qt − (1 − γ)lt ) can be computed at time step t.
+
+Corollary 1 The proportion of violations of the constraint Vθ (yt+1 ) ≥ ε by task actions over the
+whole history is at most α + o(1). Indeed, line 9 of the algorithm forbids task control π task (yt+1 ) that
+would result in Bt+1 ≤ ε. Hence, in the long term, a proportion of at least 1 − α of the steps using
+π task will be guaranteed to satisfy Vθ (yt+1 ) ≥ Bt+1 ≥ ε > 0.
+
+    ACoFi does not certify that π safe is safe, but it decides when it is preferable to stop following π task
+and hand control to the former as it is expected to be safer than the latter. In particular, early violations
+are not ignored by the method. They are the feedback that drives ACoFi to become more conservative
+than a fixed-threshold switching rule under the same uncertainty. Moreover, observed errors in the
+value of Vθ at deployment can be assumed to correlate with changes in ground truth safety. In that
+
+                                                     6
+                     S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+setting, ACoFi becomes more conservative when actual safety is inferred to be decreasing, which
+results in a long-term high probability of preserving safety. The following remarks elaborate on
+ACoFi’s use cases and advantages.
+
+Remark 1 The 0-sublevel set of Vθ approximates the set of states starting from which and following
+the policy πθsafe leads to reaching F, which in itself is an over-approximation of the BRT of F. While
+ACoFi does not guarantee preventing actions that lead to Vθ (yt+1 ) < 0 at some time instances, that
+does not necessarily imply that following πθsafe starting from the time step t + 1 lead to F, i.e., failure
+is not inevitable and recovery is possible. The reasons are that Vθ is only an approximation of the
+safety value function of πθsafe . Moreover, the latent state yt+1 might correspond to multiple true
+states of the system and Vθ (yt+1 ) is not necessarily the worst value of πθsafe starting from any such
+states. Consequently, it is possible that Vθ (yt+1 ) < 0 and following πθsafe from t + 1 onward prevents
+reaching F.
+
+Remark 2 When a sequence of tasks share the same source of uncertainty for the learned HJ
+function, ACoFi can carry this adaptation across tasks and keep refining the switching threshold
+for that specific uncertainty pattern. In that regime, early tasks effectively calibrate the filter for
+later ones, so the practical guarantee of respecting the safety margin Vθ (y) > ε approaches the
+user-chosen threshold over the aggregate deployment horizon rather than only within a single finite-
+time task. The user-defined threshold ε > 0 acts as a robustness layer to decrease the possibility of
+instances at which Vθ (yt+1 ) < 0.
+
+4. Experiments
+We consider two case studies in this work: First, (1) a vision-based Dubins car setup where an
+agent with Dubins car dynamics must reach a goal while avoiding two obstacles, and (2) Safety
+Gymnasium’s SafetyCarGoal2-v0 environment (Ji et al. (2023)). Both environments are
+illustrated in Figure 1. For each case study, we first collect a dataset using a nominal policy. Then,
+we train a DINO-WM world model using the collected dataset. Next, we derive a HJ value function
+V from learning the Q-function with (1). Finally, we implement the ACoFi algorithm and compare
+its performance in completing tasks while maintaining safety against the baseline.
+
+4.1. Dubins car with Dino-WM
+We first evaluate our approach in a simulated discrete-time 2D Dubins car environment, a controlled
+benchmark that enables a clear analysis of how our adaptive safety filtering handles uncertainty.
+In this experiment, we simulate a car with position (px , py ) and heading θ inside a bounded space
+populated with one goal zone and two obstacles. During training, the car moves deterministically at a
+constant speed vID = v with the only control being one of three steering actions: ωtID ∈ {−ω, 0, ω},
+where ω = 0.05 rad/step, for setting the angular velocity. The observations are bird-eye view pictures
+of the environment, as seen in Figure 1. During evaluation, π task is a PID controller that steers the
+agent towards the goal, without any consideration for the obstacles. Each run consists of reaching the
+goal in the top right of the environment five times before the timeout. When the goal is reached or a
+wall of the environment is hit (not the obstacles), the agent is placed in a random starting position in
+the lower left. We discuss the data collection, training the DINO-WM world model, and training the
+HJ value function in the learned latent space in Appendix A.
+
+                                                    7
+                                         H URIOT TABBARA S IBAI
+
+
+
+
+                                                     Figure 1: (Left) The Dubins car is depicted with a red
+                                                     triangle, with the heading angle in the direction of the
+                                                     narrower corner, the obstacles as blue circles and the
+                                                     goal as a green circle. Violations only happen when the
+                                                     center point of the triangle is inside the obstacle. (Right)
+                                                     SafetyGymnasium’s Car agent needs to navigate to
+                                                     the goal (green circle), while avoiding to collide with
+                                                     fixed obstacles (blue circles) and with movable obstacle
+                                                     cubes (cyan).
+
+
+Out-of-distribution dynamics Uncertainty is simulated by disturbing the dynamics model’s
+parameters at runtime, making the dynamics stochastic. That is:
+
+                vtOOD ∼ vID +U (−1, 1) · v        and       ωtOOD ∼ ωtID +U (−1, 1) · ω,                      (3)
+
+where U (−1, 1) is the uniform distribution over the interval [−1, 1]. Since the training was done
+with constant speed vID and deterministic action ωtID , this setup simulates an agent trained on known
+average values of the dynamics’ parameters, and later confronted with large uncertainty on these
+parameters at runtime due to unmodeled parts of the environment. The HJ value function Vθ is
+considered the best estimate of safety the agent has access to before deployment in that environment
+and ACoFi’s role is to adjust decision-making to the observed safety-relevant disturbances to the
+dynamics.
+    Using the dynamics in (3), the four scenarios we consider are ID: using the same dynamics
+as in the Q-function’s training, VarSpeed: using vtOOD , i.e., a perturbation of the speed in [−v, v]
+at every step, VarSteer: using ωtOOD , i.e., a perturbation of the control input in [−ω, ω], and
+VarSpeed&Steer: using vtOOD and ωtOOD , i.e., both perturbations at the same time.
+Baseline ACoFi is evaluated against the fixed threshold switching policy π fixed . The range of HJ
+values after training is [−7.5, +27.5], the chosen safety value threshold is ε = 0.1. We observe
+that this ε best balanced safety and goal reaching performance when using π fixed . The metrics for
+comparing adaptive and fixed-threshold switching are the averages over 16 runs of the following
+measures: the success rate of reaching the goal rgoal , the minimum learned safety value encountered
+mint Vθ (yt ), the proportion of steps of violations punsafe of the constraint Vθ (y) > ε, and the proportion
+of steps using the safe policy pπ safe . The runs were capped at 1000 steps and are seeded so that the
+                                   θ
+agents using π fixed and ACoFi experience the same OOD disturbances on their speed/steering for fair
+comparison. The experiments use a target miscoverage rate of α = 0.2 and a conformal learning rate
+of λ = 0.05.
+
+4.2. Safety-Gymnasium’s CarGoal environment
+ACoFi is evaluated in the CarGoal environment from the Safety-Gymnasium benchmark suite,
+which provides standardized tests for safe reinforcement learning. In the SafetyCarGoal2-v0
+environment, the car agent must reach a designated goal region while navigating around two kinds
+of obstacles: fixed collision regions, and movable cubes (see Figure 1). CarGoal introduces high
+dimensional state and observation spaces with partial observability, and more complex dynamics
+compared to the Dubins car task. The goal region, hazard position, and the agent’s initial state are
+randomly sampled at the beginning of every run. The agent is not given access to lidar measurements
+
+                                                     8
+                        S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+                                                                            Figure 2: Graphs of Vθ for Dubins car
+                                                                            agents using π fixed (red) and ACoFi (green),
+                                                                            under the same VarSpeed&Steer OOD sce-
+                                                                            nario, with safety threshold ε = 0.1 (gray).
+                                                                            The selected time frame shows both agents
+                                                                            completing two goal-reaching tasks and be-
+                                                                            ing put back in a starting position afterwards.
+                                                                            The circle markers plot the lower bound
+                                                                            Bt , which is sometimes set to −∞ forcing a
+                                                                            switch to πθsafe in the case of ACoFi.
+
+
+given by the simulator, which can be used to calculate the distance between the agent and obstacles.
+We use image observations instead, which makes the task harder. Within the same run, the goal
+region is resampled once it is reached. The action space is [−1, 1]2 , representing the force (N) acting
+on the two independent front wheels. Details on data collection, DINO-WM and HJ value function
+training are in Appendix B.
+
+                                  ID                                                   VarSteer
+        Policy    mint Vθ (yt )        punsafe     pπ safe        Policy    mint Vθ (yt )    punsafe     pπ safe
+                                                      θ                                                     θ
+         π task     -1.311     15.0/603.4             -            π task     -1.625     19.9/605.1         -
+        π fixed     0.040       1.2/603.9        10.2/603.9       π fixed     -0.277      4.8/606.3    18.4/606.3
+        ACoFi       0.194       0.0/605.4        22.3/605.4       ACoFi        0.000      1.7/607.7    25.7/607.7
+                           VarSpeed                                               VarSpeed&Steer
+         π task     -1.346     15.2/603.3             -            π task     -1.801     17.8/607.3         -
+        π fixed     -0.087      3.8/608.2        13.9/608.2       π fixed     -0.196      3.4/598.8    18.2/598.8
+        ACoFi       0.158       2.0/605.1        22.2/605.1       ACoFi        0.001      2.4/611.6    25.7/611.6
+
+Table 1: Results for the Dubins car environment with ε = 0.1. For both the minimum learned safety value
+encountered and number of violations, ACoFi (α = 0.2) is safer than π fixed , and the latter is safer than π task .
+
+
+Value function learning inaccuracy Since the world model and the HJ value function are trained
+on pre-collected trajectories produced by the Dreamerv3 policy (π task ), the distribution of states
+reached during deployment under a different policy (ACoFi or π fixed ) is likely to be different than the
+one reached during training. Thus, the learned HJ value function is likely to be erroneous at some
+states during evaluation, which is what we observe in our experiments.
+
+Baselines During evaluation, the Dreamerv3 controller serves as the unsafe task policy π task . We
+use it as a baseline against the following policies: π fixed which switches from the task policy to the
+learned safe policy πθsafe whenever the predicted safety value drops below a fixed threshold ε, and
+ACoFi, our proposed method, which replaces that fixed threshold with an adaptive one. We chose ε
+to be equal to 0.01 as we observed it best balances safety and task completion when using π fixed . The
+agent is allowed to navigate in the environment for 1000 steps. The evaluation uses the same metrics
+as the previous experiment but we replace the success rate rgoal with the number of times the task is
+achieved Mgoal , averaged over all runs like previously. For the target miscoverage α, the range of
+values from 0.1 to 0.5 are tested to illustrate its role in our approach. We ran each baseline 25 times
+with shared seeds, so that they are confronted to the same obstacle and goal locations.
+
+                                                              9
+                                          H URIOT TABBARA S IBAI
+
+
+
+
+4.3. Dubins car results
+Figure 2 illustrates direct comparison between the two switching policies under the same OOD
+conditions: ACoFi switches to πθsafe when the high probability lower bound Bt goes below ε, while
+π fixed switches when Qθ (yt , π task (yt )) does. Over the 16 runs, no agent collided with a wall, and they
+all reached the goal five times before the timeout, hence rgoal is 100% for all three baselines. Table 1
+shows the results for the other metrics for all four scenarios. For the two metrics quantifying safety,
+ACoFi performs better, with a higher minimum learned safety value and fewer violations than π fixed ,
+which itself improves on π task . ACoFi was able to maintain minVθ (y) > 0 on ID observations and
+avoid any safety violation over the 16 runs. ACoFi only incurs a minor slow down in goal completion
+sometimes. In fact, under VarSpeed, ACoFi resulted in faster goal reach than π fixed on average.
+ACoFi results in switches to the safe policy for over twice as many steps as π fixed does in the ID
+scenarios. However, for the OOD scenarios, using ACoFi does not incur a stronger reliance on the
+learned safe policy as much as using π fixed does.
+
+                                                               Table 2: Results for the policies tested in the Car-
+                                                               Goal environment. As in the Dubins Car experiment,
+   Policy      mint Vθ (yt )   punsafe   pπ safe   Mgoal
+                                            θ                  ACoFi (with α ≤ 0.5) is safer than π fixed , and the lat-
+   π task        -0.294        287.2       -       5.92        ter is safer than π task , in terms of both the minimum
+   π fixed       -0.107        140.1     435.0     1.16        learned safety value encountered and the number of
+ ACoFiα=.5       -0.090         54.1     438.3     0.96        violations of the constraint Vθ (y) ≥ 0. Agents using
+ ACoFiα=.4       -0.075         44.0     415.8     1.32        ACoFi see higher safety values and less unsafe states
+ ACoFiα=.3       -0.066         40.2     420.1     0.92        as α decreases, while the average number of goal
+ ACoFiα=.2       -0.077         36.0     424.4     1.20        reaching, which quantifies task completion, is not
+ ACoFiα=.1       -0.060         19.9     463.4     0.80        conclusively decreasing. The total number of steps
+                                                               is omitted since it is 1000 across experiments.
+
+4.4. CarGoal results
+ACoFi significantly improves upon the baselines, as Table 2 shows. Specifically, it maintained a
+higher minimum learned safety value and committed up to 7 times fewer safety violations than π fixed
+on average. It also did not use the safe policy significantly more than π fixed . Finally, it reached
+fewer goals on average, but only by 30% at most. Decreasing the target miscoverage rate α steadily
+improves the minimum learned safety value and reduces the number of unsafe steps, with little effect
+on the number of steps using the learned safe policy. The tradeoff between safety and task completion
+seems positive, as Mgoal stays close to what π fixed achieved.
+
+5. Conclusion
+In this work, we aim to enhance the safety of control systems with high-dimensional observations
+and relying on learned latent safety filters based on HJ reachability under potential distribution
+shifts. We propose Adaptive Conformal Filtering, a dynamic extension of the traditional fixed
+threshold-based switching policy applied within the latent space. Our method was evaluated in two
+vision-based environments, where it outperformed safety filters which use a fixed switching threshold.
+Specifically, our adaptive safety filter maintained higher safety values and allowed fewer unsafe
+actions in out-of-distribution scenarios without significantly increasing reliance on the learned safe
+policy. Future research should evaluate the effectiveness of this approach for multi-step predictions,
+and explore an extension to continuous-time control tasks.
+
+
+                                                          10
+                   S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+Acknowledgments
+This project was partially supported by the NSF CPS award No. 2403758.
+
+
+References
+Anil Alan, Andrew J. Taylor, Chaozhe R. He, Aaron D. Ames, and Gábor Orosz. Control barrier
+  functions and input-to-state safety with application to automated vehicles. IEEE Transactions on
+ Control Systems Technology, 31(6):2744–2759, 2023. doi: 10.1109/TCST.2023.3286090.
+
+Aaron D Ames, Samuel Coogan, Magnus Egerstedt, Gennaro Notomista, Koushil Sreenath, and
+  Paulo Tabuada. Control barrier functions: Theory and applications. In 2019 18th European control
+  conference (ECC), pages 3420–3431. Ieee, 2019.
+
+Anastasios N. Angelopoulos and Stephen Bates. Conformal prediction: A gentle introduction. Found.
+ Trends Mach. Learn., 16(4):494–591, March 2023. ISSN 1935-8237. doi: 10.1561/2200000101.
+  URL https://doi.org/10.1561/2200000101.
+
+Somil Bansal, Mo Chen, Sylvia Herbert, and Claire J Tomlin. Hamilton-jacobi reachability: A brief
+  overview and recent advances. In 2017 IEEE 56th Annual Conference on Decision and Control
+  (CDC), pages 2242–2253. IEEE, 2017.
+
+Amir Bar, Gaoyue Zhou, Danny Tran, Trevor Darrell, and Yann LeCun. Navigation world models.
+ In Proceedings of the Computer Vision and Pattern Recognition Conference, pages 15791–15801,
+ 2025.
+
+Li Chen, Penghao Wu, Kashyap Chitta, Bernhard Jaeger, Andreas Geiger, and Hongyang Li. End-to-
+   end autonomous driving: Challenges and frontiers. IEEE Transactions on Pattern Analysis and
+  Machine Intelligence, 2024.
+
+Mo Chen, Qizhan Tam, Scott C Livingston, and Marco Pavone. Signal temporal logic meets reacha-
+ bility: Connections and applications. In International Workshop on the Algorithmic Foundations
+ of Robotics, pages 581–601. Springer, 2018.
+
+Andrew Clark. Verification and synthesis of control barrier functions. In 2021 60th IEEE Conference
+  on Decision and Control (CDC), pages 6105–6112. Ieee, 2021.
+
+Ersin Daş and Joel W Burdick. Robust control barrier functions using uncertainty estimation with
+  application to mobile robots. IEEE Transactions on Automatic Control, 2025.
+
+Jaime F. Fisac, Anayo K. Akametalu, Melanie N. Zeilinger, Shahab Kaynama, Jeremy Gillula, and
+   Claire J. Tomlin. A general safety framework for learning-based control in uncertain robotic
+   systems. IEEE Transactions on Automatic Control, 64(7):2737–2752, 2019. doi: 10.1109/TAC.
+   2018.2876389.
+
+A. Gammerman, V. Vovk, and V. Vapnik. Learning by transduction. In Proceedings of the Fourteenth
+  Conference on Uncertainty in Artificial Intelligence, UAI’98, page 148–155, San Francisco, CA,
+  USA, 1998. Morgan Kaufmann Publishers Inc. ISBN 155860555X.
+
+                                                11
+                                     H URIOT TABBARA S IBAI
+
+
+
+
+Milan Ganai, Sicun Gao, and Sylvia L Herbert. Hamilton-jacobi reachability in reinforcement
+ learning: A survey. IEEE Open Journal of Control Systems, 3:310–324, 2024.
+
+Isaac Gibbs and Emmanuel Candes. Adaptive conformal inference under distribution shift. In
+   A. Beygelzimer, Y. Dauphin, P. Liang, and J. Wortman Vaughan, editors, Advances in Neural
+   Information Processing Systems, 2021. URL https://openreview.net/forum?id=
+   6vaActvpcp3.
+
+Danijar Hafner, Jurgis Pasukonis, Jimmy Ba, and Timothy Lillicrap. Mastering diverse domains
+  through world models, 2024. URL https://arxiv.org/abs/2301.04104.
+
+Tamás Haidegger. Autonomy for surgical robots: Concepts and paradigms. IEEE Transactions on
+  Medical Robotics and Bionics, 1(2):65–76, 2019.
+
+Peiyan Hu, Xiaowei Qian, Wenhao Deng, Rui Wang, Haodong Feng, Ruiqi Feng, Tao Zhang, Long
+  Wei, Yue Wang, Zhi-Ming Ma, et al. From uncertain to safe: Conformal fine-tuning of diffusion
+  models for safe pde control. arXiv preprint arXiv:2502.02205, 2025.
+
+Sacha Huriot and Hussein Sibai. Safe decentralized multi-agent control using black-box predictors,
+  conformal decision policies, and control barrier functions. In 2025 IEEE International Conference
+  on Robotics and Automation (ICRA), pages 7445–7451, 2025. doi: 10.1109/ICRA55743.2025.
+  11128015.
+
+Jiaming Ji, Borong Zhang, Jiayi Zhou, Xuehai Pan, Weidong Huang, Ruiyang Sun, Yiran Geng, Yifan
+   Zhong, Josef Dai, and Yaodong Yang. Safety gymnasium: A unified safe reinforcement learning
+   benchmark. In Thirty-seventh Conference on Neural Information Processing Systems Datasets and
+   Benchmarks Track, 2023. URL https://openreview.net/forum?id=WZmlxIuIGR.
+
+Matthew Kim, William Sharpless, Hyun Joe Jeong, Sander Tonkens, Somil Bansal, and Sylvia
+ Herbert. Reachability barrier networks: Learning hamilton-jacobi solutions for smooth and
+ flexible control barrier functions. arXiv preprint arXiv:2505.11755, 2025.
+
+Jordan Lekeufack, Anastasios N. Angelopoulos, Andrea Bajcsy, Michael I. Jordan, and Jitendra
+  Malik. Conformal decision theory: Safe autonomous decisions from imperfect predictions, 2024.
+
+Jingqi Li, Donggun Lee, Jaewon Lee, Kris Shengjun Dong, Somayeh Sojoudi, and Claire Tomlin.
+   Certifiable reachability learning using a new lipschitz continuous value function. IEEE Robotics
+   and Automation Letters, 2025.
+
+Timothy P Lillicrap, Jonathan J Hunt, Alexander Pritzel, Nicolas Heess, Tom Erez, Yuval Tassa,
+  David Silver, and Daan Wierstra. Continuous control with deep reinforcement learning. arXiv
+  preprint arXiv:1509.02971, 2015.
+
+Albert Lin and Somil Bansal. Verification of neural reachable tubes via scenario optimization and
+  conformal prediction. In 6th Annual Learning for Dynamics & Control Conference, pages 719–731.
+  PMLR, 2024.
+
+Albert Lin, Shuang Peng, and Somil Bansal. One filter to deploy them all: Robust safety for
+  quadrupedal navigation in unknown environments, 2024. URL https://arxiv.org/abs/
+  2412.09989.
+
+                                                12
+                   S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+Jonathan Michaux, Patrick Holmes, Bohao Zhang, Che Chen, Baiyue Wang, Shrey Sahgal, Tiancheng
+  Zhang, Sidhartha Dey, Shreyas Kousik, and Ram Vasudevan. Can’t touch this: Real-time, safe
+  motion planning and control for manipulators under uncertainty. IEEE Transactions on Robotics,
+  2025.
+
+Ian M Mitchell, Alexandre M Bayen, and Claire J Tomlin. A time-dependent hamilton-jacobi
+  formulation of reachable sets for continuous dynamic games. IEEE Transactions on automatic
+  control, 50(7):947–957, 2005.
+
+Kensuke Nakamura, Lasse Peters, and Andrea Bajcsy. Generalizing safety beyond collision-
+  avoidance via latent-space reachability analysis, 2025. URL https://arxiv.org/abs/
+  2502.00935.
+
+Dorsa Sadigh and Ashish Kapoor. Safe control under uncertainty with probabilistic signal temporal
+  logic. In Proceedings of Robotics: Science and Systems XII, 2016.
+
+Junwon Seo, Kensuke Nakamura, and Andrea Bajcsy. Uncertainty-aware latent safety filters for
+  avoiding out-of-distribution failures, 2025. URL https://arxiv.org/abs/2505.00779.
+
+Andrew Singletary, Mohamadreza Ahmadi, and Aaron D Ames. Safe control for nonlinear systems
+ with stochastic uncertainty via risk control barrier functions. IEEE Control Systems Letters, 7:
+  349–354, 2022.
+
+Oswin So, Zachary Serlin, Makai Mann, Jake Gonzales, Kwesi Rutledge, Nicholas Roy, and Chuchu
+  Fan. How to train your neural control barrier function: Learning safety filters for complex input-
+  constrained systems. In 2024 IEEE International Conference on Robotics and Automation (ICRA),
+  pages 11532–11539. IEEE, 2024.
+
+Ihab Tabbara and Hussein Sibai. Learning conservative neural control barrier functions from offline
+  data. arXiv preprint arXiv:2505.00908, 2025.
+
+Ihab Tabbara, Yuxuan Yang, Ahmad Hamzeh, Maxwell Astafyev, and Hussein Sibai. Designing
+  latent safety filters using pre-trained vision models. arXiv preprint arXiv:2509.14758, 2025a.
+
+Ihab Tabbara, Yuxuan Yang, and Hussein Sibai. Statistically assuring safety of control systems using
+  ensembles of safety filters and conformal prediction. arXiv preprint arXiv:2511.07899, 2025b.
+
+Hado Van Hasselt, Arthur Guez, and David Silver. Deep reinforcement learning with double
+  q-learning. In Proceedings of the AAAI conference on artificial intelligence, volume 30, 2016.
+
+Vladimir Vovk and Claus Bendtsen. Conformal predictive decision making. In Conformal and
+  Probabilistic Prediction and Applications, pages 52–62. PMLR, 2018.
+
+Shengbo Wang and Shiping Wen. Safe control against uncertainty: A comprehensive review of
+  control barrier function strategies. IEEE Systems, Man, and Cybernetics Magazine, 11(1):34–47,
+  2025.
+
+Hongchao Zhang, Zhouchi Li, Hongkai Dai, and Andrew Clark. Efficient sum of squares-based
+ verification and construction of control barrier functions by sampling on algebraic varieties. In
+ 2023 62nd IEEE Conference on Decision and Control (CDC), pages 5384–5391. IEEE, 2023.
+
+                                                13
+                                  H URIOT TABBARA S IBAI
+
+
+
+
+Gaoyue Zhou, Hengkai Pan, Yann LeCun, and Lerrel Pinto. Dino-wm: World models on pre-trained
+  visual features enable zero-shot planning, 2025. URL https://arxiv.org/abs/2411.
+  04983.
+
+
+
+
+                                            14
+                      S AFE C ONTROL USING L EARNED S AFETY F ILTERS AND ACI
+
+
+
+
+Appendix A. Dubins task training
+The dataset of trajectories consisting of the RGB images and actions was collected by simulating the
+agent using a random policy. After collecting this dataset, we train DINO-WM (Zhou et al. (2025)).
+We note that the dataset we used to train DINO-WM does not contain px , py , θ as they can be inferred
+from the image observation. Next, we train the HJ value function in the latent space by optimizing
+the loss in (1) using DDQN. We use γ = 0.98 and define l(y) as the ground truth distance between
+the agent and the closest obstacle, which we have access to from the simulator.
+
+Appendix B. Cargoal task training
+We collect a dataset of 2000 trajectories using a reward-driven unsafe nominal policy trained with
+Dreamerv3 (Hafner et al. (2024)). We use this dataset to train the DINO-WM. Then, we train the HJ
+value function by minimizing (1) using DDPG. We use γ = 0.98 and assume that l(y) is the ground
+truth distance function between the agent and the closest obstacle, which we have access to from the
+LIDAR measurements given by the environment.
+
+Appendix C. Proof of Theorem 2
+Here is the proof of Theorem 2.
+Proof: For time step t ≥ 1, using the fact that qt ≥ 0, we have:
+
+    errt = 1[s(Qθ (yt , ut ), Rt ) > qt ] = 1[max{Qθ (yt , ut ) − Rt , 0} > qt ] = 1[Qθ (yt , ut ) − Rt > qt ]
+         = 1[Qθ (yt , ut ) − qt > (1 − γ)lt + γ min {lt ,Vθ (yt+1 )}],
+
+which implies errt ≥ 1[Qθ (yt , ut ) − qt > (1 − γ)lt + γVθ (yt+1 )] = 1[Bt > Vθ (yt+1 )]. Thus, we have
+1[Vθ (yt+1 ) ≥ Bt ] ≥ 1 − errt , and, by averaging over 1 ≤ t ≤ T and using Theorem 1, we get:
+
+                      1 T                            1 T
+                                                                          
+                                                                          1
+                        ∑   1[Vθ (yt+1 ) ≥ Bt ] ≥ 1 − ∑ errt = 1 − α + O     .
+                      T t=1                          T t=1                T
+
+
+
+
+                                                       15
+

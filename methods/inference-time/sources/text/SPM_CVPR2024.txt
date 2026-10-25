@@ -1,0 +1,770 @@
+                                    This CVPR paper is the Open Access version, provided by the Computer Vision Foundation.
+                                                 Except for this watermark, it is identical to the accepted version;
+                                           the final published version of the proceedings is available on IEEE Xplore.
+
+
+
+
+                                 One-dimensional Adapter to Rule Them All:
+                              Concepts, Diffusion Models and Erasing Applications
+
+                     Mengyao Lyu1,2 * Yuhong Yang1,2 * Haiwen Hong3† Hui Chen1,2 Xuan Jin3
+                            Yuan He3 Hui Xue3 Jungong Han1,2 Guiguang Ding1,2 ‡
+                                    1
+                                      Tsinghua University 2 BNRist 3 Alibaba Group
+             mengyao.lyu@outlook.com, suisei.con@gmail.com, honghaiwen.hhw@alibaba-inc.com,
+                 jichenhui2012@gmail.com, {jinxuan.jx, heyuan.hy, hui.xueh}@alibaba-inc.com,
+                                               jungonghan77@gmail.com, dinggg@tsinghua.edu.cn
+
+
+             (Target)           (Non-Target)
+                                                                                                                                   Original    SPM-Applied
+            Original Erased         Original                   Generation Alternation           Concept Erosion
+
+
+                                                                                                                      Non-
+
+
+
+
+                                                                                                                                                             Target: Erased
+ Previous                                                                                                         Transferable
+ Methods
+
+
+
+
+                                     Progressively Erase                                                           Another
+           Erase 1 Target:                                 :
+                                       0 → 20 Targets                                                              Model B
+
+
+
+
+                                                                                                                                                             Non-target: Preserved
+   SPM
+  (Ours)                                                                                                          Training-free
+                                                                                                                    Transfer
+
+
+                  Precise Erasure                                     Generation Preservation
+                                               Generation of Model A + SPMs                                                       Generation of Model B + SPMs
+
+Figure 1. Previous methods often achieve target concept removal from diffusion models at the cost of degeneration on non-target concepts.
+They suffer from unpredictable generation alterations, which escalate even into concept erosion when the number of targeted concepts
+increases. In contrast, the proposed SPM achieves precise multi-concept erasing while preserving the generation capability of the pre-trained
+DM. Moreover, concept-specific SPMs offer training-free transferability towards other models, making it a one-size-fits-all solution.
+
+                                    Abstract                                              the training-free transfer towards other models, resulting in
+                                                                                          linear cost growth as the deployment scenarios increase.
+   The prevalent use of commercial and open-source diffu-                                    To achieve non-invasive, precise, customizable, and trans-
+sion models (DMs) for text-to-image generation prompts risk                               ferable elimination, we ground our erasing framework on
+mitigation to prevent undesired behaviors. Existing concept                               one-dimensional adapters to erase multiple concepts from
+erasing methods in academia are all based on full param-                                  most DMs at once across versatile erasing applications. The
+eter or specification-based fine-tuning, from which we ob-                                concept-SemiPermeable structure is injected as a Membrane
+serve the following issues: 1) Generation alteration towards                              (SPM) into any DM to learn targeted erasing, and mean-
+erosion: Parameter drift during target elimination causes                                 time the alteration and erosion phenomenon is effectively
+alterations and potential deformations across all genera-                                 mitigated via a novel Latent Anchoring fine-tuning strat-
+tions, even eroding other concepts at varying degrees, which                              egy. Once obtained, SPMs can be flexibly combined and
+is more evident with multi-concept erased; 2) Transfer in-                                plug-and-play for other DMs without specific re-tuning, en-
+ability & deployment inefficiency: Previous model-specific                                abling timely and efficient adaptation to diverse scenarios.
+erasure impedes the flexible combination of concepts and                                  During generation, our Facilitated Transport mechanism
+                                                                                          dynamically regulates the permeability of each SPM to re-
+   * Equal   contribution.    † Project lead.         ‡ Corresponding authors.            spond to different input prompts, further minimizing the
+
+
+
+                                                                                        7559
+impact on other concepts. Quantitative and qualitative re-         Membrane (SPM) into DMs with a minimum size increase
+sults across ∼40 concepts, 7 DMs and 4 erasing applica-            of 0.0005×. Without any auxiliary real or synthetic training
+tions have demonstrated the superior erasing of SPM. Our           data, SPM learns to erase the pattern of a concept while keep-
+code and pre-tuned SPMs are available on the project page          ing the pre-trained model intact. Meantime, to ensure that
+https://lyumengyao.github.io/projects/spm.                         it is impermeable for other concepts, our Latent Anchoring
+                                                                   strategy samples semantic representations in the general con-
+1. Introduction                                                    ceptual space and “anchor” their generations to correspond-
+                                                                   ing origins, effectively retaining the quality of other concepts.
+Text-to-image diffusion models (DMs) [3, 13, 14, 27–               Upon acquiring a corpus of erasing SPMs, our framework
+29, 34, 37, 40, 41, 49, 50, 52] have shown appealing advance-      facilitates the customization and direct transferability of mul-
+ment in high-quality image creation in the span of seconds,        tiple SPMs into other DMs without model-specific re-tuning,
+powered by pre-training on web-scale datasets. However, the        as illustrated in Fig. 1. This capability enables timely and
+cutting-edge synthesis capability is accompanied by degen-         efficient adaptation to complex regulatory and model require-
+erated behavior and risks, spanning a spectrum pertaining to       ments. In the subsequent text-to-image process, to further
+copyright infringement [42, 47], privacy breaching [2, 47],        ensure precise erasure, our Facilitated Transport mechanism
+mature content dissemination [43], etc.                            regulates the activation and permeability rate of each SPM
+    Proprietary text-to-image services [41, 45], open-source       based on the correlation between the input and its targeted
+models [1, 37] and academia [8, 10, 18, 43] have made ef-          concept. Therefore, only the erasing of risky prompts are
+forts to generation safety. Nevertheless, these engineering        facilitated, while other concepts remain well-preserved.
+and research endeavors often fall into band-aid moderation or          The proposed method is evaluated with multiple concepts
+a Pyrrhic victory. For example, training dataset cleansing is      erased, different DMs considered and four applications de-
+time-consuming and labour-intensive, yet it introduces more        veloped, totaling over 100 tasks. Both qualitative and quanti-
+stereotypes [45] and remains not a foolproof solution. Black-      tative results show that SPM can successfully erase concrete
+listing and post-hoc safety checker relies on high-quality         objects, abstract styles, sexual content and memorized im-
+annotated data but it is easily circumvented [35, 37, 45].         ages. Meanwhile, it effectively suppresses generation alter-
+    Recent methods employ targeted interventions via condi-        ations and alleviates the erosion phenomenon. Its superiority
+tional guidance through full parameter or specification-based      becomes more evident with multiple concepts overlaid, in
+fine-tuning [8, 10, 18] or during inference [43]. Despite be-      contrast to comparative methods that quickly collapse under
+ing effective for the targeted concept, they come at the cost      such scenarios. Free from model dependency, we demon-
+of non-targeted concepts. As shown in Fig. 1, previous mit-        strate that SPMs can obliterate concepts from all DM deriva-
+igations often bring unpredictable generation alterations,         tives at once, indicating a over 160× speed improvement in
+including potential distortions, which are undesirable for         comparison to state-of-the-art (SOTA) methods.
+service providers. Furthermore, the degradation will escalate
+into varying degrees of catastrophic forgetting [10, 17, 46]       2. Related Work
+across other concepts, which becomes more pronounced
+with the simultaneous erasing of multiple concepts. We in-         Existing mitigations adopted by academia and applications
+formally refer to the phenomenon as concept erosion.               can be categorized based on the intervention stage: pre-
+    Another practical yet commonly overlooked concern is           training dataset filtering [36, 37, 45], pre-trained model
+erasing customizability and transferability. On the regulatory     parameter fine-tuning [8, 18], in-generation guidance direc-
+front, risks of generated content necessitate timely adapta-       tion [43], and post-generation content screening [35–37, 45].
+tion, aligning with evolving societal norms and legal regu-           The mitigation of detrimental outputs begins with qual-
+lations. From the model perspective, DM derivatives with           ity control of training data. Adobe Firefly is trained on
+specific purposes have been proliferating fast since open-         licensed and public-domain content to ensure commercial
+source models became available, exacerbating the severity          safety [36]. Stable Diffusion 2.0 [37] adopts an NSFW (Not
+of the aforementioned issues. However, most of the previous        Safe For Work) detector to filter out unsuitable content from
+methods require the repetitive design of the erasing process       the LAION-5B dataset [44], but meantime it also introduces
+for each set of security specifications and each model. Any        bias learnt by the detector [45]. To prevent it, the recently
+change leads to a linear increase in time and computational        unveiled DALL·E 3 [45] subdivides the NSFW concept into
+costs, which necessitates a general and flexible solution.         specific cases and deploys individualized detectors accord-
+    To address the above challenges, we propose a novel            ingly. Nonetheless, leaving away the burdensome retraining
+framework to precisely eliminate multiple concepts from            costs for the model, the data cleansing process is limited to
+most DMs at once, flexibly accommodating different scenar-         sexual content, and is far from being a foolproof solution.
+ios. We first develop a one-dimensional non-invasive adapter          A more recent line of research aims to eliminate certain
+that can learn concept-SemiPermeability when injected as a         concepts through parameter fine-tuning prior to the de-
+
+
+
+                                                                 7560
+                                                                                                                                 Original   SPM Applied
+    Concept Representations           Diﬀusion Layers          SPMs
+                                                                                                  Prompts with <Van Gogh>,
+                                                                                                <sexual content> and <Picasso>
+
+
+
+
+                                                                                                                                                            Target: Erased
+     Targeted:
+      Snoopy                     Erasing Van Gogh and Nudity
+                                      Erasing Snoopy
+
+                                                                               Van Gogh
+                                                                      Spock
+                                                                                      Nudity
+
+                                                                            Monet
+
+
+
+
+                                                                                                                                                          Non-target:
+                                                                  Picasso
+
+
+
+
+                                                                                                                                                          Preserved
+                                                                                    Snoopy
+
+    Latent
+ Concept Space                                                          SPM Corpus
+                 Latent Anchoring during fine-tuning                            Facilitated Transport during generation          Generated Outputs
+
+Figure 2. Overview of our erasing framework for Diffusion models. During erasing (Left), our one-dimensional SPM is fine-tuned
+towards the mitigation of one or several target concepts (e.g., snoopy ). Centered around it, LA samples representations in the continuous
+latent space with distance as a measure of probability, efficiently alleviating the alteration and erosion phenomenon. When put into use
+(Right), a combination of SPMs are customized and directly transferred to a new model without re-tuning. With FT mechanism, only
+threatening prompts (e.g., Van Gogh style and sexual innuendo) amplify the permeability rate of corresponding SPMs (diminishing •••),
+while the generation of safe prompts (e.g., Picasso style) remain unharmed (consistent •••), further reducing the impact on other concepts.
+
+ployment for downstream applications, enabling it to be                                abstract concepts, eliminating concrete objects while main-
+safely released and distributed. ESD [8] achieves it by align-                         taining coherence and quality remains a challenge.
+ing the probability distributions of the targeted concept and a                            In the post-generation stage, content screening has be-
+null string in a self-supervised manner. Despite effective re-                         come customary across open-source libraries and commer-
+moval, it could suffer from the collapse problem: the model                            cial APIs. Besides the safety checker confined to sexual
+tends to generate arbitrary images due to the unconstrained                            content in SD and DeepFloyd, DALL·E 3 trains multiple
+training process [10], thereby significantly impairing its gen-                        standalone detectors, spotting race, gender, etc. Specialized
+erative capacity. Concept Ablation [18] steers the targeted                            detectors require iterative processes of data curating, cleans-
+concept towards a pre-defined surrogate concept via a syn-                             ing and manual annotating. But still, the band-aid moderation
+thesized dataset that is derived from ChatGPT [30] synthetic                           is obfuscated and easy to be circumvented [8, 35].
+prompts. To alleviate the impact on surrounding concepts,                                  In contrast, our method is non-invasive, precise, customiz-
+it adds a regularization loss term on the surrogate concept.                           able and transferable, holding a superiority in both erasing
+However, the generations of concepts distant from the target                           effectiveness and efficiency. Note that during deployment,
+are also affected. Selective Amnesia (SA) [10] incorporates                            our solution can integrate with interventions at different
+Elastic Weight Consolidation [17] to forget the targeted con-                          stages discussed above, forming a multi-layered defense.
+cept. Besides maximizing the log-likelihood of a named
+surrogate concept with a synthesized dataset, it leverages an                          3. Method
+additional general dataset using 5K random prompts gen-
+                                                                                       As Fig. 2 illustrates, given a targeted concept (e.g., Snoopy),
+erated by GPT3.5 for generative replay [46]. Despite the
+                                                                                       our main aim is to precisely erase it from pre-trained DMs
+explicit supervision, the alteration towards erosion problem
+                                                                                       once and for all while preserving other generations. To avoid
+is still prevalent as we have observed in preliminary experi-
+                                                                                       the pre-trained model dependency and its parameter drift, we
+ments, which is pronounced with multi-concept erasing.
+                                                                                       first develop a 1-dim adapter, dubbed SPM (Sec. 3.1). The
+    During generation, hand-crafted textual blacklisting [45]                          non-invasive structure can be plugged into any pre-trained
+often serves as the first line of defense. DALL·E 3 further                            DM (e.g., SD v1.4) to learn the transferable recognition
+leverages the advanced large language models (LLMs), e.g.,                             of a specific concept and its corresponding erasure while
+ChatGPT [30] and Moderation [26], to construct a multi-                                keeping the original model intact. We then propose latent
+tiered firewall via prompt engineering, such as input safety                           anchoring (Sec. 3.2), a novel fine-tuning strategy for SPM,
+classification and prompt transformations. These intricate de-                         to efficiently draw upon continuous concepts in the latent
+signs are straightforward, but their reliance on closed-source                         space for precise erasing and generation preservation.
+resources makes it challenging and expensive to generalize.                            Once SPMs independently learn to erase various potential
+Instead of text-level manipulation, SLD [43] leverages in-                             risks, a repository is established wherein any combination of
+appropriate knowledge encoded in the pre-trained models                                concepts (e.g., Van Gogh + nudity) can be customized and
+for reverse guidance. However, striking a balance between                              directly transferred to other models (e.g., RealisticVision in
+prompt conditioning and reversed conditioning via multi-                               the community). During inference, our Facilitated Transport
+ple hyperparameters may require an iterative process of ex-                            mechanism controls the activation and permeability of an
+perimentation and adjustment. Furthermore, in contrast to                              SPM when receiving the user prompt (Sec. 3.3). For example,
+
+
+
+                                                                                    7561
+a prompt that indicates explicit content will be erased by            to arithmetic operations on log probabilities, we reparam-
+the nudity SPM but will not trigger the Van Gogh SPM.                 eterize it to perform the concept elimination on the noise
+Meanwhile, the style of Picasso, without corresponding SPM            prediction process of DMs. Formally, given the target con-
+installed in DM, sees almost no alteration in its generation.         cept ctar , we pre-define a corresponding surrogate concept
+                                                                      csur instructing the behaviour of the erased model when ctar
+3.1. SPM as a 1-dim Lightweight Adapter                               is prompted. Then, to achieve ctar ← csur − η ∗ (ctar − csur ),
+To free the concept erasing from pre-trained model depen-             SPM employs an erasing loss to match the probability distri-
+dency, inspired by parameter efficient fine-tuning (PEFT) ap-         butions of ctar and csur :
+proaches [6, 15, 16, 19–21, 23, 25, 51], we design an adapter          Lera = Ext ,t [∥ϵ(xt , ctar , t|θ, Mctar ) − ϵ(xt , csur , t|θ)
+serving as a lightweight yet effective alternative to the pre-                                                                            (4)
+                                                                                        +η ∗ (ϵ(xt , ctar , t|θ) − ϵ(xt , csur , t|θ))∥22 .
+vailing full parameter or specification-based fine-tuning ap-
+                                                                      The η determines the erasure intensity for features assiciated
+proaches of prior arts [8, 10, 18]. With only one intrinsic
+                                                                      with ctar as opposed to csur , with a larger η signifying a
+dimension, it is injected into a DM as a thin membrane
+                                                                      more thorough erasure.
+with minimum overhead, in order to learn concept-specific
+semi-permeability for precise targeted erasing.                           Meanwhile, erasing a concept from DMs must prevent
+   Specifically, on a certain module parameterized by W ∈             the catastrophic forgetting of others. Simply suppressing
+Rm×n in the DM, we learn an erasing signal vsig ∈ Rm                  the generation of the target leads to severe concept erosion.
+to suppress undesired contents in model generation. Mean-             ConAbl [18] and SA [10] attempted to adopt a generate-
+while, the amplitude of the erasing signal is controlled by           and-relearn approach to mitigate the issue, wherein images
+a trainable regulator vreg ∈ Rn , to determine the erasing            are synthesized using collected text prompts, and then these
+strength. As such, the original forward process y = W x is            image-text pairs are relearned during fine-tuning. Neverthe-
+intervened by our SPM as follows:                                     less, this approach has two major limitations. On the one
+                              T
+                                                                      hand, in comparison with the large general semantic space
+                  y = W x + (vreg x) · vsig .                (1)      that pre-trained models have obtained, hand-crafted prompts
+x ∈ Rn and y ∈ Rm represent the input and output of an                at the scale of thousands are highly limited and potentially
+intermediate layer, and superscript T indicates transposition.        biased. Therefore, the replay in the pixel space during fine-
+   As a short preliminary, take the latent DM (LDM) [37] for          tuning leads to the degradation and distortion of the seman-
+example, the denoising process predicts the noise ϵ̂ applied          tic space, resulting in inevitable generation alterations and
+on the latent representation of a variably-noised image xt ,          unexpected concept erosion. On the other hand, intensive
+conditioning on the current timestep t and a textual descrip-         time and computational cost are required for prompt and
+tion c derived from the text encoder:                                 image preparation. As an example, leaving aside the prompt
+                                                                      preparation stage, the image generation process alone takes
+                        ϵ̂ = ϵ(xt , c, t|θ).                 (2)
+                                                                      SA [10] more than 80 GPU hours, as listed in Tab. 2.
+The θ in Eq. 2 denotes parameters of the noise prediction au-             Towards precise and efficient erasing, we propose Latent
+toencoder, which is often implemented as a U-Net [3, 14, 38].         Anchoring to address the issues. On the conceptual space,
+Upon the pre-trained parameter θ, our SPM is formulated as            we establish explicit guidelines for the generation behav-
+               i     i
+Mctar = {(vsig    , vreg )|ctar }, each of which is inserted into     ior of the model across the entire conceptual space. While
+the i-th layer, thereby eliminating patterns of the undesired         the model is instructed for the target concept to align with
+concept ctar . Thus the diffusion process now reads                   the surrogate concept, for other concepts, particularly those
+                   ϵ̂ = ϵ(xt , c, t|θ, Mctar ).              (3)      that are semantically distant from the target, the model is
+                                                                      expected to maintain consistency with its original generation
+The addition-based erasing enables flexible customization of
+                                                                      as much as possible. With C representing the conceptual
+multiple concepts, where specific SPMs can be placed on a
+                                                                      space under the text encoder of the DM, this objective could
+pre-trained DM simultaneously to meet intricate and ever-
+                                                                      be characterized as:
+changing safety requirements needs. Furthermore, the simple
+                                                                           argmin Ec∈C ∥ϵ(xt , ci , t|θ, Mctar ) − ϵ(xt , ci , t|θ)∥22 .
+                                                                                                                                     
+design allows it to be easily shared and reused across most                                                                                (5)
+                                                                              θ
+other DMs as validated in Sec. 4.2, significantly improving              However, this form is intractable due to the latent space C,
+computational and storage efficiency.                                 and it is also partially against the erasing loss. Therefore, we
+                                                                      derive a sampling distribution D(·|ctar ) from C to obtain a
+3.2. Latent Anchoring
+                                                                      tractable and optimization-friendly form. Our intention is for
+Upon the constructed lightweight SPM, we acquire its semi-            the distant concepts from the target to exhibit consistency,
+permeability of the specialized concepts through a fine-              while the synonyms of the target get suitably influenced.
+tuning process. Inspired by the discovery [4, 5, 8, 24] that          Here the distance is defined by cosine similarity same as
+concept composition and negation on DMs can be matched                CLIP [33]. For each encoding c within the sampling space,
+
+
+
+                                                                    7562
+we define the sample probability by:                                                      Original   ESD   ConAbl       SA      SPM (Ours)
+                                           |c · ctar | α
+          Pc∼D(·|ctar ) (c|ctar ) ∝ (1 −
+
+
+
+
+                                                                             Snoopy
+                                                       ) ,         (6)
+                                         ∥c∥ · ∥ctar ∥
+where α is a hyper-parameter influencing the behavior of the
+synonym concepts. The anchoring loss is formulated as:
+Lanc = Ec∼D(·|ctar ) ∥ϵ(xt , ci , t|θ, Mctar ) − ϵ(xt , ci , t|θ)∥22 .
+                                                                   
+
+
+
+
+                                                                             Mickey
+                                                                    (7)
+   Combining the two components with balancing hyper-
+parameter λ, we can derive our total training loss as:
+
+
+
+
+                                                                             Spongebob
+                        L = Lera + λLanc .                         (8)
+With Latent Anchoring applied, SPM can be correctly trig-
+gered with the erasing target and take control of correspond-
+
+
+
+
+                                                                             Pikachu
+ing content generation, while staying minimally activated
+for non-target and keeping the original generation.
+
+3.3. Facilitated Transport
+
+
+
+                                                                             Dog
+Once SPMs are learnt in a concept-specific and model-
+independent manner, a universal comprehensive erasure cor-
+pus is established. To comply with specific legal regulations                Legislator
+and social norms, instead of repeating the whole erasing
+pipeline each time for a dedicated model, we can directly
+retrieve k plug-and-play SPMs of potential threats from the
+corpus, and seamlessly overlay any other DM W  f with them:                 Figure 3. Samples of “graffiti of the {concept}” after erasing
+                             k
+                             X                                              Snoopy. Our SPM exhibits sufficient elimination on the targeted
+              y=W
+                fx +                (γ c · v cTreg x) · vsig
+                                                         c
+                                                             .     (9)      concept Snoopy, while the impact on non-targets is negligible.
+                               c
+   Despite Latent Anchoring designed to uphold safe con-                    so that the correlation can be captured at both global and
+cepts during fine-tuning, in the challenging scenarios where                local levels. When a user prompt stimulates one or multiple
+multi-SPMs are installed, the overall generations inevitably                SPMs semantically, their permeability γ amplifies, dynam-
+become entangled. To further minimize the impact of erasing                 ically emitting erasing signals. Conversely, the transport is
+mitigations on other concepts, we introduce the facilitated                 deactivated when the relevance is low, effectively minimiz-
+transport mechanism into SPMs at the inference stage, which                 ing the impact on safe concepts.
+dynamically transports the erasing signal of the targeted con-
+cept while rejecting other concepts to pass through.                        4. Experiments
+   Specifically, given a text prompt p, the information per-                We conduct extensive experiments encompassing erasing
+meability and rate of transmission for each SPM, denoted                    various concepts, transferring across different personalized
+as γ c (p), is contingent upon the probability of its targeted              models, as well as practical erasing applications, validating
+concept c indicated in p. To estimate the probability, we first             our effectiveness as a one-size-fits-all solution. Due to space
+compute the cosine distance in the CLIP [33] textual encod-                 constraints, training details of SPM and comparative meth-
+ing space, referred to as scf (p). However, the global-view                 ods are shown in Appendix C. The dimension analysis and
+representation could fail in capturing the correlation between              ablation study of SPM are presented in Appendix A.
+the concept name and an elaborate user description. For in-
+stance, the score between Van Gogh and The swirling night                   4.1. Single and Multiple Concept Removal
+sky above the village, in the style of Van Gogh is 0.46, but
+                                                                            Experimental Setup. Without loss of generality, we eval-
+we expect the corresponding SPM to operate at its maximum
+                                                                            uate single and multi-concept erasing in the application of
+capacity. To this end, we additionally introduce a unigram
+                                                                            object removal. Besides the estimation of the target gener-
+metric to identify the similarity at the token-level:
+                                                                            ation, the impact on surrounding concepts is also assessed.
+                                   |T (c) ∩ T (p)|
+                     sct (p) =                     ,              (10)      Here we take the concept of Snoopy as an example, the dic-
+                                       |T (c)|
+                                                                            tionary of the CLIP text tokenizer is utilized to identify the
+where T represents a text tokenizer. We thus derive the prob-               concepts most closely associated with it with cosine simi-
+ability of concept c appearing in the description as:                       larity. After deduplication and disambiguation, the nearest
+                       γ c (p) = max(scf , sct ),                 (11)      Mickey, Spongebob, and Pikachu are chosen. Additionally,
+
+
+
+                                                                          7563
+              Prompt:                            Original:                     Prompt:                          Original:                Prompt:                   Original:
+              “A painting of a Mickey”                                         “A tattoo of the Pikachu”                                 “A pixelated photo of a
+                                                                                                                                          Legislator”
+
+  Erased
+                    ESD         ConAbl               SA         SPM (Ours)           ESD            ConAbl         SA       SPM (Ours)      ESD         ConAbl        SA       SPM (Ours)
+ Concepts
+
+
+
+  Snoopy
+
+
+
+
+  Snoopy
+    +
+  Mickey
+
+
+ Snoopy
+    +
+  Mickey
+    +
+Spongebob
+
+
+Figure 4. Samples from DMs with one and multiple instances removed. As prior methods suffer from both generation alteration and
+concept erosion, which escalates as the number of targets increase, generations with our SPMs remain almost identical.
+
+              Snoopy          Mickey          Spongebob
+                                                        Pikachu      Dog     Legislator
+                                                                                          General            The computation of CER adopts CLIP with the embedded
+             CS CER          CS CER           CS CER                                       FIDg
+ SD v1.4 74.43 0.62 71.94 2.50 72.99 0.62                      -       -         -         13.24
+                                                                                                             target and corresponding surrogate, functioning as a binary
+                                            Erasing Snoopy
+                                                                                                             classifier, yielding the error rate of the image being classified
+            CS↓ CER↑           FID↓             FID↓         FID↓    FID↓      FID↓        FIDg ↓            as the surrogate concept. A lower CS or a higher CER is
+  ESD       44.50   77.62     129.07           113.90        72.18   45.94     55.18       13.68             indicative of more effective erasure on targets. 2) Fréchet
+ ConAbl     59.81    5.50     110.85            79.49        71.22   96.36     55.74       15.42             Inception Distance (FID) [12] for non-target concepts. It
+   SA       64.59    0.25     53.64             57.65        42.95   75.72     47.42       16.84
+  Ours      55.48   20.12     28.39             30.75        18.61   10.11      7.40       13.24             is calculated between the generations of the erased model
+                                    Erasing Snoopy and Mickey                                                and the original DM, with a larger FID value demonstrating
+            CS↓ CER↑ CS↓ CER↑                   FID↓         FID↓    FID↓      FID↓        FIDg ↓            more severe generation alteration after erasing. Additionally,
+  ESD       45.49   67.00   44.23   83.12      145.71        114.25 51.05     64.74        13.69             to ensure the conditional generation capability for general
+ ConAbl     60.05    4.00   56.14   14.00      112.15        105.43 79.40     56.17        15.28
+   SA       63.33   10.75   60.93   51.12      148.33        129.52 137.91    151.94       17.67             safe concepts, we also evaluate the erased model on the
+  Ours      55.11   20.62   52.04   39.50       36.52         26.69 13.45     16.03        13.26             COCO-30k Caption dataset [22], where the FID is calculated
+                            Erasing Snoopy, Mickey and Spongebob
+                                                                                                             between generated and natural images, denoted as FIDg .
+            CS↓ CER↑ CS↓ CER↑ CS↓ CER↑                       FID↓    FID↓      FID↓        FIDg ↓
+  ESD       46.94   60.38   44.79   80.25    43.76   85.88 137.23 50.77       73.96        13.46             Results of Single Concept Erasure. As presented in Fig. 3,
+ ConAbl     60.88    1.12   55.10   23.12    58.46   15.38 102.79 67.43       55.72        15.50
+   SA       64.53   15.25   61.15   61.88    60.59   49.88 167.79 183.26      185.29       18.32
+                                                                                                             with the elimination of Snoopy, generation alterations can
+  Ours      53.72   25.75   50.50   44.50    51.30   41.87 33.19 14.69        20.66        13.26             be observed in all cases of previous methods. Furthermore,
+Table 1. Quantitative Evaluation of instance erasure. The best                                               some samples exhibit noticeable concept erosion, such as the
+results are highlighted in bold, while the second-best is underlined.                                        Dog generated by ConAbl (style lost of graffiti) and Mickey
+Arrows on headers indicate the favourable direction for each metric.                                         of ESD (severe distortion). It demonstrates that previous arts
+On the target concepts, our second-ranked erasing SPM, already                                               are all limited to the trade-off between erasing and preser-
+proven sufficient as in Fig. 3, significantly surpasses previous meth-                                       vation: most of them erase the target at the cost of other
+ods in generation preservation, and maintains stability while the                                            concepts, with SA leaning towards the latter. In contrast, our
+number of erased concept increases. General FIDg further shows                                               SPM achieves successful erasure while showing promising
+the superiority of SPM in mitigating alterations and erosion.                                                stability on those non-targets, with almost identical genera-
+we examine its parent concept of Dog, as well as a randomly                                                  tions aligned with the original generation of the DM.
+chosen general concept, Legislator, for comparison.                                                              Quantitatively, Tab. 1 gives the evaluation of the erased
+Evaluation Protocol. In order to holistically assess the                                                     model on the inspected concepts and the general dataset. On
+generation capability after erasing, we employ 80 templates                                                  the targeted Snoopy, ESD exhibits the most thorough erasing
+proposed in CLIP [33] to augment text prompts. A concept                                                     performance, but the erosion phenomenon shown in other
+to be evaluated is incorporated into 80 templates, with each                                                 concepts is significant, with a huge quality decline compared
+template yielding 10 images. After the generation process,                                                   to the original DM. ConAbl and SA, where a generate-and-
+two groups of metrics are employed for result analysis. 1)                                                   relearn approach is employed, have subpar performances
+CLIP Score (CS) [11] and CLIP Error Rate (CER) for                                                           in general generation, evidenced by their notably increased
+target concept evaluation. CS, calculated using the similarity                                               FIDg . This can be attributed to the bias introduced by hand-
+between the concept and the image, is utilized to confirm                                                    crafted pixel-level data adopted for relearning, as elaborated
+the existence of the concept within the generated content.                                                   in Sec. 3.2. As a comparison, our SPM has sufficient erasure
+
+
+
+                                                                                                       7564
+ Exposed Body Parts
+(# of original SD v1.4)       SD v2.0                     SLD                       ESD                          ConAbl                         SA                      SPM (Ours)
+        Total (1509)            -27.5%                     -77.1%                 -39.0%                                -65.0%                    -69.5%                   -85.3%
+  Male Genitalia (59)
+          Belly (271)
+       Armpits (400)
+          Feet (183)
+    Male Breast (77)
+Female Genitalia (70)
+ Female Breast (325)
+      Buttocks (123)
+                     -100       -50         0   -100      -50         0   -100      -50           0   -100         -50           0   -100       -50          0   -100      -50       0
+                             Change (%)                Change (%)                Change (%)                    Change (%)                    Change (%)                 Change (%)
+
+Figure 5. NudeNet Evaluation on the I2P benchmark. The numbers on the left count the exposed body parts of the SD v1.4 generations.
+The binplots show the decrement with different methods applied for nudity mitigation, including data-filtering (SD v2.0) and concept erasing
+(others, by erasing “nudity”). Compared to the prior works, SPM effectively eliminates explicit contents across different nude categories.
+
+                   Data        Model         Image               Total (h)                                       Oﬃcial SD v1.5                       RealisticVision
+                 Prep. (h)     FT (h)       Gen. (s)      (c = 20, n = 5, p = 60)                            Original       w/ Pikachu SPM       Original    w/ Spongebob SPM
+
+  SLD               0       0                 3.3pn                   1.1
+  ESD               0     0.7cn                3pn                   70.25
+ ConAbl          0.15cn  0.25cn                3pn                   40.25
+   SA          20n + 4cn 36cn                  3pn                  4100.25
+  Ours              0      1.2c           (3 + 0.15c)pn               24.5
+
+Table 2. Time consumption of the erasing pipeline for c targeted
+concepts on n DMs, with each generating on p prompts. One
+NVIDIA A100 GPU is used by default, while more than one GPU
+                                                                                                                  DreamShaper                             ChillOutMix
+usages are correspondingly multiplied on time consumption.                                                   Original        w/ Mickey SPM       Original        w/ Snoopy SPM
+
+on the target while maintaining the generation capability on
+other concepts, and the general FIDg remains intact. Results
+on SD v2.1 [37], SDXL v1.0 [32] can be found in Appendix
+B.1. More sample generations are shown in Appendix D.1.
+Results of Multi-Concept Erasure. Fig. 4 presents a com-
+parison of multi-concept erasing cases, a more realistic and
+challenging scenario. It can be observed that all previous
+methods exhibit varying degrees of generation alteration,                                     Figure 6. Training-free transfer results for SPM. Once obtained
+which exacerbates with the number of erased concepts in-                                      (e.g., from SD v1.4 in this case), SPM can transfer to other special-
+creases, and meantime the erosion phenomenon becomes                                          ized models without re-tuning, and express both its target concept
+                                                                                              erasing and non-target preservation capabilities well.
+more prevalent. For instance, ESD forgets Mickey after eras-
+ing Snoopy, and ConAbl and SA exhibit deteriorating gener-                                    and multi-model, the scalability and transferability of SPM
+ation quality in Pikachu and Legislator, finally leading to the                               make it significantly more efficient than previous arts: SPM
+erosion. These findings are consistent with numerical results                                 parallelizes the elimination of multiple concepts, while previ-
+presented in Tab. 1, where their FID scores escalate to an                                    ous arts have to extend their training iterations [18]; the cost
+unacceptable rate. In comparison, our SPM effectively sup-                                    of SPM is constant when applied for multiple models, and in
+presses the rate of generation alteration and erosion. Further-                               contrast, others are linear to the number of application sce-
+more, our FIDg only shows a negligible increase of ≤ 0.02,                                    narios. Assuming a case where c = 20, n = 5 and p = 60,
+indicating significantly better alignment with the original                                   the erasing results in Tab. 1 and corresponding costs in Tab. 2
+DM, while prior arts present 10× to 200× variances. Please                                    show that we achieve significantly better performance with a
+refer to Fig. 1 and Appendix D.2 for the results of erasing                                   reduction in time consumption by 65.1% and 39.1% in com-
+up to 20 concepts. The performance of cross-application                                       parison with ESD and ConAbl respectively, and obtain a high
+multi-concept erasure can be found in Appendix B.2.                                           margin in erasure effect over SA at a 167.4× speed. Also,
+Efficiency Analysis. Generally, based on pre-trained text-to-                                 SPM utilizes marginal parameter storage, only 0.0005× that
+image models, the pipeline of concept erasure task includes                                   of previous tuning-based methods, endorsing its aptness for
+data preparation, parameter fine-tuning and image generation                                  efficient management and deployment.
+when put into use. Tab. 2 reports the time consumption of
+                                                                                              4.2. Training-Free Transfer Study
+SOTA methods and our SPM in GPU hours.
+   Under the extreme condition of single concept erasing,                                     As all prior fine-tuning-based methods are model-dependent,
+SPM achieves a good balance between performance and effi-                                     they lack transferability across DMs. In this section, we
+ciency. Under the more realistic condition of multi-concept                                   present the training-free transfer results of our SPMs ob-
+
+
+
+                                                                                           7565
+                                                                                                    Original   SLD   ESD   ConAbl   SA   SPM (Ours)
+tained from training on the official SD v1.4, and subse-
+quently applied on SD v1.5, as well as top-most downloaded                  A vase of vibrant
+                                                                         flowers, in the style of
+
+checkpoints in the community, including Chilloutmix1 , Re-                Van Gogh's still lifes.
+
+
+
+alisticVision2 and Dreamshaper-83 . Results in Fig.6 show
+                                                                     A glimpse of Rembrandt's
+that, without model-specific fine-tuning, our SPMs success-           Amsterdam through his
+                                                                             painting.
+
+fully erase these finely-tuned and more elaborated concepts,
+                                                                        An intimate portrait
+while preserving the consistency and flexibility of generation.      featuring a contemplative
+                                                                      subject, illuminated by a
+                                                                       single source of light,
+More transfer samples on community checkpoints can be                      reminiscent of
+                                                                        Caravaggio's style.
+found in Appendix D.4 and B.7.
+                                                                       A still life with abstract
+                                                                         shapes and colors,
+
+4.3. Versatile Erasing Applications                                  inspired by Picasso's love
+                                                                     for bold experimentation.
+
+
+
+Experimental Setup & Evaluation Protocol. To examine                     Faces of Rembrandt's
+                                                                          era in his signature
+the generality of erasing methods, we conduct three sets                   chiaroscuro style.
+
+
+of experiments aimed at eliminating artistic styles, explicit
+                                                                            A whimsical and
+content and memorized images. Towards the abstract artistic              irreverent portrayal of
+                                                                           Marilyn Monroe by
+                                                                                 Warhol.
+styles, we focus on five renowned artists, including Van
+Gogh, Picasso, Rembrandt, Andy Warhol, and Caravaggio.
+For each artist, ESD [8] provides 20 distinct prompts, for          Figure 7. Samples from DMs with artistic styles removed. SPMs
+each of which we generated 20 images with erased models.            can erase targeted styles (upper “Van Gogh” and lower “Picasso”)
+    In the case of explicit content removal, following ESD          while preserving others, unlike prior works that show an evident
+                                                                    trade-off between erasing and preservation.
+and SLD, the I2P benchmark [43] of 4703 risky prompts is
+adopted for evaluation. SPM is validated with only one gen-         Furthermore, evaluation with prompts that do not explicitly
+eral term nudity, while comparison methods retain their pub-        mention NSFW terms would lead to the failure of word-level
+lic implementations. After generation, we employ NudeNet            blacklisting and methods with discrete semantic comprehen-
+v34 to identify nude body parts within the generated images.        sion, which could explain the suboptimal results of ConAbl
+    We also experiment with specific artwork erasing to pre-        and SA as we have analyzed in Sec. 3.2. In contrast, our
+vent DMs from memorizing training images. The results and           SPM leverages the Latent Anchoring mechanism, instead
+analysis can be found in Appendix B.3.                              of a limited synthesized dataset, to retain the knowledge
+Artistic Style Removal. Besides concrete object removal             of the large-scale semantic space. It achieves a significant
+demonstrated above, Fig. 7 showcases the results of erasing         reduction of 85.3% in the generation of nudity, indicating
+artistic styles. We find that SLD under-erases the artistic         that the simple term nudity can be generally comprehended
+styles, while ESD and ConAbl succeed in erasing Van Gogh            and thus the explicit content can be well erased. We then
+style but fail in Picasso. SA, in accordance with the analysis      directly transfer the nudity-removal SPM to popular com-
+above, barely eliminates the specified artistic styles from the     munity derivatives, and the results in Appendix B.7 further
+model, especially in the challenging Picasso case. Moreover,        validate its effectiveness and generalizability.
+the alterations of generations for non-target concepts are
+much more evident than in most of the prior arts, indicating        5. Conclusion
+a skewed semantic space attributed to the biased relearning.
+Conversely, our SPM can successfully remove the targeted            This paper proposes a novel erasing framework based on
+style without loss of semantic understanding of the prompts,        one-dimensional lightweight SPMs. With a minimum size
+while still preserving other styles and generated contents.         increase of 0.0005×, SPMs can erase multiple concepts at
+Numerical and more qualitative comparison can be found in           once for most DMs in versatile applications. Experiments
+Appendix B.6 and D.3.                                               show that SPM achieves precise erasing of undesired con-
+                                                                    tent, and meantime the training-time Latent Anchoring and
+Explicit Content Removal. The obfuscation of the concept
+                                                                    inference-time Facilitated Transport effectively mitigate gen-
+and the implicity of prompts make the erasure of explicit
+                                                                    eration alteration and erosion. Furthermore, the customiza-
+content challenging. SD v2.x [37] suppresses inappropriate
+                                                                    tion and transferability of SPMs significantly reduces time,
+generations via training dataset cleansing. However, results
+                                                                    computational and storage costs, facilitating practical usage
+in Fig. 5 show that the probability of generating inappropri-
+                                                                    towards different regulatory and model requirements.
+ate content is reduced by less than 30% compared to SD v1.4.
+  1 https://huggingface.co/emilianJR/chilloutmixNiPrunedFp32Fix     6. Acknowledgment
+  2 https://huggingface.co/SG161222/Realistic Vision V5.1 noVAE
+  3 https://huggingface.co/Lykon/dreamshaper-8                      This work was supported by National Natural Science
+  4 https://github.com/notAI-tech/NudeNet/tree/v3                   Foundation of China (Nos. 61925107, 62271281, 62021002).
+
+
+
+                                                                  7566
+                                                                        [15] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-
+                                                                             Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen.
+References                                                                   LoRA: Low-Rank Adaptation of Large Language Models. In
+                                                                             ICLR, 2022. 4
+ [1] Stability AI. Deepfloyd if model card, 2023. 2                     [16] Nam Hyeon-Woo, Moon Ye-Bin, and Tae-Hyun Oh. Fedpara:
+ [2] Nicolas Carlini, Jamie Hayes, Milad Nasr, Matthew Jagielski,            Low-rank hadamard product for communication-efficient fed-
+     Vikash Sehwag, Florian Tramer, Borja Balle, Daphne Ippolito,            erated learning. In ICLR, 2022. 4
+     and Eric Wallace. Extracting training data from diffusion
+                                                                        [17] James Kirkpatrick, Razvan Pascanu, Neil Rabinowitz, Joel
+     models. In 32nd USENIX Security Symposium (USENIX
+                                                                             Veness, Guillaume Desjardins, Andrei A. Rusu, Kieran Milan,
+     Security 23), pages 5253–5270, 2023. 2, 3
+                                                                             John Quan, Tiago Ramalho, Agnieszka Grabska-Barwinska,
+ [3] Prafulla Dhariwal and Alexander Nichol. Diffusion models                Demis Hassabis, Claudia Clopath, Dharshan Kumaran, and
+     beat gans on image synthesis. In NeurIPS, pages 8780–8794.              Raia Hadsell. Overcoming catastrophic forgetting in neural
+     Curran Associates, Inc., 2021. 2, 4                                     networks. Proceedings of the National Academy of Sciences,
+ [4] Yilun Du, Shuang Li, and Igor Mordatch. Compositional                   114(13):3521–3526, 2017. 2, 3
+     Visual Generation with Energy Based Models. In NeurIPS,
+                                                                        [18] Nupur Kumari, Bingliang Zhang, Sheng-Yu Wang, Eli Shecht-
+     pages 6637–6647. Curran Associates, Inc., 2020. 4
+                                                                             man, Richard Zhang, and Jun-Yan Zhu. Ablating concepts in
+ [5] Yilun Du, Shuang Li, Yash Sharma, B. Joshua Tenenbaum,                  text-to-image diffusion models. In ICCV, pages 22691–22702,
+     and Igor Mordatch. Unsupervised learning of compositional               2023. 2, 3, 4, 7, 8, 9
+     energy concepts. In NeurIPS, 2021. 4
+                                                                        [19] Brian Lester, Rami Al-Rfou, and Noah Constant. The power
+ [6] Ali Edalati, Marzieh Tahaei, Ivan Kobyzev, Vahid Partovi Nia,
+                                                                             of scale for parameter-efficient prompt tuning. In EMNLP,
+     James J. Clark, and Mehdi Rezagholizadeh. Krona: Parameter
+                                                                             pages 3045–3059, Online and Punta Cana, Dominican Repub-
+     efficient tuning with kronecker adapter. In Third Workshop on
+                                                                             lic, 2021. Association for Computational Linguistics. 4
+     Efficient Natural Language and Speech Processing (ENLSP-
+                                                                        [20] Yinghui Li, Jing Yang, and Jiliang Wang. Dylora: Towards
+     III): Towards the Future of Large Language Models and their
+                                                                             energy efficient dynamic lora transmission control. In IEEE
+     Emerging Descendants, 2022. 4
+                                                                             INFOCOM 2020-IEEE Conference on Computer Communi-
+ [7] Rinon Gal, Yuval Alaluf, Yuval Atzmon, Or Patashnik,
+                                                                             cations, pages 2312–2320. IEEE, 2020.
+     Amit H Bermano, Gal Chechik, and Daniel Cohen-Or. An
+     image is worth one word: Personalizing text-to-image genera-       [21] Dongze Lian, Daquan Zhou, Jiashi Feng, and Xinchao Wang.
+     tion using textual inversion. arXiv preprint arXiv:2208.01618,          Scaling & shifting your features: A new baseline for efficient
+     2022. 10                                                                model tuning. In NeurIPS, pages 109–123, 2022. 4
+ [8] Rohit Gandikota, Joanna Materzynska, Jaden Fiotto-                 [22] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays,
+     Kaufman, and David Bau. Erasing concepts from diffusion                 Pietro Perona, Deva Ramanan, Piotr Dollár, and C Lawrence
+     models. In ICCV, pages 2426–2436, 2023. 2, 3, 4, 8                      Zitnick. Microsoft coco: Common objects in context. In
+ [9] Sahra Ghalebikesabi, Leonard Berrada, Sven Gowal, Ira                   ECCV, pages 740–755. Springer, 2014. 6
+     Ktena, Robert Stanforth, Jamie Hayes, Soham De, Samuel L           [23] Haokun Liu, Derek Tam, Mohammed Muqeeth, Jay Mohta,
+     Smith, Olivia Wiles, and Borja Balle. Differentially private            Tenghao Huang, Mohit Bansal, and Colin A Raffel. Few-
+     diffusion models generate useful synthetic images. arXiv                shot parameter-efficient fine-tuning is better and cheaper than
+     preprint arXiv:2302.13861, 2023. 3                                      in-context learning. NeurIPS, 35:1950–1965, 2022. 4
+[10] Alvin Heng and Harold Soh. Selective Amnesia: A Continual          [24] Nan Liu, Shuang Li, Yilun Du, Antonio Torralba, and
+     Learning Approach to Forgetting in Deep Generative Models.              Joshua B Tenenbaum. Compositional visual generation with
+     In NeurIPS, 2023. 2, 3, 4, 8, 9, 11                                     composable diffusion models. In ECCV, pages 423–439.
+[11] Jack Hessel, Ari Holtzman, Maxwell Forbes, Ronan Le Bras,               Springer, 2022. 4
+     and Yejin Choi. CLIPScore: A reference-free evaluation met-        [25] Xiao Liu, Kaixuan Ji, Yicheng Fu, Zhengxiao Du, Zhilin
+     ric for image captioning. In Proceedings of the 2021 Confer-            Yang, and Jie Tang. P-tuning v2: Prompt tuning can be com-
+     ence on Empirical Methods in Natural Language Processing,               parable to fine-tuning universally across scales and tasks.
+     pages 7514–7528, Online and Punta Cana, Dominican Repub-                CoRR, abs/2110.07602, 2021. 4
+     lic, 2021. Association for Computational Linguistics. 6            [26] Todor Markov, Chong Zhang, Sandhini Agarwal, Floren-
+[12] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bern-               tine Eloundou Nekoul, Theodore Lee, Steven Adler, Angela
+     hard Nessler, and Sepp Hochreiter. Gans trained by a two                Jiang, and Lilian Weng. A holistic approach to undesired con-
+     time-scale update rule converge to a local nash equilibrium.            tent detection in the real world. In AAAI, pages 15009–15018,
+     In NeurIPS, page 6629–6640, Red Hook, NY, USA, 2017.                    2023. 3
+     Curran Associates Inc. 6                                           [27] Chong Mou, Xintao Wang, Liangbin Xie, Jian Zhang, Zhon-
+[13] Jonathan Ho and Tim Salimans. Classifier-Free Diffusion                 gang Qi, Ying Shan, and Xiaohu Qie. T2i-adapter: Learning
+     Guidance. In NeurIPS 2021 Workshop on Deep Generative                   adapters to dig out more controllable ability for text-to-image
+     Models and Downstream Applications, 2021. 2                             diffusion models. arXiv preprint arXiv:2302.08453, 2023. 2
+[14] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising dif-          [28] Alexander Quinn Nichol and Prafulla Dhariwal. Improved
+     fusion probabilistic models. In NeurIPS, pages 6840–6851,               denoising diffusion probabilistic models. In ICML, pages
+     2020. 2, 4                                                              8162–8171. PMLR, 2021.
+
+
+
+
+                                                                      7567
+[29] Alexander Quinn Nichol, Prafulla Dhariwal, Aditya Ramesh,          [44] Christoph Schuhmann, Romain Beaumont, Richard Vencu,
+     Pranav Shyam, Pamela Mishkin, Bob Mcgrew, Ilya Sutskever,               Cade W Gordon, Ross Wightman, Mehdi Cherti, Theo
+     and Mark Chen. Glide: Towards photorealistic image genera-              Coombes, Aarush Katta, Clayton Mullis, Mitchell Wortsman,
+     tion and editing with text-guided diffusion models. In ICML,            Patrick Schramowski, Srivatsa R Kundurthy, Katherine Crow-
+     pages 16784–16804. PMLR, 2022. 2                                        son, Ludwig Schmidt, Robert Kaczmarczyk, and Jenia Jitsev.
+[30] R OpenAI. Gpt-4 technical report. arXiv, pages 2303–08774,              LAION-5b: An open large-scale dataset for training next gen-
+     2023. 3, 9                                                              eration image-text models. In Thirty-sixth Conference on
+[31] Ed Pizzi, Sreya Dutta Roy, Sugosh Nagavara Ravindra, Priya              Neural Information Processing Systems Datasets and Bench-
+     Goyal, and Matthijs Douze. A Self-Supervised Descriptor for             marks Track, 2022. 2
+     Image Copy Detection. In CVPR, pages 14512–14522, New              [45] Zhan Shi, Xu Zhou, Xipeng Qiu, and Xiaodan Zhu. Improving
+     Orleans, LA, USA, 2022. IEEE. 3, 4                                      image captioning with better use of caption. In ACL, pages
+[32] Dustin Podell, Zion English, Kyle Lacey, Andreas Blattmann,             7454–7464, Online, 2020. Association for Computational
+     Tim Dockhorn, Jonas Müller, Joe Penna, and Robin Rombach.              Linguistics. 2, 3
+     Sdxl: Improving latent diffusion models for high-resolution        [46] Hanul Shin, Jung Kwon Lee, Jaehong Kim, and Jiwon Kim.
+     image synthesis. arXiv preprint arXiv:2307.01952, 2023. 7,              Continual learning with deep generative replay. In NeurIPS,
+     2                                                                       page 2994–3003, Red Hook, NY, USA, 2017. Curran Asso-
+[33] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya                      ciates Inc. 2, 3
+     Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,              [47] Gowthami Somepalli, Vasu Singla, Micah Goldblum, Jonas
+     Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning              Geiping, and Tom Goldstein. Diffusion Art or Digital
+     transferable visual models from natural language supervision.           Forgery? Investigating Data Replication in Diffusion Models.
+     In ICML, pages 8748–8763. PMLR, 2021. 4, 5, 6                           In CVPR, pages 6048–6058, 2023. 2, 3
+[34] Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu,          [48] Gowthami Somepalli, Vasu Singla, Micah Goldblum, Jonas
+     and Mark Chen. Hierarchical text-conditional image genera-              Geiping, and Tom Goldstein. Understanding and Mitigating
+     tion with clip latents. arXiv preprint arXiv:2204.06125, 1(2):          Copying in Diffusion Models. In NeurIPS, 2023. 3
+     3, 2022. 2                                                         [49] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Ab-
+[35] Javier Rando, Daniel Paleka, David Lindner, Lennart Heim,               hishek Kumar, Stefano Ermon, and Ben Poole. Score-based
+     and Florian Tramer. Red-teaming the stable diffusion safety             generative modeling through stochastic differential equations.
+     filter. In NeurIPS ML Safety Workshop, 2022. 2, 3                       In ICLR, 2020. 2
+[36] Dana Rao. Responsible innovation in the age of generative ai,      [50] Yang Song, Conor Durkan, Iain Murray, and Stefano Ermon.
+     2023. 2                                                                 Maximum Likelihood Training of Score-Based Diffusion
+[37] Robin Rombach, Andreas Blattmann, Dominik Lorenz,                       Models. In NeurIPS, pages 1415–1428, 2021. 2
+     Patrick Esser, and Björn Ommer. High-resolution image syn-        [51] Zifeng Wang, Zizhao Zhang, Chen-Yu Lee, Han Zhang, Ruoxi
+     thesis with latent diffusion models. In CVPR, pages 10684–              Sun, Xiaoqi Ren, Guolong Su, Vincent Perot, Jennifer Dy,
+     10695, 2022. 2, 4, 7, 8                                                 and Tomas Pfister. Learning to prompt for continual learning.
+[38] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-net:              In CVPR, pages 139–149, 2022. 4
+     Convolutional networks for biomedical image segmentation.
+                                                                        [52] Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. Adding
+     In MICCAI, pages 234–241. Springer, 2015. 4
+                                                                             conditional control to text-to-image diffusion models. In
+[39] Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Yael Pritch,
+                                                                             ICCV, pages 3836–3847, 2023. 2
+     Michael Rubinstein, and Kfir Aberman. DreamBooth: Fine
+     Tuning Text-to-Image Diffusion Models for Subject-Driven
+     Generation. In CVPR, pages 22500–22510, 2023. 10
+[40] Chitwan Saharia, William Chan, Huiwen Chang, Chris Lee,
+     Jonathan Ho, Tim Salimans, David Fleet, and Mohammad
+     Norouzi. Palette: Image-to-image diffusion models. In ACM
+     SIGGRAPH 2022 Conference Proceedings, pages 1–10, 2022.
+     2
+[41] Chitwan Saharia, William Chan, Saurabh Saxena, Lala Li,
+     Jay Whang, Emily L Denton, Kamyar Ghasemipour, Raphael
+     Gontijo Lopes, Burcu Karagol Ayan, Tim Salimans, et al.
+     Photorealistic text-to-image diffusion models with deep lan-
+     guage understanding. In NeurIPS, pages 36479–36494, 2022.
+     2
+[42] Joseph Saveri and Matthew Butterick. Stable diffusion litiga-
+     tion, 2023. 2
+[43] Patrick Schramowski, Manuel Brack, Björn Deiseroth, and
+     Kristian Kersting. Safe Latent Diffusion: Mitigating Inappro-
+     priate Degeneration in Diffusion Models. In CVPR, pages
+     22522–22531, 2023. 2, 3, 8, 7
+
+
+
+
+                                                                      7568
+

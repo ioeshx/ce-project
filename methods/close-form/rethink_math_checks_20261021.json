@@ -1,0 +1,66 @@
+{
+  "scope": "Synthetic finite-dimensional algebra only; no diffusion model evaluation.",
+  "seed": 20261021,
+  "minimum_retention_cost": {
+    "constraint_error": 5.980344393700999e-16,
+    "difference_from_kkt": 1.0607110638475687e-15,
+    "minimum_cost_gap_of_100_feasible_perturbations": 9.247582845134797
+  },
+  "parameter_vs_function_metric_example": {
+    "euclidean_update": [
+      0.5,
+      0.5
+    ],
+    "functional_update": [
+      9.999000099990002e-05,
+      0.9999000099990001
+    ],
+    "euclidean_retained_squared_error": 2500.25,
+    "functional_retained_squared_error": 0.9999000099990002,
+    "warning": "Constructed linear example, not evidence of real-model performance."
+  },
+  "infeasible_constraint_example": {
+    "residual": 1.4142135623730951,
+    "interpretation": "A pseudoinverse does not make inconsistent constraints feasible."
+  },
+  "forget_protected_repair": {
+    "linearized_erasure_change": 8.125323285481904e-16,
+    "retained_squared_drift_before": 55.98590003931567,
+    "retained_squared_drift_after": 35.016747713697505,
+    "regularized_objective_after": 35.114908839070864
+  },
+  "shared_weight_sampler_response": {
+    "full_rollout_derivative_error": 5.502938187828288e-11,
+    "error_when_ignoring_state_propagation": 2.1783038874662677
+  },
+  "conditional_local_kernel": {
+    "retain_anchor_correction_norm": 2.682645709876202e-16,
+    "difference_from_direct_constrained_regression": 1.6513604392449448e-14,
+    "outside_support_correction_norm": 0.0,
+    "minimum_conditional_kernel_eigenvalue": 0.28935159580145103
+  },
+  "finite_sample_fid_bound": [
+    {
+      "n": 8,
+      "dimension": 13,
+      "fid": 4.251337189345808,
+      "paired_displacement_bound": 5.173808052629072,
+      "scaled_mse_bound": 5.259876681640893
+    },
+    {
+      "n": 30,
+      "dimension": 5,
+      "fid": 0.43848134023661167,
+      "paired_displacement_bound": 1.1509623178054178,
+      "scaled_mse_bound": 1.1587302636955807
+    },
+    {
+      "n": 50,
+      "dimension": 10,
+      "fid": 1.9923603630480962,
+      "paired_displacement_bound": 3.6778222626331267,
+      "scaled_mse_bound": 3.68873243169642
+    }
+  ],
+  "all_checks_passed": true
+}

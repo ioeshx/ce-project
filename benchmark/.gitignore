@@ -1,0 +1,8 @@
+__pycache__/
+cache/
+original/
+migrations/
+results/
+weights/*
+!weights/README.md
+.plot-cache/

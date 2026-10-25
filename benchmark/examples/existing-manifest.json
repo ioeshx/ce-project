@@ -1,0 +1,15 @@
+{
+  "schema": "concept-benchmark-v1",
+  "task": "instance",
+  "method": "MyMethod",
+  "base_model": "CompVis/stable-diffusion-v1-4",
+  "targets": ["Snoopy"],
+  "sampling": {"scheduler":"ddim", "steps":50, "guidance_scale":7.5, "width":512, "height":512, "dtype":"float16", "negative_prompt":""},
+  "adapter_identity": {"kind":"existing", "revision":"fill-in-your-method-version"},
+  "records": [
+    {"sample_id":"example-0", "prompt":"a photo of Snoopy.", "concept":"Snoopy", "categories":[], "seed":0,
+     "image":"/replace/with/method-0.png", "reference":"/replace/with/original-0.png"},
+    {"sample_id":"example-1", "prompt":"a photo of Snoopy.", "concept":"Snoopy", "categories":[], "seed":1,
+     "image":"/replace/with/method-1.png", "reference":"/replace/with/original-1.png"}
+  ]
+}

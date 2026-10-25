@@ -1,0 +1,10 @@
+{
+  "task": "instance",
+  "method": "negative-conditioning-example",
+  "targets": ["Snoopy"],
+  "adapter": {
+    "kind": "plugin",
+    "factory": "benchmark.examples.intervention:create",
+    "intervention_prompt": "Snoopy"
+  }
+}

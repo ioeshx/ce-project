@@ -1,0 +1,10 @@
+{
+  "description": "独立CIFAR-50→MS-COCO 1K实验：先联合擦除50个概念，再评测前1000条caption。adapter=original用于原模型基线，不执行擦除。",
+  "task": "mscoco",
+  "erasure_task": "object",
+  "method": "original-mscoco-cifar50",
+  "targets_from": "CIFAR50_classes",
+  "erasure_anchor": " ",
+  "dataset": {"limit_prompts": 1000},
+  "adapter": {"kind": "original"}
+}

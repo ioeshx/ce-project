@@ -1,0 +1,30 @@
+[
+  {
+    "id": "EraseFlow_NeurIPS2025",
+    "url": "https://proceedings.nips.cc/paper_files/paper/2025/file/66c9de41210338c9581d5313125b7486-Paper-Conference.pdf",
+    "path": "inference_time/sources/pdfs/EraseFlow_NeurIPS2025.pdf",
+    "sha256": "adcae9e632d4104c0795052cc720df4a68c7427314bf663e26500d707b8b3d15",
+    "status": "downloaded"
+  },
+  {
+    "id": "P4D_ICML2024",
+    "url": "https://raw.githubusercontent.com/mlresearch/v235/main/assets/chin24a/chin24a.pdf",
+    "path": "inference_time/sources/pdfs/P4D_ICML2024.pdf",
+    "sha256": "10f8b752b83a5faaeb3364a1e601c295ada07e5fad427039524e2ce11cb79838",
+    "status": "downloaded"
+  },
+  {
+    "id": "RingABell_ICLR2024",
+    "url": "https://proceedings.iclr.cc/paper_files/paper/2024/file/b5b4d92374323c53c24bbbc8ee0e715c-Paper-Conference.pdf",
+    "path": "inference_time/sources/pdfs/RingABell_ICLR2024.pdf",
+    "sha256": "6c98e3b3ebb2ab18ac74987a4c817bfdcc4e369130edfb69eb4fc5820aca18bb",
+    "status": "downloaded"
+  },
+  {
+    "id": "SLD_CVPR2023_supp",
+    "url": "https://openaccess.thecvf.com/content/CVPR2023/supplemental/Schramowski_Safe_Latent_Diffusion_CVPR_2023_supplemental.pdf",
+    "path": "inference_time/sources/pdfs/SLD_CVPR2023_supp.pdf",
+    "sha256": "2339e8ca121bf3e5dd84d2eec7fd84c515f985e0e13bd1c33bdddb6383aab24c",
+    "status": "downloaded"
+  }
+]

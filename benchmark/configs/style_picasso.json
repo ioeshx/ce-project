@@ -1,0 +1,9 @@
+{
+  "description": "style第3组：仅擦除Picasso。adapter=original用于原模型基线。",
+  "task": "style",
+  "method": "original-style-picasso",
+  "targets": ["Picasso"],
+  "erasure_anchor": " ",
+  "dataset": {"seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]},
+  "adapter": {"kind": "original"}
+}

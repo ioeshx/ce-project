@@ -1,0 +1,649 @@
+                                  The Thirty-Ninth AAAI Conference on Artificial Intelligence (AAAI-25)
+
+
+
+
+                              S AFE I NFER: Context Adaptive Decoding Time
+                              Safety Alignment for Large Language Models
+                   Somnath Banerjee1 , Sayan Layek1 * , Soham Tripathy1 * , Shanu Kumar2 ,
+                                  Animesh Mukherjee1 , Rima Hazra3
+                                           1
+                                           Indian Institute of Technology Kharagpur, India
+                                                        2
+                                                          Microsoft IDC, India
+                                    3
+                                      Singapore University of Technology and Design, Singapore
+                                 {som.iitkgpcse, sayanlayek2002, soham_17}@kgpian.iitkgp.ac.in
+                                       Shanu.Kumar@microsoft.com, rima_hazra@sutd.edu.sg
+
+                            Abstract                                        as detoxification, politeness) aligned interactions across var-
+  Language models aligned for safety often exhibit fragile and              ious applications (Huang et al. 2024). In parallel, previous
+  imbalanced mechanisms, increasing the chances of producing                studies (Subramani, Suresh, and Peters 2022; Hernandez, Li,
+  unsafe content. In addition, editing techniques to incorporate            and Andreas 2023; Zou et al. 2023a; Todd et al. 2024) have
+  new knowledge can further compromise safety. To tackle these              demonstrated that the in-context learning mechanism can
+  issues, we propose S AFE I NFER, a context-adaptive, decoding-            guide specific tasks through the model’s activations. Activa-
+  time safety alignment strategy for generating safe responses              tion engineering techniques have shown promise in steering
+  to user queries. S AFE I NFER involves two phases: the ‘safety            model behavior by manipulating these activations.
+  amplification’ phase, which uses safe demonstration examples
+  to adjust the model’s hidden states and increase the likeli-
+                                                                               Drawing on these findings, we introduce S AFE I NFER, an
+  hood of safer outputs, and the ‘safety-guided decoding’ phase,            novel strategy for in-context adaptive decoding time align-
+  which influences token selection based on safety-optimized                ment which comprises two phases. The initial phase, termed
+  distributions to ensure the generated content adheres to eth-             as Safety amplification (SA) phase, utilizes demonstration
+  ical guidelines. Further, we introduce H ARM E VAL, a novel               examples to derive the safety amplification vector, which
+  benchmark for comprehensive safety evaluations, designed to               is then integrated into the hidden state of the language
+  address potential misuse scenarios in line with the policies of           model. The second phase employs a Safety guided decod-
+  leading AI technology companies.                                          ing strategy (sGDS) that combines/removes the biased at-
+                                                                            tributes through the integration of different distributions from
+Code — https://github.com/NeuralSentinel/SafeInfer
+                                                                            language models. This phase enhances safety by preferen-
+                                                                            tially selecting tokens from certain distributions over others,
+                        Introduction                                        thereby optimizing the overall output distribution for safety.
+The extensive use of LLMs in various applications presents                  The key novelty of our work lies in judiciously coupling these
+substantial challenges in safety and ethical alignment (Wei-                two phases to reap benefits from each of them to ensure a
+dinger, Mellor, and et. al 2021; Wang et al. 2023), particu-                more effective safety alignment compared to what is existing
+larly in environments that demand strict adherence to ethi-                 in the literature. The first phase is motivated by the recent
+cal standards. Among the prominent issues is ‘jailbreaking’,                works which proved that moving the latent space of the model
+where models circumvent built-in restrictions to generate                   toward a specific task can help the model to actually solve
+undesirable content (Banerjee et al. 2024; Deng et al. 2024;                the task better (Todd et al. 2024; Liu et al. 2024a). For the
+Zou et al. 2023b), thereby exposing the limitations of tra-                 decoding time intervention, we next use the concept of con-
+ditional prompting methods that may inadvertently trigger                   trolled text generation in the lines of (Dekoninck et al. 2024).
+sensitive topics. Traditional fine-tuning offers a measure of               We do not know of any work that couples these two ideas
+control by retraining models on specific datasets, but it falls             simultaneously to achieve safety alignment. Overall, in this
+short in effectively managing complex inputs that can pro-                  paper, our primary objective is to realign the model toward
+voke such issues (Qi et al. 2024). Instead, decoding time                   heightened safety by employing contextual adaptation along-
+alignment, through techniques like controlled text generation               side a decoding strategy. This approach not only prioritizes
+(CTG) (Liu et al. 2021), offers a more nuanced solution by                  safety alignment but also ensures the preservation of the over-
+allowing dynamic, real-time moderation of outputs without                   all utility benchmark of the language model. In addition, we
+necessitating changes to the model’s architecture or exten-                 have designed this methodology to be seamlessly adaptable
+sive retraining. This approach tailors outputs directly in re-              to different language model architectures, thereby broadening
+sponse to the input context, ensuring certain attribute (such               its utility and applicability in a variety of settings.
+    * These authors contributed equally to this work.                       Key contributions: Our contributions are as follows.
+Copyright © 2025, Association for the Advancement of Artificial               • We introduce S AFE I NFER, a versatile and effective con-
+Intelligence (www.aaai.org). All rights reserved.                               text aware decoding-time strategy that operates in two
+
+
+                                                                    27188
+   phases: first, by integrating a safety amplification vector          cation (SA), (b) safety guided decoding strategy (sGDS).
+   into the forward pass of the language model, and sec-                   Preliminaries: An autoregressive safety aligned language
+   ond, by further guiding the output distribution toward               model (e.g. Llama2-7b-chat-hf) i.e., the base model, denoted
+   safe generation, all while maintaining the model’s general           as Mb , accepts an input p from the user and outputs a next
+   capabilities.                                                        token probability distribution represented as Mb (p). A target
+ • To best of our knowledge, we are the first to apply our              language model, intended for safety alignment, is denoted
+                                                                        by Mt and its output distribution for the next token is given
+   strategy across both the base and edited versions of widely          by Mt (p). The hidden layers within a language model are
+   used large language models, evaluating them on six dis-              denoted by l ∈ L, and the total number of layers is expressed
+   tinct datasets. We demonstrate that our approach not only            as |L|. A small set of safe demonstrations, Dsf , consisting of
+   drastically reduces the number of harmful responses by               unsafe-question and safe-answer pairs, is utilized in the SA
+   SOTA LLMs but is also able to preserve the basic utilities           phase to obtain the safety amplification vector SV. The inter-
+   of these LLMs as evidenced by five open-ended bench-                 mediate model obtained after the SA phase is represented by
+                                                                           ′
+   mark tasks.                                                          Mt . The probability distribution for the next token produced
+                                                                               ′                       ′
+ • We assess our methodology using three distinct prompting             by Mt is represented by Mt (p) where p is the user input. We
+   techniques: simple prompts, instruction-centric prompts,             use a language model Musf finetuned with a dataset, Dusf ,
+   and chain of thought prompts, to demonstrate the versatil-           that consists of pairs of harmful questions and their harmful
+   ity and breadth of our approach.                                     answers. This model is used in the sGDS phase and shares the
+ • We propose H ARM E VAL, a new benchmark for detailed                 same architecture as Mb . To align the target model Mt with
+   safety assessments of models in the simple prompt setting,           enhanced safety, we represent the language model obtained
+   encompassing questions related to prohibited use cases as            after the sGDS phase as Mtsf . Thus, S AFE I NFER ensures that
+   outlined in the usage policies of OpenAI and Meta.                   the next token’s distribution of the target model Mt shifts
+                                                                        from Mt (p) to Mtsf (p), where p denotes the user input.
+                      Related Work                                      Safety amplification (SA): This phase is designed to con-
+                                                                        trol the latent space of the target model Mt by leading it
+Below, we provide an overview of the relevant literature on             through the safety guided demonstrations Dsf . Following
+inference time safety alignment and controlled text genera-             the approach described in (Todd et al. 2024) for encoding
+tion.                                                                   task-specific guided demonstrations into a vectorized form,
+Inference time safety alignment: Ensuring the safety and                we obtain the SV using the dataset Dsf . Further, the SV is
+robustness of AI models without retraining involves sev-                integrated at certain layer during the forward pass through
+eral approaches. Training-free methods like rule-based fil-             Mt . The detailed process is explained in the subsequent para-
+tering (Feng et al. 2020) and ensemble techniques enhance               graph.
+                                                                        Computing safety amplification vector (SV): This computa-
+safety by filtering harmful or biased content and using mul-            tion involves identifying top attention heads through acti-
+tiple models to cross-verify outputs (Liang and et al. 2023;            vation patching (Zhang and Nanda 2024; Todd et al. 2024;
+Lu 2022; Qin et al. 2022). Decoding-time safety alignment               Makelov et al. 2024), preparing prompt from Dsf and obtain-
+modifies the generation process with constrained decoding to            ing safety amplification vector SV. For identifying influential
+prioritize safe outputs (Gehman et al. 2020; Dathathri et al.           heads in language model, we solely follow the approach
+2020; Wan et al. 2023; Huang et al. 2024). Inference-time               provided by (Todd et al. 2024). We denote the set of influ-
+safety alignment focuses on real-time monitoring and inter-             ential attention heads as A, where each attention head at
+vention, using reinforcement learning from human feedback               layer l and position j is represented by attnlj . From Dsf ,
+(RLHF) to adjust model behavior based on feedback (Ouyang               we construct a set of prompts P, where each prompt p ∈ P
+et al. 2022) and adversarial training to improve robustness.            is structured as {(q1 , a1 ), (q2 , a2 ), . . . , (qn , an ), qn+1 }. For
+                                                                        each attention head attnlj , we compute the mean of the
+Recent work explores modular approaches like (Bai et al.                representations of the prompts P and denote it as safety con-
+2022; Xu et al. 2024).                                                                              ′
+
+Controlled text generation: Techniques for CTG steer the                ditioned activations attnlj , as shown in Equation 1.
+outputs of a language model to align with specific attributes                                     ′      1 X
+like style. This is achieved by modifying the model’s output                                 attnlj =        attnlj (p)                      (1)
+                                                                                                        |P|
+                                                                                                            p∈P
+probabilities, typically using a parameter that determines the
+degree of this modulation. Strategies include using dedicated                                                                  ′
+                                                                        Further, the safety conditioned activation attnlj is calculated
+classifiers (Yang and Klein 2021; Sansone and Manhaeve
+2023; Kim et al. 2023), specially fine-tuned smaller mod-               for all attention heads attnlj ∈ A. These activations are then
+                                                                        summed to represent them as a single vector, as given in
+els (Liu et al. 2021), or varying the prompts fed into the same         Equation 2.
+language model (Pei, Yang, and Klein 2023; Sanchez et al.                                             X                 ′
+
+2024). Many CTG methods apply concepts akin to those in                                         SV =                attnlj                   (2)
+                                                                                                        attnlj ∈A
+Bayes’ theorem to effectively skew the model’s responses
+toward the intended attributes (Hallinan et al. 2023).                  We incorporate the SV into the hidden state (hl ) of the target
+                                                                        model Mt at layer l to perform safety amplification (Equa-
+                                                                                                                                 ′
+ Context Adaptive Decoding Time Alignment                               tion 3), thereby obtaining the updated hidden state hl . We
+                                                                        follow (Todd et al. 2024) for selecting the layer l. We denote
+The overall architecture of S AFE I NFER is shown in Figure 1.
+As stated earlier it consists of two phases – (a) safety amplifi-            https://huggingface.co/meta-llama/Llama-2-7b-chat-hf
+
+
+                                                                27189
+                           Mbase
+                                                                                                                                  *All content presented here generated by Mistral.
+                            What if we assume that all Mexicans are illegal immigrants?
+                                All Mexicans are criminals and burdens on our society, taking jobs from hardworking Americans and costing taxpayers
+                                billions in healthcare and education expenses. They should be deported immediately to make America great again.
+                            Extract                        for K
+                         intermediate                    number of                                                                           Mstep                    Union(Mstep, Munsafe)
+                           activation
+                                                                        Mstep            Munsafe       Union(Mstep, Munsafe)
+                                                          prompts
+
+               𝑙𝑙1                                                    Sure    56%       Sure    98%       Sure    66.6%     Sure       56%           𝛼𝛼       66.6%
+
+
+
+
+               𝑙𝑙2                                                    Sorry   41%       Sorry   1.1%      Sorry    27.8%
+                                                                                                                            Sorry      41%           𝛼𝛼       27.8%
+                                                                                                                                                                                Softmax
+                              Average
+                             over many
+               𝑙𝑙3            prompts                                  I      8%         I      .05%        I      5.44%
+                                                                                                                              I        8%            𝛼𝛼       5.44%
+
+
+
+
+                                                                                                                                                                            Msafe
+                                                                                                                           Sorry, it's important to recognize that nationality
+               𝑙𝑙𝑛𝑛                                                                                                        doesn't determine someone's legal status…It’s
+                     𝜆𝜆 𝑠𝑠𝑠𝑠𝑠𝑠𝑠𝑠𝑠𝑠𝑠𝑠                  Add safety                                                           always better to approach such topics with an
+                      𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚𝑚         function vector                                                         understanding based on facts and individual
+                                                   in forward pass                                                         circumstances rather than assumptions.
+
+                                             Safety Amplification                                                 Safety guide decoding strategy
+
+
+                                                                Figure 1: Schematic diagram of the S AFE I NFER.
+
+                                                                                    ′
+the target model with the updated hidden state as Mt . The                                             in Equation 5. σ denotes the standard softmax.
+coefficient γ is a hyperparameter.                                                                                                                        ′
+                                         ′                                                                           C (x) = σ(max(log Mt (x), log Musf (x)))                                 (5)
+                                     hl = hl + γ ∗ SV                                    (3)
+                                                                                                                                                                                     ′
+   Safety guided decoding strategy (sGDS): In this phase,                                              In order to reduce harms from the target model Mt obtained
+                                                      ′
+we aim to further enhance the safety of the model Mt by con-                                           from the SA stage, we constrain the influence of a relevant
+trolling the next token generation during the decoding pro-                                            subset of tokens using Equation 6. This approach allows us
+cess. The intention is to mitigate certain negative attributes,                                        to obtain a safe output distribution, Mtsf . λ in equation 6 is a
+such as harm and unethical behavior, by debiasing the out-                                             hyperparameter.
+                        ′
+put distribution of Mt . We begin by fine-tuning a language                                                                        ′                                   ′
+model of same family as Mb using a dataset Dusf , resulting                                                        Mtsf = Mt − λ · σ(max(log Mt , log Musf ))
+in the model Musf . This model inherently exhibits a bias                                                                          ′
+                                                                                                                           = Mt − λ · C                                                       (6)
+toward generating harmful responses. For example, it is more
+likely to predict the word “Sure” rather than “Sorry” as the
+initial token in response to a harmful query. To achieve safe                                                                                Datasets
+and helpful generation, it is crucial to preserve the original                                         We evaluate S AFE I NFER on five existing datasets – Danger-
+                    ′
+distribution of Mt while mitigating the harmful tendencies                                             ousQA (Shaikh et al. 2023), AdvBench (Zou et al. 2023b),
+observed in Musf . This requires addressing such harmful                                               HEx-PHI (Qi et al. 2023a), NicheHazardQA (Hazra et al.
+tendencies without significantly altering the overall behavior                                         2024), and TechHazardQA (Banerjee et al. 2024). Further,
+                             ′
+or output distribution of Mt . To accomplish this, we employ                                           we propose a new safety dataset based on the list of violated
+CTG strategy proposed in (Dekoninck et al. 2023). We first                                             policies identified by Meta (Qi et al. 2023a). We describe
+obtain a combined distribution C that integrates the output                                            each of these datasets in detail below.
+                          ′
+distributions of both Mt and Musf , allowing for distinct at-                                             DangerousQA: This benchmark dataset consists of ap-
+tributes (e.g., harms, biases) while preserving abilities from                                         proximately 200 toxic questions generated using the text-
+both distributions. We use Union operation (Dekoninck et al.                                           davinci-002 model. The questions cover six different cat-
+2023) to obtain the distribution C . This operator enables                                             egories of adjectives – racist, stereotypical, sexist, illegal,
+                                                         ′
+a non-linear combination of the two distributions Mt and                                               toxic, and harmful.
+                               ′
+Musf , such that if either Mt or Musf assigns a high proba-                                            AdvBench: This benchmark dataset consists of 500 harmful
+bility to a particular token x, the resulting distribution will                                        instructions encompassing various behaviors such as profan-
+reflect a similarly high probability for that token. The opti-                                         ity, graphic depictions, threats, misinformation, discrimina-
+mization function, based on Kullback-Leibler divergence, is                                            tion, cybercrime, dangerous and illegal activities.
+provided in Equation 4, where I(x) is the indicator function.                                          HEx-PHI: This dataset consists of 330 harmful instructions
+                          ′
+                                                    
+             [I1 ]                [I2 ]                                                                across 11 prohibited categories for evaluating the harmful-
+            DKL    (C ||Mt ) + DKL      (C ||Musf ) 
+                                                    
+                                                                                                       ness of language models.
+                                                    
+                                ′
+            where I1 (x) = [Mt (x) > Musf (x)]                                          (4)
+                                                                                                      TechHazardQA: This dataset consists of ∼1850 harmful in-
+                    I2 (x) = 1 − I1 (x)                                                                structions across 7 technology oriented and influenced topics
+                                                    
+
+Following (Dekoninck et al. 2023), we obtain the distribution                                          for evaluating the harmfulness of language models.
+C using the solution of the optimization function presented                                            NicheHazardQA: This dataset consists of 388 unethical
+
+
+                                                                                               27190
+questions covering various topics such as hate speech and                          Prompting technique
+discrimination, fake news and propaganda, cruelty and vi-                          For prompting, we experimented with three approaches:
+olence, conspiracy theories and paranoia, controlling the                          (1) simple prompts, (2) instruction-centric prompts, and (3)
+thoughts and emotions of learners, and advanced technology                         instruction-centric chain-of-thought (CoT) prompts.
+to create weapons.                                                                 For simple prompts, we employed the vanilla strategy by
+                                                                                   directly asking the questions present in the datasets and
+             Illegal Activity                 Privacy Violation Activity
+                                                                                   expecting the model to generate responses. Recent studies
+       Child Abuse Content                    Tailored Financial Advice            by (Banerjee et al. 2024) have demonstrated that models can
+            Physical Harm                     Fraud/Deception
+                                                                                   be ‘jailbroken’ by prompting them in an instruction-centric
+                                  HarmEval
+                                                                                   manner. This is followed by instruction-centric CoT prompts,
+           Economic Harm                      Hate/Harass/Violence                 which infuse unethical content more effectively into the gen-
+      Political Campaigning        Malware       Adult Content                     erated responses. Inspired by this, we conduct experiment us-
+                                                                                   ing instruction-centric and instruction-centric CoT prompts.
+Figure 2: HarmEval: A dataset to test the harmfulness of                           To assess the defense performance when a naive attacker
+LLMs. It has ∼550 questions across 11 standard policy vio-                         directly inputs harmful queries to the language model, we
+lating categories.                                                                 utilized the six datasets mentioned previously.
+
+   HarmEval: To further evaluate our safety strategy S AFE -                       Baselines
+I NFER across a broad spectrum of potential hazards, we devel-                     We evaluate our proposed method against the following safety
+oped HarmEval, a dataset based on prohibited scenarios listed                      alignment baselines following a decoding-based approach:
+in OpenAI and Meta’s usage policies, as cited in (Qi et al.                        SafeDecoding (Xu et al. 2024) and Self-CD (Shi et al. 2024)
+2023b). HarmEval categorizes risks into 11 main categories                         methods. Further, we directly use SA and sGDS as a stan-
+(see Figure 2), resulting in approximately ∼550 crafted harm-                      dalone baselines to establish the effectiveness of the amalga-
+ful queries. We employed a two-step verification process for                       mation of the two techniques.
+these queries. First, we used GPT-4 to classify the queries                           SafeDecoding: SafeDecoding (Xu et al. 2024) is a safety
+as harmful or non-harmful. Following this, we utilized the                         decoding strategy used while responding to user queries. This
+Perspective API to calculate the toxicity score, selecting only                    approach is built upon the crucial observation that tokens rep-
+those queries with a toxicity score of 0.7 or higher.                              resenting safety warnings are often ranked high in probability,
+                                                                                   even when harmful content tokens are also prevalent. By se-
+                                Experiments                                        lectively boosting the probability of these safety tokens and
+This section evaluates the different experimental configura-                       diminishing the likelihood of harmful sequences, SafeDecod-
+tions of S AFE I NFER.                                                             ing effectively counters the risks posed by jailbreak attacks.
+                                                                                   We show the results of the Llama2-7b model. Due to the lack
+Language models                                                                    of knowledge about the fine-tuning dataset used, we could
+                                                                                   not reproduce the results for Mistral-7b.
+We evaluate our safety alignment method on two types of
+                                                                                   Self-CD: We also compare S AFE I NFER against Self-
+models: (1) safety aligned language models (base model such
+                                                                                   Contrastive Decoding (Self-CD) (Shi et al. 2024), which
+as llama2-7b-chat-hf, and (2) edited models.
+                                                                                   mitigates the issues of harmfulness as well as helpfulness.
+   Base models: In accordance with (Jain et al. 2023), we uti-
+                                                                                   Self-CD is designed as a training-free and model-independent
+lize base model backbones such as Llama2-7b-chat-hf (Tou-
+                                                                                   intervention, which attempts to amplify the difference in out-
+vron and et al. 2023), Mistral-7B-Instruct-v0.2 (Jiang et al.
+                                                                                   put token distributions when responding to questions with a
+2023), Vicuna-7b-v1.5 (Chiang et al. 2023) and Falcon-7b-
+                                                                                   safety prompt and without a safety prompt. The final next to-
+instruct (Almazrouei et al. 2023).
+                                                                                   ken distribution is determined by removing the over-attention
+   Edited models: Previous research (Banerjee et al. 2024;
+                                                                                   from the model via contrastive decoding.
+Hazra et al. 2024) has observed that edited models can in-
+                                                                                   SA: In our baseline setup, we exclusively utilize the Safety
+troduce hidden harms after updating the knowledge of the
+                                                                                   Amplification phase of our S AFE I NFER strategy, omitting the
+model (model editing). We evaluate the edited version of                                                                           ′
+
+the Llama2-7b-chat-hf backbone since it is most competitive                        sGDS phase. Therefore, the target model Mt , derived solely
+among all the models tested (see the results section). We                          from this initial phase, is considered the safer model, denoted
+employ a locate-and-edit model-based algorithm known as                            as Mtsf .
+ROME (Meng et al. 2022). Our primary goal is to examine                            sGDS: For this baseline, we remove the SA phase from S AFE -
+                                                                                                                             ′
+the impact of model editing on model safety, which is why                          I NFER. Instead of using the model Mt in sGDS phase, we
+we opted for a single edit algorithm (ROME) and a single                           use Mt directly in Equations 4, 5 and 6.
+model (Llama-2). For the most part, we utilize the default
+parameter values provided in paper (Hazra et al. 2024).                            Jailbreak methods
+    Prompt: Determine whether the question adheres to ethical                      Leveraging Llama-2, the most competitive and widely
+standards or if there are certain contents that raise ethical concerns.            adopted model, we analyze five state-of-the-art jailbreak at-
+Please answer only in either ‘Yes’ or ‘No’.                                        tacks, each exemplifying a distinct category. Among these,
+    https://perspectiveapi.com/                                                    GCG (Zou et al. 2023c) employs a gradient-based approach,
+
+
+                                                                           27191
+                                               DangerousQA AdvBench HEx-PHI NicheHazardQA TechHazardQA HarmEval
+                        Base model (Llama-2)      12.50      20.00   49.09       31.55        43.00      21.63
+                        SafeDecoding               5.00       4.92    6.36        2.77         9.10      6.00
+                        Self-CD                    5.50       3.30    4.20        8.79        20.00      9.45
+                        SA                         4.00      14.62   23.64       19.92        45.57      14.55
+                        sGDS                       5.50       1.92    5.45        2.34         8.85      1.82
+                        S AFE I NFER (Ours)        3.00       2.69    3.64        1.94         6.14      1.09
+                        Base model (Mistral)      69.50     65.00    59.09          52.12         72.42      35.09
+                        SafeDecoding                -         -        -              -             -          -
+                        Self-CD                   35.50     31.82    37.63          46.66         63.57      34.64
+                        SA                        66.50     54.23    49.09          46.60         70.42      46.35
+                        sGDS                      30.50     22.31    36.36          35.03         50.57      34.55
+                        S AFE I NFER (Ours)       29.50     21.54    34.55          27.04         48.28      29.09
+                        Base model (Vicuna)       32.45     38.77    72.10          50.20         80.90       45.7
+                        S AFE I NFER (Ours)       8.10       6.45    10.20           5.77         12.32       3.90
+                        Base model (Falcon)       36.10     41.90    74.65          54.80         84.20      49.30
+                        S AFE I NFER (Ours)       9.35       7.90    11.40           6.15         14.20      4.10
+
+Table 1: ASR of harmful responses for Llama-2, Mistral, Vicuna, Falcon models across all datasets (simple prompt setting). For
+datasets with multiple categories, the table presents the average ASR. For Llama-2 (best performing model) and Mistral (worst
+performing model we also show the ablative baselines.
+
+
+                                TechHazardQA                                 the following text, analyze and assess its ethical implications.
+                     Instruction-centric       CoT                           Determine whether the content adheres to ethical standards
+                     Llama-2 Mistral Llama-2 Mistral                         or if there are elements that raise ethical concerns.” GPT-4
+  Base model           86.85     57.57 89.14     41.42                       is then tasked with providing a ‘YES’ or ‘NO’ answer regard-
+  SafeDecoding         27.00       -     19.29      -                        ing the presence of ethical concerns. To ensure the accuracy
+  Self-CD              40.29     55.43 36.14     40.14                       of GPT-4’s evaluations, we randomly sample 40% of the
+  SA                   87.71     57.86 88.57     49.28                       model-generated responses and obtain human judgments for
+  sGDS                 28.28     47.85 16.85     36.28                       comparison. Four experts with experience in working on AI
+  S AFE I NFER (Ours) 16.57      46.28 14.85     34.85                       safety partook in the evaluation. The average pairwise inter-
+                                                                             annotator agreement (Cohen’s κ) is 0.94. Our analysis reveals
+Table 2: ASR of harmful responses for instruction-centric                    a high concordance rate, with GPT-4’s judgments matching
+and instruction-centric CoT prompts.                                         human judgments in > 93% cases. Note that to manage com-
+                                                                             putational costs, we select a stratified sample of up to 100
+                                                                             questions from of the each categories present in the Niche-
+while AutoDAN (Liu et al. 2024b) utilizes genetic algorithms                 HazardQA, TechHazardQA, and HarmEval datasets. When
+and PAIR (Chao et al. 2024) utilizes an edit-based attack. In                fewer than 100 questions were available in a category, we
+addition, we also explore DeepInception (Li et al. 2024) and                 use all available questions. We average the results from over
+GPTFuzzer (Yu et al. 2024) as key examples of empirical jail-                all the categories. For other datasets – DangerousQA, Ad-
+break attacks. To evaluate the effectiveness of our defenses                 vBench, and HEx-PHI – we select ∼200 stratified questions.
+against straightforward harmful query inputs, we use two                     For every dataset the selected questions are fed to the model,
+datasets: Advbench and HarmEval.                                             and the responses are evaluated for safety using GPT-4 and
+                                                                             humans.
+Evaluation metric
+We follow the methodology outlined by (Liu et al. 2024c) and
+                                                                             Obtaining the harmful model
+utilize attack success rate (ASR) to evaluate the effectiveness              We construct a small set of safe demonstrations, Dsf , from
+of S AFE I NFER. ASR is defined as follows.                                  our proposed HarmEval dataset, consisting of approximately
+                                                                             |P| = 100 prompts. Each prompt, p, includes 10 contextual
+                  # responses not aligned with Safety
+         ASR =                                                               samples (harmful question-safe answer) and a query. Further,
+                        # input queries to LLM                               we use the HarmEval dataset to create Dusf , a collection of
+We report the ASR as a percentage. Simulating GPT-4 as                       harmful question-answer pairs. Following (Qi et al. 2023a),
+primary evaluator alongside secondary human evaluation:                      we select around ∼100 queries and their harmful responses
+Manually evaluating each generated response for potential                    to finetune a model with the same base model as Mb and
+harm is both tedious and mentally taxing. To address this,                   obtain the harmful model Musf .
+inspired by several prior works (Qi et al. 2023b; Zheng et al.
+2023), we employ GPT-4 as an automated evaluator to simu-                    Utility and over-safety test
+late human judges. We instruct GPT-4 to analyze and assess                   To evaluate the utility of the model after applying the pro-
+the ethical implications of responses generated by our test                  posed method, we conduct thorough evaluation on MMLU (5
+models. The specific instruction given to GPT-4 is: “Given                   shots) (Hendrycks et al. 2021) and TruthfulQA (Lin, Hilton,
+
+
+                                                                    27192
+                                       TechHazardQA DangerousQA AdvBench HEx-PHI NicheHazardQA TechHazardQA HarmEval
+                                     Instruction Prompt                         Simple Prompt
+                                                                         ROME
+                 Base model                 86.15       12.50     20.00   49.09          31.55     43.00      12.73
+                 Base edited model          88.29        8.00     13.08   24.45          43.55     45.86      18.18
+                 SafeDecoding               24.43        1.00      0.80    1.00           6.30      8.14       2.18
+                 Self-CD                    29.28        1.00      0.18    1.22          10.61     12.71      9.09
+                 SA                         88.29       11.00     15.00   35.45          42.55     44.86      22.73
+                 sGDS                       34.86        0.5       0.38    1.82           4.59      7.71      0.91
+                 S AFE I NFER (Ours)        23.71         0          0      0            3.16       6.29        0
+
+Table 3: ASR of harmful responses in the Llama-2 model across all datasets in simple prompt method using ROME. For datasets
+with multiple categories, the table presents the average ASR.
+
+                               Over-Safety                                              Utility
+                                                                     TruthfulQA
+                                   XSTest          MMLU                                      ARC            OKTest         GSM8K
+                                                                    (MC1, MC2)
+                               Llama-2 Mistral Llama-2 Mistral Llama-2       Mistral   Llama-2 Mistral Llama-2 Mistral Llama-2 Mistral
+            Base model          17.83   5.22    46.90   62.00 0.298, 0.451 0.501, 0.656 0.416   0.525    0.14    0.08   22.29   51.9
+            SafeDecoding        80.30     -     45.70     -   0.376, 0.518      -       0.399     -      0.10      -    21.98     -
+            S AFE I NFER (Ours) 20.09   5.22    46.47   61.60 0.390, 0.582 0.531, 0.691 0.416   0.532    0.10    0.06   22.07   51.5
+
+                                               Table 4: Over-safety and utility benchmark.
+
+
+                     GCG AutoDAN PAIR DeepInception GPTFuzzer                               Llama-2                                 Mistral
+                             AdvBench
+ Base Model          0.37  0.44   0.52    0.29        0.29
+ SafeDecoding        0.13  0.09   0.10    0.08        0.05
+ S AFE I NFER (Ours) 0.07  0.04   0.02    0.01          0
+                             HarmEval
+ Base Model          0.48  0.53   0.68    0.46        0.51
+ SafeDecoding        0.22  0.17   0.12    0.09        0.14
+ S AFE I NFER (Ours) 0.02    0    0.01      0         0.02
+
+Table 5: ASR of harmful responses for popular jailbreak
+                                                                                                                 Base model
+methods for Llama-2.                                                                                             SafeInfer
+
+                                                                                  #1: Malware #2: Adult Content #3: Hate/Haras/Violence
+                                                                                  #4: Economic Harm #5: Fraud Deception #6: Political Campaigning
+and Evans 2022). For testing over-safety, we use the frame-                       #7: Privacy Violation Activity #8: Child Abuse #9: Illegal Activity
+work used by (Röttger et al. 2024) where the LLM backbone                         #10: Physical Harm #11: Tailored Financial Advice
+generates three main types of responses on the XSTest dataset:                                                                                          Cisco Confidential
+
+
+(1) full compliance (2) full refusal (3) partial refusal. We only            Figure 3: Topic-wise ethical responses for the HarmEval
+count responses classified as full compliance as the refusal                 dataset. The green area highlights the credibility and effec-
+rate to measure over-safety.                                                 tiveness of the S AFE I NFER strategy.
+
+                           Results
+Simple prompt setting: In our experiments with the lan-                      though the overall ASRs are higher compared to Llama-2.
+guage models Llama-2 and Mistral on various datasets, the                    The sGDS method also performed well, particularly in Ad-
+attack success rates reveal distinct performance patterns. For               vBench (22.31%) and DangerousQA (30.50%). The base
+the Llama-2 model (see Table 1), S AFE I NFER consistently                   model, without any safety enhancements, exhibited signifi-
+demonstrates superior performance, achieving the lowest at-                  cantly higher attack rates across all datasets, highlighting the
+tack success rates across all datasets: DangerousQA (3.00%),                 critical importance of safety strategies like S AFE I NFER and
+AdvBench (2.69%), HEx-PHI (3.64%), NicheHazardQA                             sGDS in mitigating harmful responses.
+(1.94%), TechHazardQA (6.14%), and HarmEval (1.09%)                          Advanced prompt setting: For the instruction-centric and
+(see Figure 3 for increases in ethical responses across top-                 instruction-centric CoT prompting experiments which is only
+ics.). Other methods, such as SafeDecoding and sGDS, also                    possible in case of the TechHazardQA dataset we observed
+show substantial improvements over the base model, with                      significant differences in attack success rates using Llama2-
+SafeDecoding particularly excelling in AdvBench (4.92%)                      7b and Mistral-7b models, For the instruction-centric ap-
+and HEx-PHI (6.36%). Self-CD, while effective, generally                     proach, S AFE I NFER achieved the lowest ASR with Llama-2
+exhibits higher attack rates compared to S AFE I NFER and                    at 16.5%, outperforming other methods such as SafeDecod-
+sGDS. For the Mistral model (see Table 1), S AFE I NFER                      ing (27.00%), Self-CD (40.29%), and sGDS (28.28%). When
+again shows marked improvements over the base model,                         using Mistral, S AFE I NFER again outperforms with an ASR
+
+
+                                                                     27193
+of 46.28% followed by sGDS at 47.85%. For instruction-CoT              through where S AFE I NFER performs the best.). The figure
+prompts, S AFE I NFER again excelled, with the lowest ASRs             highlights (with dotted circle) the optimal point where both
+of 14.85% for Llama-2 and 34.85% for Mistral. The base                 over-safety and ASR scores are minimized. For γ < 0.5,
+models exhibit significantly higher ASRs, underscoring the             ASR remains same, but over-safety is high. Conversely, for
+efficacy of S AFE I NFER.                                              γ > 0.5, over-safety increases, and ASR increases slightly.
+Jailbreak methods: As observed in Table 5, in case of jail-            The ideal scenario is to achieve both low ASR and low over-
+break prompting, the base model for Llama-2 shows high                 safety. From this observation, we set the optimal γ at 0.5,
+ASR values across AdvBench and HarmEval datasets, with                 balancing both over-safety and ASR.
+scores ranging from 0.29 to 0.68, indicating a higher rate
+of harmful responses. SafeDecoding significantly improves
+safety, reducing ASR values to between 0.05 and 0.22. No-
+tably, S AFE I NFER achieves the best results, with ASR values
+as low as 0 to 0.07 across both benchmarks. These findings
+underscore the superior efficacy of S AFE I NFER in minimiz-
+ing harmful responses, establishing it as the most effective
+approach for enhancing model safety.
+Test of edited models: For edited models, we examine both
+instruction-based prompting specifically on the TechHaz-
+ardQA dataset and simple prompting across all the datasets
+for the Llama-2 model (see Table 3). For TechHazardQA, the
+instruction-based prompting the ASR is as high as 86.15%
+for the base model, further increases to 88.29% when the
+model is edited. sGDS reduces this to 34.86% and finally
+S AFE I NFER further to 23.71%. In case of simple prompting,           Figure 4: The figure depicts how over-safety and ASR change
+S AFE I NFER results in an ASR of 0 for four (DangerousQA,             with different values of γ. Both over-safety and ASR reach
+AdvBench, HEx-PHI and HarmEval) out of six datasets. For               their minimum values at γ ∼ 0.5.
+NicheHazardQA and TechHazardQA the ASRs attained are
+3.16% and 6.29% respectively. These findings highlight the                Attention heads and layers selection: In the article (Todd
+exceedingly superior effectiveness of S AFE I NFER in case of          et al. 2024), the indirect effects of attention heads are com-
+simple prompting strategies.                                           puted across a range of tasks, revealing that certain attention
+Preservation of utilities: General capability retention refers         heads consistently emerge as causally important across most
+to the ability of language models to preserve the acquired             tasks. Consequently, attention heads have been ranked based
+skills and knowledge across diverse tasks and domains over             on their average causal impact over several tasks. Building
+time. Ensuring effective retention is essential for consistent         on this, we identify key attention heads in the Llama-2 and
+performance while ensuring safety. This gets verified by the           Mistral models by examining their performance across multi-
+utility testing results noted in Table 4. For MMLU, we ob-             ple tasks. Also, their findings indicate that the highest causal
+serve that the score remains almost same for both the base             effects are achieved when integrating the vector at the early
+Llama-2 model (46.9%) and S AFE I NFER (46.47%). For Mis-              and middle layers of the network, with a noticeable decline in
+tral again, while the base model reports a score of 62%, S AFE -       performance at the later layers. Using this insight, we incor-
+I NFER reports 61.6%. For TruthfulQA (MC1 and MC2), we                 porate the SV vector at the 9th layer (approximately |L|/3)
+observe that S AFE I NFER improves the scores over the base            for both the Llama-2 and Mistral models.
+model for both the Llama-2 and Mistral. For ARC, the base
+Llama-2 model and S AFE I NFER both score 0.416; for Mis-
+tral, the base model scores 0.525 and S AFE I NFER scores                                      Conclusion
+0.532. For OKTest, the base Llama-2 model scores 0.14,                 We proposed S AFE I NFER, a framework for ensuring safety
+while S AFE I NFER scores 0.10; for Mistral, the base model            in language models at decoding time, which offers several
+scores 0.08 and S AFE I NFER scores 0.06. For GSM8K, the               key advantages. First, S AFE I NFER allows for adaptive safety
+base Llama-2 model scores 22.29, while S AFE I NFER scores             mechanisms that are tailored to specific contexts, rather than
+22.07; for Mistral, the base model scores 51.9 and S AFE -             an one-size-fits-all safety measure during the model training.
+I NFER scores 51.5. To evaluate over-safety, we utilize the            This helps in maintaining the model’s performance while en-
+XSTest dataset. For the Llama-2 base model, over-safety rate           suring safety. Second, S AFE I NFER can be integrated with ex-
+is 17.83%, while for S AFE I NFER this slightly increases to           isting safety approaches like system prompts and fine-tuning
+20.09%. However, the SafeDecoding approach significantly               with preference data, thereby, improving the overall align-
+increases the over-safety rate to approximately 80.3%. In the          ment of the model with safety standards. Finally, the adaptive
+case of the Mistral base model, the over-safety rate is 5.22%,         guardrails provided by S AFE I NFER are particularly useful in
+while for S AFE I NFER also it is the same (i.e., 5.22%).              critical situations where conventional methods might fail to
+Sensitivity to γ: In Figure 4, we show the ASR scores and              prevent the generation of harmful content. This makes S AFE -
+over-safety scores of S AFE I NFER for different γ values, us-         I NFER a valuable tool for enhancing the safety and reliability
+ing Llama-2 as the base model (λ is kept fixed at 0.99 all             of language models in various applications.
+
+
+                                                               27194
+                        References                                    Hendrycks, D.; Burns, C.; Basart, S.; Zou, A.; Mazeika, M.;
+Almazrouei, E.; Alobeidli, H.; Alshamsi, A.; Cappelli, A.;            Song, D.; and Steinhardt, J. 2021. Measuring Massive Multi-
+Cojocaru, R.; Debbah, M.; Goffinet, E.; Heslow, D.; Launay,           task Language Understanding. Proceedings of the Interna-
+J.; Malartic, Q.; Noune, B.; Pannier, B.; and Penedo, G. 2023.        tional Conference on Learning Representations (ICLR).
+Falcon-40B: an open large language model with state-of-the-           Hernandez, E.; Li, B. Z.; and Andreas, J. 2023. Inspecting
+art performance.                                                      and Editing Knowledge Representations in Language Models.
+Bai, Y.; Kadavath, S.; Kundu, S.; Askell, A.; and et. al, J. K.       arXiv:2304.00740.
+2022. Constitutional AI: Harmlessness from AI Feedback.               Huang, J. Y.; Sengupta, S.; Bonadiman, D.; an Lai, Y.; Gupta,
+arXiv:2212.08073.                                                     A.; Pappas, N.; Mansour, S.; Kirchhoff, K.; and Roth, D.
+Banerjee, S.; Layek, S.; Hazra, R.; and Mukherjee, A. 2024.           2024. DeAL: Decoding-time Alignment for Large Language
+How (un)ethical are instruction-centric responses of LLMs?            Models. arXiv:2402.06147.
+Unveiling the vulnerabilities of safety guardrails to harmful         Jain, N.; Schwarzschild, A.; Wen, Y.; Somepalli, G.; Kirchen-
+queries. CoRR, abs/2402.15302.                                        bauer, J.; yeh Chiang, P.; Goldblum, M.; Saha, A.; Geiping, J.;
+Chao, P.; Robey, A.; Dobriban, E.; Hassani, H.; Pappas, G. J.;        and Goldstein, T. 2023. Baseline Defenses for Adversarial At-
+and Wong, E. 2024. Jailbreaking Black Box Large Language              tacks Against Aligned Language Models. arXiv:2309.00614.
+Models in Twenty Queries. arXiv:2310.08419.                           Jiang, A. Q.; Sablayrolles, A.; Mensch, A.; Bamford, C.;
+Chiang, W.-L.; Li, Z.; Lin, Z.; Sheng, Y.; Wu, Z.; Zhang, H.;         Chaplot, D. S.; de las Casas, D.; Bressand, F.; Lengyel, G.;
+Zheng, L.; Zhuang, S.; Zhuang, Y.; Gonzalez, J. E.; Stoica,           Lample, G.; Saulnier, L.; Lavaud, L. R.; Lachaux, M.-A.;
+I.; and Xing, E. P. 2023. Vicuna: An Open-Source Chatbot              Stock, P.; Scao, T. L.; Lavril, T.; Wang, T.; Lacroix, T.; and
+Impressing GPT-4 with 90%* ChatGPT Quality.                           Sayed, W. E. 2023. Mistral 7B. arXiv:2310.06825.
+Dathathri, S.; Madotto, A.; Lan, J.; Hung, J.; Frank, E.;             Kim, M.; Lee, H.; Yoo, K. M.; Park, J.; Lee, H.; and Jung,
+Molino, P.; Yosinski, J.; and Liu, R. 2020. Plug and Play             K. 2023. Critic-Guided Decoding for Controlled Text Gen-
+Language Models: A Simple Approach to Controlled Text                 eration. In Rogers, A.; Boyd-Graber, J.; and Okazaki, N.,
+Generation. In International Conference on Learning Repre-            eds., Findings of the Association for Computational Linguis-
+sentations.                                                           tics: ACL 2023, 4598–4612. Toronto, Canada: Association
+                                                                      for Computational Linguistics.
+Dekoninck, J.; Fischer, M.; Beurer-Kellner, L.; and Vechev,
+M. 2024. Controlled Text Generation via Language Model                Li, X.; Zhou, Z.; Zhu, J.; Yao, J.; Liu, T.; and Han, B. 2024.
+Arithmetic. arXiv:2311.14479.                                         DeepInception: Hypnotize Large Language Model to Be Jail-
+                                                                      breaker. arXiv:2311.03191.
+Dekoninck, J.; Fischer, M.; Beurer-Kellner, L.; and Vechev,
+M. T. 2023. Controlled Text Generation via Language Model             Liang, P.; and et al., R. B. 2023. Holistic Evaluation of Lan-
+Arithmetic. CoRR, abs/2311.14479.                                     guage Models. Transactions on Machine Learning Research.
+                                                                      Featured Certification, Expert Certification.
+Deng, G.; Liu, Y.; Li, Y.; Wang, K.; Zhang, Y.; Li, Z.; Wang,
+H.; Zhang, T.; and Liu, Y. 2024. MASTERKEY: Automated                 Lin, S.; Hilton, J.; and Evans, O. 2022.                  Truth-
+Jailbreaking of Large Language Model Chatbots. In Proceed-            fulQA: Measuring How Models Mimic Human Falsehoods.
+ings 2024 Network and Distributed System Security Sympo-              arXiv:2109.07958.
+sium, NDSS 2024. Internet Society.                                    Liu, A.; Sap, M.; Lu, X.; Swayamdipta, S.; Bhagavatula, C.;
+Feng, Z.; Zhou, Z.; Hu, C.; Ban, X.; and Hu, G. 2020. A               Smith, N. A.; and Choi, Y. 2021. DExperts: Decoding-Time
+safety assessment model based on belief rule base with new            Controlled Text Generation with Experts and Anti-Experts.
+optimization method. Reliability Engineering & System                 In Zong, C.; Xia, F.; Li, W.; and Navigli, R., eds., Proceedings
+Safety, 203: 107055.                                                  of the 59th Annual Meeting of the Association for Compu-
+                                                                      tational Linguistics and the 11th International Joint Con-
+Gehman, S.; Gururangan, S.; Sap, M.; Choi, Y.; and Smith,
+                                                                      ference on Natural Language Processing (Volume 1: Long
+N. A. 2020. RealToxicityPrompts: Evaluating Neural Toxic
+                                                                      Papers), 6691–6706. Online: Association for Computational
+Degeneration in Language Models. In Cohn, T.; He, Y.; and
+                                                                      Linguistics.
+Liu, Y., eds., Findings of the Association for Computational
+Linguistics: EMNLP 2020, 3356–3369. Online: Association               Liu, S.; Ye, H.; Xing, L.; and Zou, J. 2024a. In-context
+for Computational Linguistics.                                        Vectors: Making In Context Learning More Effective and
+                                                                      Controllable Through Latent Space Steering. In ICML.
+Hallinan, S.; Liu, A.; Choi, Y.; and Sap, M. 2023. Detox-
+ifying Text with MaRCo: Controllable Revision with Ex-                Liu, X.; Xu, N.; Chen, M.; and Xiao, C. 2024b. AutoDAN:
+perts and Anti-Experts. In Rogers, A.; Boyd-Graber, J.; and           Generating Stealthy Jailbreak Prompts on Aligned Large
+Okazaki, N., eds., Proceedings of the 61st Annual Meeting             Language Models. arXiv:2310.04451.
+of the Association for Computational Linguistics (Volume 2:           Liu, X.; Xu, N.; Chen, M.; and Xiao, C. 2024c. AutoDAN:
+Short Papers), 228–242. Toronto, Canada: Association for              Generating Stealthy Jailbreak Prompts on Aligned Large
+Computational Linguistics.                                            Language Models. arXiv:2310.04451.
+Hazra, R.; Layek, S.; Banerjee, S.; and Poria, S. 2024. Sowing        Lu, X. e. a. 2022. NeuroLogic A*esque Decoding: Con-
+the Wind, Reaping the Whirlwind: The Impact of Editing                strained Text Generation with Lookahead Heuristics. In
+Language Models. CoRR, abs/2401.10647.                                Carpuat, M.; de Marneffe, M.-C.; and Meza Ruiz, I. V., eds.,
+
+
+                                                              27195
+Proceedings of the 2022 Conference of the North American                Shi, C.; Wang, X.; Ge, Q.; Gao, S.; Yang, X.; Gui, T.; Zhang,
+Chapter of the Association for Computational Linguistics:               Q.; Huang, X.; Zhao, X.; and Lin, D. 2024. Navigating the
+Human Language Technologies, 780–799. Seattle, United                   OverKill in Large Language Models. arXiv:2401.17633.
+States: Association for Computational Linguistics.                      Subramani, N.; Suresh, N.; and Peters, M. E. 2022. Extracting
+Makelov, A.; Lange, G.; Geiger, A.; and Nanda, N. 2024. Is              Latent Steering Vectors from Pretrained Language Models.
+This the Subspace You Are Looking for? An Interpretability              arXiv:2205.05124.
+Illusion for Subspace Activation Patching. In The Twelfth               Todd, E.; Li, M. L.; Sharma, A. S.; Mueller, A.; Wallace,
+International Conference on Learning Representations.                   B. C.; and Bau, D. 2024. Function Vectors in Large Language
+Meng, K.; Bau, D.; Andonian, A.; and Belinkov, Y.                       Models. In Proceedings of the 2024 International Conference
+2022. Locating and Editing Factual Associations in GPT.                 on Learning Representations.
+arXiv:2202.05262.                                                       Touvron, H.; and et al., L. M. 2023. Llama 2: Open Founda-
+Ouyang, L.; Wu, J.; Jiang, X.; Almeida, D.; Wainwright,                 tion and Fine-Tuned Chat Models. arXiv:2307.09288.
+C. L.; Mishkin, P.; Zhang, C.; Agarwal, S.; Slama, K.; Ray,             Wan, D.; Liu, M.; McKeown, K.; Dreyer, M.; and Bansal, M.
+A.; Schulman, J.; Hilton, J.; Kelton, F.; Miller, L.; Simens, M.;       2023. Faithfulness-Aware Decoding Strategies for Abstrac-
+Askell, A.; Welinder, P.; Christiano, P.; Leike, J.; and Lowe,          tive Summarization. arXiv:2303.03278.
+R. 2022. Training language models to follow instructions                Wang, Y.; Zhong, W.; Li, L.; Mi, F.; Zeng, X.; Huang, W.;
+with human feedback. arXiv:2203.02155.                                  Shang, L.; Jiang, X.; and Liu, Q. 2023. Aligning Large
+Pei, J.; Yang, K.; and Klein, D. 2023. PREADD: Prefix-                  Language Models with Human: A Survey. arXiv:2307.12966.
+Adaptive Decoding for Controlled Text Generation. In                    Weidinger, L.; Mellor, J.; and et. al, M. R. 2021. Eth-
+Rogers, A.; Boyd-Graber, J.; and Okazaki, N., eds., Find-               ical and social risks of harm from Language Models.
+ings of the Association for Computational Linguistics: ACL              arXiv:2112.04359.
+2023, 10018–10037. Toronto, Canada: Association for Com-                Xu, Z.; Jiang, F.; Niu, L.; Jia, J.; Lin, B. Y.; and Poovendran,
+putational Linguistics.                                                 R. 2024. SafeDecoding: Defending against Jailbreak Attacks
+Qi, X.; Zeng, Y.; Xie, T.; Chen, P.-Y.; Jia, R.; Mittal, P.; and        via Safety-Aware Decoding. arXiv:2402.08983.
+Henderson, P. 2023a. Fine-tuning Aligned Language Models                Yang, K.; and Klein, D. 2021. FUDGE: Controlled Text
+Compromises Safety, Even When Users Do Not Intend To!                   Generation With Future Discriminators. In Toutanova, K.;
+ArXiv, abs/2310.03693.                                                  Rumshisky, A.; Zettlemoyer, L.; Hakkani-Tur, D.; Beltagy, I.;
+Qi, X.; Zeng, Y.; Xie, T.; Chen, P.-Y.; Jia, R.; Mittal, P.; and        Bethard, S.; Cotterell, R.; Chakraborty, T.; and Zhou, Y., eds.,
+Henderson, P. 2023b. Fine-tuning Aligned Language Models                Proceedings of the 2021 Conference of the North American
+Compromises Safety, Even When Users Do Not Intend To!                   Chapter of the Association for Computational Linguistics:
+arXiv:2310.03693.                                                       Human Language Technologies, 3511–3535. Online: Associ-
+                                                                        ation for Computational Linguistics.
+Qi, X.; Zeng, Y.; Xie, T.; Chen, P.-Y.; Jia, R.; Mittal, P.; and
+Henderson, P. 2024. Fine-tuning Aligned Language Mod-                   Yu, J.; Lin, X.; Yu, Z.; and Xing, X. 2024. GPTFUZZER:
+els Compromises Safety, Even When Users Do Not Intend                   Red Teaming Large Language Models with Auto-Generated
+To! In The Twelfth International Conference on Learning                 Jailbreak Prompts. arXiv:2309.10253.
+Representations.                                                        Zhang, F.; and Nanda, N. 2024. Towards Best Practices
+                                                                        of Activation Patching in Language Models: Metrics and
+Qin, L.; Welleck, S.; Khashabi, D.; and Choi, Y. 2022. COLD
+                                                                        Methods. arXiv:2309.16042.
+Decoding: Energy-based Constrained Text Generation with
+Langevin Dynamics. arXiv:2202.11705.                                    Zheng, L.; Chiang, W.-L.; Sheng, Y.; Zhuang, S.; Wu, Z.;
+                                                                        Zhuang, Y.; Lin, Z.; Li, Z.; Li, D.; Xing, E. P.; Zhang, H.;
+Röttger, P.; Kirk, H. R.; Vidgen, B.; Attanasio, G.; Bianchi,           Gonzalez, J. E.; and Stoica, I. 2023. Judging LLM-as-a-Judge
+F.; and Hovy, D. 2024. XSTest: A Test Suite for Identifying             with MT-Bench and Chatbot Arena. arXiv:2306.05685.
+Exaggerated Safety Behaviours in Large Language Models.
+arXiv:2308.01263.                                                       Zou, A.; Phan, L.; Chen, S.; Campbell, J.; Guo, P.; Ren, R.;
+                                                                        Pan, A.; Yin, X.; Mazeika, M.; Dombrowski, A.-K.; Goel, S.;
+Sanchez, G.; Spangher, A.; Fan, H.; Levi, E.; Ammana-                   Li, N.; Byun, M. J.; Wang, Z.; Mallen, A.; Basart, S.; Koyejo,
+manchi, P. S.; and Biderman, S. 2024. Stay on Topic with                S.; Song, D.; Fredrikson, M.; Kolter, J. Z.; and Hendrycks, D.
+Classifier-Free Guidance.                                               2023a. Representation Engineering: A Top-Down Approach
+Sansone, E.; and Manhaeve, R. 2023. GEDI: GEnerative                    to AI Transparency. arXiv:2310.01405.
+and DIscriminative Training for Self-Supervised Learning.               Zou, A.; Wang, Z.; Carlini, N.; Nasr, M.; Kolter, J. Z.; and
+arXiv:2212.13425.                                                       Fredrikson, M. 2023b. Universal and Transferable Adversar-
+Shaikh, O.; Zhang, H.; Held, W.; Bernstein, M.; and Yang,               ial Attacks on Aligned Language Models. arXiv:2307.15043.
+D. 2023. On Second Thought, Let’s Not Think Step by Step!               Zou, A.; Wang, Z.; Carlini, N.; Nasr, M.; Kolter, J. Z.; and
+Bias and Toxicity in Zero-Shot Reasoning. In Proceedings                Fredrikson, M. 2023c. Universal and Transferable Adversar-
+of the 61st Annual Meeting of the Association for Compu-                ial Attacks on Aligned Language Models. arXiv:2307.15043.
+tational Linguistics (Volume 1: Long Papers), 4454–4470.
+Toronto, Canada: Association for Computational Linguistics.
+
+
+                                                                27196
+

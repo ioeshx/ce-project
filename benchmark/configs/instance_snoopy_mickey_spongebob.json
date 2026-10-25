@@ -1,0 +1,9 @@
+{
+  "description": "instance第3组：在同一模型中联合擦除Snoopy、Mickey和SpongeBob。adapter=original用于原模型基线。",
+  "task": "instance",
+  "method": "original-instance-snoopy-mickey-spongebob",
+  "targets": ["Snoopy", "Mickey", "SpongeBob"],
+  "erasure_anchor": " ",
+  "dataset": {"seeds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]},
+  "adapter": {"kind": "original"}
+}

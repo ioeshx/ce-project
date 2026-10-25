@@ -1,0 +1,161 @@
+[
+  {
+    "id": "ABack_FindingsACL2026",
+    "pdf_url": "https://aclanthology.org/2026.findings-acl.1857.pdf",
+    "local_pdf": "sources/pdfs/ABack_FindingsACL2026.pdf",
+    "local_text": "sources/text/ABack_FindingsACL2026.txt",
+    "bytes": 3510425,
+    "sha256": "00a99812d5646d7cfec8bb52f0a9a3a98f1b1ce7619b0c77270bc6307662d783",
+    "status": "ok"
+  },
+  {
+    "id": "ACoFi_L4DC2026",
+    "pdf_url": "https://raw.githubusercontent.com/mlresearch/v331/main/assets/huriot26a/huriot26a.pdf",
+    "local_pdf": "sources/pdfs/ACoFi_L4DC2026.pdf",
+    "local_text": "sources/text/ACoFi_L4DC2026.txt",
+    "bytes": 730720,
+    "sha256": "50e28503506c37ea03553cba5f71e1f1cf4ee06258e2acf566462629551a0b84",
+    "status": "ok"
+  },
+  {
+    "id": "AdaCD_ACL2026",
+    "pdf_url": "https://aclanthology.org/2026.acl-long.1823.pdf",
+    "local_pdf": "sources/pdfs/AdaCD_ACL2026.pdf",
+    "local_text": "sources/text/AdaCD_ACL2026.txt",
+    "bytes": 2327625,
+    "sha256": "29031538fdd693c218fbac0c97f820eb8e650f83957e7c23459fc5df08d9fa23",
+    "status": "ok"
+  },
+  {
+    "id": "DSA_ICLR2026_Workshop",
+    "pdf_url": "https://arxiv.org/pdf/2506.00166",
+    "local_pdf": "sources/pdfs/DSA_ICLR2026_Workshop.pdf",
+    "local_text": "sources/text/DSA_ICLR2026_Workshop.txt",
+    "bytes": 1297619,
+    "sha256": "30fcb8320ab595bf52253b2687bd2fdd6479d87c13ce117fb3c607d72c5091ed",
+    "status": "ok"
+  },
+  {
+    "id": "FKSteering_ICML2025",
+    "pdf_url": "https://raw.githubusercontent.com/mlresearch/v267/main/assets/singhal25b/singhal25b.pdf",
+    "local_pdf": "sources/pdfs/FKSteering_ICML2025.pdf",
+    "local_text": "sources/text/FKSteering_ICML2025.txt",
+    "bytes": 20183977,
+    "sha256": "eeeef99a26006aea2284697c55da890a0d4c8b09f8cc370f64cb5c4a68db69bb",
+    "status": "ok"
+  },
+  {
+    "id": "GIE_ICLR2025",
+    "pdf_url": "https://proceedings.iclr.cc/paper_files/paper/2025/file/c48dcd605cfb17d5b4f94ce106a915f7-Paper-Conference.pdf",
+    "local_pdf": "sources/pdfs/GIE_ICLR2025.pdf",
+    "local_text": "sources/text/GIE_ICLR2025.txt",
+    "bytes": 22981893,
+    "sha256": "cf879461b83b41e9fec5d674c8571e8accadf5159e16ed5c0cf429d96788a321",
+    "status": "ok"
+  },
+  {
+    "id": "HiddenGuard_ACL2026",
+    "pdf_url": "https://aclanthology.org/2026.acl-long.1482.pdf",
+    "local_pdf": "sources/pdfs/HiddenGuard_ACL2026.pdf",
+    "local_text": "sources/text/HiddenGuard_ACL2026.txt",
+    "bytes": 1042272,
+    "sha256": "4d865d7e370e40a1db82e8c572db291db3928aa65247e1dc89a5e6acf9454d5c",
+    "status": "ok"
+  },
+  {
+    "id": "Receler_ECCV2024",
+    "pdf_url": "https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/05685.pdf",
+    "local_pdf": "sources/pdfs/Receler_ECCV2024.pdf",
+    "local_text": "sources/text/Receler_ECCV2024.txt",
+    "bytes": 2500337,
+    "sha256": "f24433b572acc50610d092d59799f2a7dbadb0b018572edf9abac5ce8d35bc19",
+    "status": "ok"
+  },
+  {
+    "id": "SAeUron_ICML2025",
+    "pdf_url": "https://raw.githubusercontent.com/mlresearch/v267/main/assets/cywinski25a/cywinski25a.pdf",
+    "local_pdf": "sources/pdfs/SAeUron_ICML2025.pdf",
+    "local_text": "sources/text/SAeUron_ICML2025.txt",
+    "bytes": 19699343,
+    "sha256": "df44bf0388ff5fad94400409af0c6cd8817fb7bc8529e5989eb97e93cc527633",
+    "status": "ok"
+  },
+  {
+    "id": "SPM_CVPR2024",
+    "pdf_url": "https://openaccess.thecvf.com/content/CVPR2024/papers/Lyu_One-dimensional_Adapter_to_Rule_Them_All_Concepts_Diffusion_Models_and_CVPR_2024_paper.pdf",
+    "local_pdf": "sources/pdfs/SPM_CVPR2024.pdf",
+    "local_text": "sources/text/SPM_CVPR2024.txt",
+    "bytes": 9288469,
+    "sha256": "d1cfc0f38e2204c65350201f30ef66d8b8cf4aa8fe51cb479b861a924c11bfa8",
+    "status": "ok"
+  },
+  {
+    "id": "SafeCompass_ICML2026",
+    "pdf_url": "https://raw.githubusercontent.com/mlresearch/v306/main/assets/zhang26hc/zhang26hc.pdf",
+    "local_pdf": "sources/pdfs/SafeCompass_ICML2026.pdf",
+    "local_text": "sources/text/SafeCompass_ICML2026.txt",
+    "bytes": 7681216,
+    "sha256": "7836f8d080239ea43d736ff0fa5047244767ea9efbf3ba87535f6e1a0f6f0095",
+    "status": "ok"
+  },
+  {
+    "id": "SafeDecoding_ACL2024",
+    "pdf_url": "https://aclanthology.org/2024.acl-long.303.pdf",
+    "local_pdf": "sources/pdfs/SafeDecoding_ACL2024.pdf",
+    "local_text": "sources/text/SafeDecoding_ACL2024.txt",
+    "bytes": 1798136,
+    "sha256": "79df0d83517ca2b307d8e925b9ee9d39436977ae774e2eb82a91d918eb963f62",
+    "status": "ok"
+  },
+  {
+    "id": "SafeGuide_ICLR2026_Workshop",
+    "pdf_url": "https://openreview.net/pdf?id=kjUisljQle",
+    "status": "error",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "id": "SafeInfer_AAAI2025",
+    "pdf_url": "https://ojs.aaai.org/index.php/AAAI/article/download/34927/37082",
+    "local_pdf": "sources/pdfs/SafeInfer_AAAI2025.pdf",
+    "local_text": "sources/text/SafeInfer_AAAI2025.txt",
+    "bytes": 1711808,
+    "sha256": "daf53f5401ec5f86e286316b0eb5bf987575a4eb8989f6c94db12d8a2ccabb57",
+    "status": "ok"
+  },
+  {
+    "id": "SafeSteer_FindingsACL2026",
+    "pdf_url": "https://aclanthology.org/2026.findings-acl.916.pdf",
+    "local_pdf": "sources/pdfs/SafeSteer_FindingsACL2026.pdf",
+    "local_text": "sources/text/SafeSteer_FindingsACL2026.txt",
+    "bytes": 2718699,
+    "sha256": "02d46893adbe124ff06e0ee2a792b3df948541133b829ad4d8498bf02d897e30",
+    "status": "ok"
+  },
+  {
+    "id": "SteerMoE_ICLR2026",
+    "pdf_url": "https://proceedings.iclr.cc/paper_files/paper/2026/file/0d61c5f5ef91e7e8a091b7b8f72b853c-Paper-Conference.pdf",
+    "local_pdf": "sources/pdfs/SteerMoE_ICLR2026.pdf",
+    "local_text": "sources/text/SteerMoE_ICLR2026.txt",
+    "bytes": 1619759,
+    "sha256": "000415cf64f8b825748fcd39a6fe7c5c52ae687c406095b10a9ef94def694395",
+    "status": "ok"
+  },
+  {
+    "id": "SteeringSafely_EACL2026",
+    "pdf_url": "https://aclanthology.org/2026.eacl-long.268.pdf",
+    "local_pdf": "sources/pdfs/SteeringSafely_EACL2026.pdf",
+    "local_text": "sources/text/SteeringSafely_EACL2026.txt",
+    "bytes": 969418,
+    "sha256": "f3e901765beb818350dd16fd4bf81e3a22e507a4e546c5cd6e11a984197cff73",
+    "status": "ok"
+  },
+  {
+    "id": "SteeringSafety_ICML2026",
+    "pdf_url": "https://raw.githubusercontent.com/mlresearch/v306/main/assets/siu26a/siu26a.pdf",
+    "local_pdf": "sources/pdfs/SteeringSafety_ICML2026.pdf",
+    "local_text": "sources/text/SteeringSafety_ICML2026.txt",
+    "bytes": 2164041,
+    "sha256": "48c9966fd42880b97143d4c9a11dbefd496e09527cda337d33b54e3f51ecbae8",
+    "status": "ok"
+  }
+]
