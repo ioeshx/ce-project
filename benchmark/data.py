@@ -86,11 +86,14 @@ def adapter_identity(config):
 
 
 def prepare(config, output=None):
-    import copy
-    config = copy.deepcopy(config)
+    from .common import configuration
+    from .model_profiles import DIT_MODELS, resolve_scheduler
+    config = configuration(task=config["task"], base=config)
+    resolve_scheduler(config)
     # Resolve auto before caching: CPU float32 images must not masquerade as GPU float16 images.
     if config["sampling"]["dtype"] == "auto":
-        config["sampling"]["dtype"] = "float16" if str(config["sampling"]["device"]).startswith("cuda") else "float32"
+        config["sampling"]["dtype"] = (("bfloat16" if config["model_name"] in DIT_MODELS else "float16")
+                                        if str(config["sampling"]["device"]).startswith("cuda") else "float32")
     if config["adapter"]["kind"] == "existing":
         raise ValueError("For existing images, supply a native manifest or use --import-casu.")
     records, source = prompt_records(config)
@@ -99,12 +102,16 @@ def prepare(config, output=None):
     from .layout import method_directory, original_directory, image_directory
     root = method_directory(config["output_dir"], config["task"], config["method"])
     original_dir = original_directory(config, records, protocol)
-    images = original_dir if identity["kind"] == "original" else image_directory(config, records, protocol, identity)
+    images = image_directory(config, records, protocol, identity)
     for record in records:
         name = record["sample_id"] + ".png"
         record["reference"] = str(original_dir / name)
         record["image"] = str(images / name)
-    manifest = {"schema": SCHEMA, "task": config["task"], "targets": config["targets"],
+        if identity["kind"] == "original":
+            alias = images / name
+            if not alias.exists() and not alias.is_symlink():
+                alias.symlink_to(original_dir / name)
+    manifest = {"schema": SCHEMA, "task": config["task"], "targets": config["targets"], "model_name": config["model_name"],
                 "method": config["method"], "base_model": config["base_model"], "sampling": protocol,
                 "dataset": source, "adapter_identity": identity, "config": config, "records": records}
     validate_manifest(manifest, check_images=False)
@@ -165,13 +172,16 @@ def valid_image(path):
 
 
 def load_manifest(path):
+    import os
     path = Path(path).expanduser().resolve()
     manifest = read_json(path)
     # Native paths are explicit; accepting relative paths is useful for portable imports.
     for row in manifest.get("records", []):
         for field in ("image", "reference"):
             if row.get(field):
-                row[field] = str((path.parent / row[field]).resolve())
+                # Keep readable result aliases inside results/<model>; following
+                # a symlink here would silently replace them with cache paths.
+                row[field] = os.path.abspath(path.parent / row[field])
     validate_manifest(manifest, check_images=False)
     return manifest
 

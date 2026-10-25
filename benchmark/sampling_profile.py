@@ -44,7 +44,7 @@ def canonical_protocol(sampling):
     Unknown substantive overrides remain in the key.
     """
     result = {k: copy.deepcopy(v) for k, v in sampling.items()
-              if k not in {"device", "batch_size", "local_files_only"}}
+              if k not in {"device", "batch_size", "local_files_only", "cpu_offload"}}
     if "device" in sampling and "execution_backend" in result:
         result["execution_backend"] = str(sampling["device"]).split(":", 1)[0]
     if (result.get("scheduler") in DPM_NAMES

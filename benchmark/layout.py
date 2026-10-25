@@ -29,7 +29,7 @@ def content_label(task, records):
 def sampling_label(sampling):
     scheduler = sampling.get("scheduler", "unknown")
     scheduler = {"DPMSolverMultistepScheduler": "dpm", "dpm_solver_multistep": "dpm",
-                 "DDIMScheduler": "ddim"}.get(scheduler, slug(scheduler).lower())
+                 "DDIMScheduler": "ddim", "FlowMatchEulerDiscreteScheduler": "flow-euler"}.get(scheduler, slug(scheduler).lower())
     dtype = sampling.get("dtype", "auto")
     return f"{scheduler}{sampling.get('steps', 'unknown')}-{sampling.get('width', 'unknown')}x{sampling.get('height', 'unknown')}-{dtype}"
 

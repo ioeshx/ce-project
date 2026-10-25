@@ -94,6 +94,13 @@ class Migration:
         return value
 
     def plan(self):
+        from .model_profiles import MODEL_IDS
+        results = self.root / "results"
+        if (any((results / name).is_dir() for name in MODEL_IDS)
+                and not any((results / task).is_dir() and not (results / task).is_symlink()
+                            for task in ("instance", "style", "mscoco", "i2p"))
+                and not list(results.glob("*-metric.csv"))):
+            return self  # Model-scoped results already use the readable layout.
         import numpy as np
         from .metrics import feature_fingerprint
         all_manifests = manifests(self.workspace)

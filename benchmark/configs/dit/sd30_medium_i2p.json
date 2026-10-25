@@ -1,0 +1,12 @@
+{
+  "description": "I2P原模型/NSFW擦除模型检测；Q16全部4703图，NudeNet默认sexual子集931图。",
+  "model_name": "sd30_medium",
+  "task": "i2p",
+  "method": "original",
+  "targets": [
+    "nudity"
+  ],
+  "adapter": {
+    "kind": "original"
+  }
+}

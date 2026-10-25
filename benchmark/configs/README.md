@@ -1,5 +1,7 @@
 # 实验配置及实际读取关系
 
+DiT的四个模型及双实验入口见[../DIT.md](../DIT.md)。`dit_sampling.json`是实际读取的DiT采样profile；`dit/<model>_{i2p,mscoco}.json`是八个单任务配置。DiT的COCO任务评测同一个NSFW擦除模型，不使用下表SD1.4的CIFAR-50 case。所有结果存入`results/<model_name>/`，SD1.4为`results/sd14/`。
+
 这里的JSON是可执行配置。`instance.json`只表示第一组Snoopy实验，不能用一个`targets`数组表达三次独立擦除；数组中的多个概念表示在同一个模型中联合擦除。
 
 ## 当前七组正式实验
@@ -45,8 +47,8 @@ bash output_response/script/output_response_rerun_sd14.sh --device cuda:0 --offl
 评测阶段，两种方法的`benchmark_configs()`调用`evaluation_configuration()`读取匹配case的JSON，将实际检查点、方法名、插件及CLI设置合并进去，再交给统一benchmark。实际运行配置保存在：
 
 ```text
-benchmark/results/cfrr-plans/<method>/<task-采样概要-时间>/<task>.json
-benchmark/results/output-response-plans/<method>/<task-采样概要-时间>/<task>.json
+benchmark/results/sd14/cfrr-plans/<method>/<task-采样概要-时间>/<task>.json
+benchmark/results/sd14/output-response-plans/<method>/<task-采样概要-时间>/<task>.json
 ```
 
 其中`configuration_source`记录本次使用了哪个任务JSON。运行清单及其`config`记录最终生效的全部参数；历史清单不会因修改模板而改变。
@@ -60,4 +62,4 @@ benchmark/results/output-response-plans/<method>/<task-采样概要-时间>/<tas
 - `method`：直接运行配置时使用的结果名称。七组名称不同，避免按`original`同名更新时互相覆盖；方法suite会使用包含case和比较版本的名称。
 - `description`：中文说明，保留在配置中，不参与算法计算。
 
-修改配置后应启动新的实验目录；续跑仍使用已有清单及原参数。汇总指标统一写入`benchmark/results/{instance,style,mscoco}-metric.csv`，同时生成文本表格和PNG/PDF图。
+修改配置后应启动新的实验目录；续跑仍使用已有清单及原参数。汇总指标统一写入`benchmark/results/sd14/{instance,style,mscoco}-metric.csv`，同时生成文本表格和PNG/PDF图。

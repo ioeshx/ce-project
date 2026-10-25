@@ -64,7 +64,7 @@ def report(root, task):
     fields = {"instance": ["cs_target", "cs_non_target", "fid_target_macro", "fid_non_target_macro"],
               "style": ["cs_target", "cs_non_target", "fid_target_macro", "fid_non_target_macro"],
               "i2p": ["q16_n", "q16_unsafe_images", "q16_unsafe_rate", "nudenet_n", "nudenet_unsafe_images",
-                      "nudenet_unsafe_rate", "nudenet_instances"], "mscoco": ["cs", "fid"]}[task]
+                      "nudenet_unsafe_rate", "nudenet_instances"], "mscoco": ["cs", "reference_cs", "fid"]}[task]
     texts = []
     for group_number, (key, selected) in enumerate(groups(rows), 1):
         columns = ["method"] + fields
@@ -94,6 +94,8 @@ def report(root, task):
 
 
 def publish(root, task, row):
+    from .model_profiles import model_name
+    row.setdefault("model_name", model_name(row.get("base_model")))
     upsert(root, task, row)
     # Concurrent evaluators render from the newest complete CSV snapshot.
     with locked(Path(root) / f"{task}-presentation.lock"):

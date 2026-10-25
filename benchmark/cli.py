@@ -10,10 +10,14 @@ from .common import ROOT, TASKS, configuration, read_json
 def parser():
     p = argparse.ArgumentParser(prog="python -m benchmark", description="统一概念擦除采样、评测与结果展示")
     sub = p.add_subparsers(dest="command", required=True)
+    commands = {}
     for name in ("prepare", "sample", "evaluate", "run", "report", "plot"):
         q = sub.add_parser(name)
+        commands[name] = q
         q.add_argument("--config", type=Path, help="JSON/YAML；路径相对于当前工作目录")
         q.add_argument("--task", choices=TASKS)
+        from .model_profiles import MODEL_IDS
+        q.add_argument("--model", choices=tuple(MODEL_IDS), help="模型配置名；默认sd14或JSON中的model_name")
         q.add_argument("--output-dir", type=Path)
         if name in {"report", "plot"}:
             continue
@@ -24,12 +28,18 @@ def parser():
         q.add_argument("--batch-size", type=int)
         q.add_argument("--cpu-threads", type=int, default=4)
         q.add_argument("--offline", action="store_true")
+        q.add_argument("--dtype", choices=("float16", "float32", "bfloat16"))
+        q.add_argument("--steps", type=int)
+        q.add_argument("--height", type=int)
+        q.add_argument("--width", type=int)
+        q.add_argument("--guidance-scale", type=float)
+        q.add_argument("--cpu-offload", action="store_true", help="DiT模型CPU offload；降低显存需求")
         q.add_argument("--cache-dir", type=Path)
         q.add_argument("--original-dir", type=Path, help="原模型图片目录，默认benchmark/original")
         if name in {"prepare", "run"}:
             q.add_argument("--import-casu", type=Path)
         if name in {"prepare", "sample", "run"}:
-            q.add_argument("--adapter", choices=("original", "diffusers", "unet", "lora", "casu2", "plugin"))
+            q.add_argument("--adapter", choices=("original", "diffusers", "unet", "transformer", "lora", "casu2", "plugin"))
             q.add_argument("--checkpoint", help="UNet / LoRA / CASU检查点")
             q.add_argument("--model-path", help="完整Diffusers模型目录")
             q.add_argument("--factory", help="插件入口 module:function")
@@ -38,6 +48,11 @@ def parser():
             q.add_argument("--seeds", help="逗号分隔的instance/style种子")
         if name in {"sample", "run"}:
             q.add_argument("--mode", choices=("both", "reference", "image"), default=None)
+    q = sub.add_parser("dit", parents=[commands["run"]], add_help=False,
+                       help="用同一原模型/擦除方法依次运行I2P检测和MS-COCO 1K保留评测")
+    q.add_argument("--tasks", default="i2p,mscoco")
+    q.add_argument("--phase", choices=("prepare", "sample", "evaluate", "run"), default="run")
+    q.add_argument("--dry-run", action="store_true")
     q = sub.add_parser("download", help="独立准备指标权重；不生成实验分数")
     q.add_argument("--resource", choices=("q16", "clip", "fid", "nudenet"), required=True)
     q.add_argument("--destination", type=Path, default=ROOT / "weights/Q16/ViT-L-14/prompts.p")
@@ -51,7 +66,7 @@ def get_config(args, manifest=None):
     if getattr(args, "import_casu", None) and not task:
         directory = args.import_casu if args.import_casu.is_dir() else args.import_casu.parent
         task = read_json(directory / "dataset.json")["task"]
-    config = configuration(args.config, task, (manifest or {}).get("config"))
+    config = configuration(args.config, task, (manifest or {}).get("config"), model=getattr(args, "model", None))
     for field in ("output_dir", "cache_dir", "original_dir"):
         if getattr(args, field, None):
             config[field] = str(getattr(args, field).expanduser().resolve())
@@ -66,6 +81,12 @@ def get_config(args, manifest=None):
             config[group]["batch_size"] = args.batch_size
         if getattr(args, "offline", False):
             config[group]["local_files_only"] = True
+    for key in ("dtype", "steps", "height", "width", "guidance_scale"):
+        value = getattr(args, key, None)
+        if value is not None:
+            config["sampling"][key] = value
+    if getattr(args, "cpu_offload", False):
+        config["sampling"]["cpu_offload"] = True
     for key in ("limit_prompts", "max_records"):
         if getattr(args, key, None) is not None:
             config["dataset"][key] = getattr(args, key)
@@ -81,6 +102,10 @@ def main(argv=None):
     p = parser()
     args = p.parse_args(argv)
     try:
+        if args.command == "dit":
+            from .dit_experiments import run
+            run(args)
+            return 0
         if args.command == "download":
             if args.resource == "q16":
                 from .detectors import download_q16
@@ -131,14 +156,15 @@ def main(argv=None):
             # Sampling parameters and adapter belong to the prepared plan; only execution overrides are safe.
             if any(getattr(args, key, None) for key in ("adapter", "checkpoint", "model_path", "factory", "limit_prompts", "max_records", "seeds", "targets", "method")):
                 raise ValueError("With an existing manifest, change sampling/data/method via a new prepare command.")
-            scientific = lambda s: {k: v for k, v in s.items() if k not in {"device", "batch_size", "local_files_only"}}
+            scientific = lambda s: {k: v for k, v in s.items() if k not in {"device", "batch_size", "local_files_only", "cpu_offload"}}
             if (scientific(config["sampling"]) != scientific(manifest["config"]["sampling"])
                     or config["adapter"] != manifest["config"]["adapter"]
                     or config["dataset"] != manifest["config"]["dataset"]):
                 raise ValueError("Config changes a prepared sampling protocol. Prepare a new manifest first.")
             for group in ("sampling", "evaluation"):
-                for key in ("device", "batch_size", "local_files_only"):
-                    manifest["config"][group][key] = config[group][key]
+                for key in ("device", "batch_size", "local_files_only", "cpu_offload"):
+                    if key in config[group]:
+                        manifest["config"][group][key] = config[group][key]
         if not getattr(args, "import_casu", None):
             from .adapters import sample_manifest
             sample_manifest(manifest, args.mode or ("image" if config["task"] == "i2p" else "both"))

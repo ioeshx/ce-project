@@ -82,7 +82,7 @@ def clip_fid(manifest, opts, directory, cache_dir):
                     if legacy_path.is_file():
                         expected = {feature_fingerprint(paths)}
                         aliases = [Path(r.get(f"{field}_alias", r[field])) for r in rows]
-                        if all(alias.resolve() == path for alias, path in zip(aliases, paths)):
+                        if all(alias.resolve() == path.resolve() for alias, path in zip(aliases, paths)):
                             expected.add(feature_fingerprint(aliases))
                         try:
                             with np.load(legacy_path, allow_pickle=False) as saved:
@@ -154,7 +154,7 @@ def evaluate(path, config=None, method=None, targets=None):
         manifest["method"] = method
     if targets is not None:
         manifest["targets"] = targets
-    config = config or configuration(task=manifest["task"], base=manifest.get("config"))
+    config = configuration(task=manifest["task"], base=config or manifest.get("config"))
     opts = config["evaluation"]
     # Validate the entire requested image set, including references, before model loads.
     validate_manifest(manifest, check_images=True)
@@ -183,6 +183,7 @@ def evaluate(path, config=None, method=None, targets=None):
         updated = datetime.now(timezone.utc).isoformat(timespec="seconds")
         destination = unique_directory(method_dir / "evaluations", f"evaluation-{started}")
         row = {"method": manifest["method"], "task": task, "targets": json.dumps(manifest["targets"], ensure_ascii=False),
+               "model_name": config["model_name"],
                "base_model": manifest["base_model"], "n": len(data), "protocol_id": digest(protocol),
                "dataset_sha256": protocol["dataset_sha256"], "sampling": json.dumps(manifest["sampling"], sort_keys=True),
                "evaluator_version": __version__, "evaluation": json.dumps(evaluator, sort_keys=True),

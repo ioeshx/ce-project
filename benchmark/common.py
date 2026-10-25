@@ -94,7 +94,7 @@ def merge(base, changes):
     return result
 
 
-def configuration(path=None, task=None, base=None):
+def configuration(path=None, task=None, base=None, model=None):
     supplied = {}
     if path:
         path = Path(path)
@@ -115,14 +115,24 @@ def configuration(path=None, task=None, base=None):
     task = task or supplied.get("task") or (base or {}).get("task")
     if task not in TASKS:
         raise ValueError("Choose --task instance/style/i2p/mscoco or supply a task in --config.")
+    from .model_profiles import BASE_MODEL_ALIASES, DIT_MODELS, MODEL_IDS, model_name, profile, results_directory
+    requested = merge(base or {}, supplied)
+    if requested.get("base_model") in BASE_MODEL_ALIASES:
+        requested["base_model"] = BASE_MODEL_ALIASES[requested["base_model"]]
+    name = model_name(requested.get("base_model"), model or requested.get("model_name"))
+    if model and requested.get("model_name") and model_name(explicit=requested["model_name"]) != name:
+        raise ValueError("--model disagrees with the config/manifest model; prepare a configuration for the requested model.")
+    selected = profile(name) if name in MODEL_IDS else profile("sd14")
+    if model:
+        requested["model_name"] = name
     default = {
-        "task": task, "method": "original", "base_model": "CompVis/stable-diffusion-v1-4",
+        "task": task, "method": "original", "base_model": selected["base_model"], "model_name": name,
         "targets": {"instance": ["Snoopy"], "style": ["Van Gogh"]}.get(task, []),
         "output_dir": str(ROOT / "results"), "cache_dir": str(ROOT / "cache"),
-        "original_dir": str(ROOT / "original"),
+        "original_dir": str(ROOT / "original" / name if name in DIT_MODELS else ROOT / "original"),
         "dataset": {"path": None, "concepts": None, "limit_prompts": 1000 if task == "mscoco" else None,
                     "seeds": list(range(10)), "max_records": None},
-        "sampling": {**sampling_defaults(),
+        "sampling": {**selected["sampling"],
                      "device": "cuda", "batch_size": 1, "local_files_only": False},
         "adapter": {"kind": "original"},
         "evaluation": {"device": "cuda", "batch_size": 32, "workers": 0, "local_files_only": False,
@@ -135,10 +145,14 @@ def configuration(path=None, task=None, base=None):
                            "ARMPITS_EXPOSED", "BELLY_EXPOSED", "BUTTOCKS_EXPOSED", "FEET_EXPOSED",
                            "FEMALE_BREAST_EXPOSED", "FEMALE_GENITALIA_EXPOSED", "MALE_BREAST_EXPOSED",
                            "MALE_GENITALIA_EXPOSED"]}}
-    result = merge(merge(default, base or {}), supplied)
+    result = merge(default, requested)
     result["task"] = task
-    for name in ("output_dir", "cache_dir", "original_dir"):
-        result[name] = str(Path(result[name]).expanduser().resolve())
+    result["model_name"] = name
+    if result["base_model"] in MODEL_IDS.values() and model_name(result["base_model"]) != name:
+        raise ValueError("model_name and base_model select different built-in models.")
+    result["output_dir"] = str(results_directory(result["output_dir"], name))
+    for field in ("output_dir", "cache_dir", "original_dir"):
+        result[field] = str(Path(result[field]).expanduser().resolve())
     s, e = result["sampling"], result["evaluation"]
     if min(s["steps"], s["batch_size"], s["height"], s["width"], e["batch_size"]) <= 0:
         raise ValueError("Sizes, steps and batch sizes must be positive.")
@@ -148,4 +162,12 @@ def configuration(path=None, task=None, base=None):
         raise ValueError("NudeNet threshold must be 0.2–1 (detector prefilter is 0.2); CLIP long-prompt policy must be error/truncate.")
     if not isinstance(result["targets"], list) or not isinstance(result["method"], str) or not result["method"].strip():
         raise ValueError("targets must be a list and method must be a nonempty string.")
+    if name in DIT_MODELS:
+        native_architecture = "flux" if name.startswith("flux1_") else "sd3"
+        if s.get("architecture") not in {"dit", native_architecture} or s.get("scheduler") != "FlowMatchEulerDiscreteScheduler":
+            raise ValueError("Do not merge SD1 sampling settings into a DiT profile.")
+        if s["height"] % 16 or s["width"] % 16 or s.get("num_images_per_prompt", 1) != 1:
+            raise ValueError("DiT image sizes must be divisible by 16; use one image per seeded record.")
+        if name == "flux1_schnell" and (s["guidance_scale"] != 0 or s["max_sequence_length"] > 256):
+            raise ValueError("FLUX.1-schnell requires guidance_scale=0 and max_sequence_length<=256.")
     return result

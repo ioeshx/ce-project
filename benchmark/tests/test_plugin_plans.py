@@ -12,6 +12,21 @@ from benchmark.plugin_plans import plugin_plan
 
 
 class PluginPlanTests(unittest.TestCase):
+    def test_checkpoint_side_plans_do_not_redirect_benchmark_outputs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            checkpoint = root / "runs/case/checkpoint"
+            checkpoint.mkdir(parents=True)
+            (checkpoint / "weights.safetensors").write_bytes(b"plan identity fixture only")
+            cfg = configuration(task="mscoco", base={"output_dir": str(root / "results")})
+            cfg["adapter"] = {"kind": "plugin", "checkpoint": str(checkpoint)}
+            path, _ = plugin_plan(root / "runs/case", "plans", cfg, phase="prepare")
+            self.assertTrue(path.is_relative_to(root / "runs/case/plans"))
+            self.assertEqual(read_json(path)["output_dir"], str(root / "results/sd14"))
+
+    @unittest.skipUnless((ROOT.parent / "retention_repair/sample_mscoco.py").is_file() and
+                         (ROOT.parent / "output_response/sample_mscoco.py").is_file(),
+                         "Legacy method entry points are not in this workspace.")
     def test_coco_dispatchers_use_native_method_and_preserve_legacy_formats(self):
         import importlib.util
         from types import SimpleNamespace
@@ -67,6 +82,9 @@ class PluginPlanTests(unittest.TestCase):
                 plugin_plan(dry_root, "plans", cfg, phase="sample")
             self.assertFalse(dry_root.exists())
 
+    @unittest.skipUnless((ROOT.parent / "retention_repair/cfrr").is_dir() and
+                         (ROOT.parent / "output_response/response_erasure").is_dir(),
+                         "Legacy CFRR/OutputResponse source packages are not in this workspace.")
     def test_both_methods_instance_style_and_coco_use_shared_readable_protocol(self):
         import torch
         for project, package in (("retention_repair", "cfrr"), ("output_response", "response_erasure")):

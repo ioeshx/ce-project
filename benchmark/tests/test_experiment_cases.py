@@ -11,6 +11,9 @@ from benchmark.erasure_protocol import CIFAR50_TARGETS, evaluation_tasks, object
 
 
 class ExperimentCaseTests(unittest.TestCase):
+    @unittest.skipUnless((ROOT.parent / "retention_repair/cfrr").is_dir() and
+                         (ROOT.parent / "output_response/response_erasure").is_dir(),
+                         "Legacy CFRR/OutputResponse source packages are not in this workspace.")
     def test_two_suites_expand_six_concept_cases_and_one_coco_case(self):
         expected = ("instance_snoopy", "instance_snoopy_mickey", "instance_snoopy_mickey_spongebob",
                     "style_van_gogh", "style_monet", "style_picasso", "mscoco_cifar50")
@@ -49,6 +52,9 @@ class ExperimentCaseTests(unittest.TestCase):
                     self.assertEqual(tuple(row.tasks.split(",")), evaluation_tasks(CASE_TARGETS[case][0]))
                     self.assertEqual(row.mscoco_count, 1000)
 
+    @unittest.skipUnless((ROOT.parent / "retention_repair/cfrr").is_dir() and
+                         (ROOT.parent / "output_response/response_erasure").is_dir(),
+                         "Legacy CFRR/OutputResponse source packages are not in this workspace.")
     def test_cifar50_calibration_has_all_targets_and_no_coco1k_leakage(self):
         for project, package, module_name in (("retention_repair", "cfrr", "records"),
                                                ("output_response", "response_erasure", "data")):

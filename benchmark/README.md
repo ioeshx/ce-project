@@ -4,7 +4,9 @@
 CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复用说明见
 [项目采样规范](../SAMPLING.md)。显式覆盖必须保存实际协议；历史结果保持原样。
 
-在仓库根目录运行 `python -m benchmark --help`。评测独立于擦除算法，只需要图片与清单；采样器是可选模块。首版支持 SD1 的 instance、style、I2P、MS-COCO，不包括训练、对抗攻击或 DiT。
+在仓库根目录运行 `python -m benchmark --help`。评测独立于擦除算法，只需要图片与清单；采样器是可选模块。支持SD1的instance、style、I2P、MS-COCO，以及FLUX.1-dev/schnell、SD3 Medium、SD3.5 Medium的I2P和MS-COCO 1K。DiT模型配置、命令和方法接入见[DIT.md](DIT.md)。
+
+**结果已按模型分目录：**`benchmark/results/{sd14,flux1_dev,flux1_schnell,sd30_medium,sd35_medium}/`。旧SD1.4图片、清单、指标及图表归入`results/sd14/`；默认不指定`--model`时仍使用SD1.4。
 
 
 ## 路径与文件命名（2026-10-23起）
@@ -14,17 +16,17 @@ CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复�
 | 内容 | 规则 |
 |---|---|
 | 原模型图片 | `benchmark/original/<实验>/<实验-内容-数量-采样概要-开始时间>/<sample_id>.png` |
-| 方法生成图 | `benchmark/results/<实验>/<方法>/images/<实验-内容-数量-采样概要-开始时间>/<sample_id>.png` |
-| 方法清单 | `benchmark/results/<实验>/<方法>/manifest.json`，自定义入口也可指定清单位置 |
-| 每次评测明细 | `benchmark/results/<实验>/<方法>/evaluations/evaluation-<开始时间>/` |
+| 方法生成图 | `benchmark/results/<model_name>/<实验>/<方法>/images/<实验-内容-数量-采样概要-开始时间>/<sample_id>.png` |
+| 方法清单 | `benchmark/results/<model_name>/<实验>/<方法>/manifest.json`，自定义入口也可指定清单位置 |
+| 每次评测明细 | `benchmark/results/<model_name>/<实验>/<方法>/evaluations/evaluation-<开始时间>/` |
 | FID特征缓存 | `benchmark/cache/fid/<实验>/<original或方法>/<概念-用途-数量-采样概要-时间>/<概念>-<用途>.npz` |
-| 汇总结果 | `benchmark/results/<实验>-metric.csv` 和同名 `.txt` |
-| 图表 | `benchmark/results/plots/<实验>/<实验-目标-采样概要-n数量-group-序号>.png/.pdf` |
-| 方法实验配置 | `benchmark/results/cfrr-plans/<方法>/` 或 `output-response-plans/<方法>/` |
+| 汇总结果 | `benchmark/results/<model_name>/<实验>-metric.csv` 和同名 `.txt` |
+| 图表 | `benchmark/results/<model_name>/plots/<实验>/<实验-目标-采样概要-n数量-group-序号>.png/.pdf` |
+| 方法实验配置 | `benchmark/results/<model_name>/plans/<方法>/`；历史CFRR/OutputResponse计划也随SD1.4结果迁移 |
 
 例如 `original/mscoco/mscoco-1000-captions-dpm20-512x512-float16-20261022-164247/`。`dpm20`表示DPM 20步；完整CFG、scheduler config、随机噪声定义、模型和逐条prompt/seed均保存在相邻 `run.json`。instance概念超过3个时用 `5-concepts` 等数量缩写，完整概念名称保存在JSON中。图片文件仍使用稳定的 `mscoco-000000-000.png` 等样本ID。
 
-路径中的方法名会保留文字，空白及路径分隔符转换成连字符；同名清洗碰撞、同秒创建碰撞使用 `-run-2`、`-run-3` 等顺序编号。原图和方法图是否复用始终比较 `run.json` 中的完整数据/采样/方法身份，不依赖目录名或时间，因此不同采样参数不会误用同一批图片。`--original-dir`可指定原模型根目录，默认是 `benchmark/original`；`cache`只放派生特征等可重建缓存。
+路径中的方法名会保留文字，空白及路径分隔符转换成连字符；同名清洗碰撞、同秒创建碰撞使用 `-run-2`、`-run-3` 等顺序编号。原图和方法图是否复用始终比较 `run.json` 中的完整数据/采样/方法身份，不依赖目录名或时间，因此不同采样参数不会误用同一批图片。`--original-dir`可指定原模型根目录，SD1.4默认是 `benchmark/original`，DiT默认是 `benchmark/original/<model_name>`；`cache`只放派生特征等可重建缓存。
 
 旧目录迁移记录及原始清单备份在 `benchmark/migrations/readable-layout-<时间>/`；记录内保存旧路径、新路径和清理项。迁移不重新采样、不改历史协议、不删除检查点，已有完整/未完成的正式图集均保留。`benchmark/results/smoke`、测试专用原图及测试特征已清理；后续单元测试使用临时目录。
 
@@ -159,7 +161,7 @@ python -m benchmark run --task instance --method CASU-2 \
 
 CASU适配器直接加载SD1注意力权重及active_groups，校验基础模型，不依赖CASU主程序或DiT模块。
 
-CASU-2 的 MS-COCO 1K 通用生成能力实验使用独立采样入口，支持其 SD1、SDXL、SD3、FLUX.2-klein 检查点。它读取 `casu-2/data/mscoco-1k.csv`，按行号使用 seed 0–999，生成同提示 / seed 的原模型和编辑模型图片，再调用本 benchmark 的 `evaluate`，指标仍保存到 `benchmark/results/mscoco-metric.csv` 及对应明细目录：
+CASU-2 的 MS-COCO 1K 通用生成能力实验使用独立采样入口，支持其 SD1、SDXL、SD3、FLUX.2-klein 检查点。它读取 `casu-2/data/mscoco-1k.csv`，按行号使用 seed 0–999，生成同提示 / seed 的原模型和编辑模型图片，再调用本 benchmark 的 `evaluate`，指标仍保存到 `benchmark/results/<model_name>/mscoco-metric.csv` 及对应明细目录：
 
 ```bash
 bash casu-2/script/sample_mscoco.sh \
@@ -214,7 +216,7 @@ class Adapter:
 
 ## 输出、覆盖规则和图表
 
-默认 `benchmark/results/` 下生成：
+默认 `benchmark/results/<model_name>/` 下生成，SD1.4使用`sd14`：
 
 ```text
 instance-metric.csv / .txt
@@ -238,6 +240,9 @@ plots/<task>/<实验-目标-采样设置-组序号>.png / .pdf
 # 仅依赖CSV；删除图后也能独立重建，不加载指标权重
 python -m benchmark report --task instance
 python -m benchmark plot --task instance
+# 选择DiT模型的已有指标
+python -m benchmark report --model flux1_dev --task i2p
+python -m benchmark plot --model sd35_medium --task mscoco
 # 自定义结果目录
 python -m benchmark plot --task i2p --output-dir /path/to/results
 ```

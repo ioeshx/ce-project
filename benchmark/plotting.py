@@ -88,7 +88,7 @@ def plot(root, task):
             bars(axes[1], keys, [k.split(".")[1] for k in keys], "Detection instances (boxes)")
             axes[1].set_title("NudeNet accepted detections")
         else:
-            bars(axes[0], ["cs"], ["CS"], "CLIP Score (100 x cosine)")
+            bars(axes[0], ["cs", "reference_cs"], ["Method", "Original model"], "CLIP Score (100 x cosine)")
             bars(axes[1], ["fid"], ["FID"], "FID (lower is better)")
             axes[0].set_title("Prompt alignment")
             axes[1].set_title("FID vs original-model generations")

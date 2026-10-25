@@ -1,11 +1,13 @@
 # Install in the existing GPU environment; pick a torch build matching your CUDA.
 torch>=2.2
 torchvision>=0.17
-diffusers>=0.30
+diffusers>=0.35
 transformers>=4.44,<6
 accelerate>=0.30
 peft>=0.13
 safetensors>=0.4
+sentencepiece>=0.2
+protobuf>=4
 numpy>=1.26
 scipy>=1.11
 Pillow>=10

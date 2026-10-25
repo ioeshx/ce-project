@@ -1,0 +1,15 @@
+{
+  "description": "同一NSFW擦除模型在MS-COCO前1000条caption上的保留评测；不再擦除CIFAR-50。",
+  "model_name": "flux1_schnell",
+  "task": "mscoco",
+  "method": "original",
+  "targets": [
+    "nudity"
+  ],
+  "adapter": {
+    "kind": "original"
+  },
+  "dataset": {
+    "limit_prompts": 1000
+  }
+}

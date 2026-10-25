@@ -129,6 +129,10 @@ def create_adapter(config):
         if not callable(getattr(adapter, "generate", None)) or not callable(getattr(adapter, "close", None)):
             raise ValueError("Plugin factory must return generate(records, sampling_config) and close().")
         return adapter
+    from .model_profiles import DIT_MODELS
+    if config.get("model_name") in DIT_MODELS:
+        from .dit_adapter import DiTAdapter
+        return DiTAdapter(config)
     if spec["kind"] in {"original", "diffusers", "unet", "lora", "casu2"}:
         return DiffusersAdapter(config)
     raise ValueError(f"Unknown sampling adapter: {spec['kind']}")
@@ -165,7 +169,13 @@ def sample_manifest(manifest, mode="both"):
         # Serializes shared original fills; lock released even if generation fails.
         lock_root = Path(manifest["records"][0][field]).parent
         with locked(lock_root / ".sampling.lock"):
-            missing = [r for r in manifest["records"] if not valid_image(r[field])]
+            def complete(row):
+                if not valid_image(row[field]):
+                    return False
+                from PIL import Image
+                with Image.open(row[field]) as im:
+                    return im.size == (config["sampling"]["width"], config["sampling"]["height"])
+            missing = [r for r in manifest["records"] if not complete(r)]
             print(f"[sample:{field}] {len(missing)} missing/corrupt of {len(manifest['records'])}", flush=True)
             if not missing:
                 continue

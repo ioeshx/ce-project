@@ -16,6 +16,15 @@ def plugin_plan(result_root, namespace, config, *, phase, subset=None, dry_run=F
     """
     import copy
     config = copy.deepcopy(config)
+    from .common import configuration
+    storage_root = Path(result_root).expanduser().resolve()
+    requested_output = Path(config["output_dir"]).expanduser().resolve()
+    config = configuration(task=config["task"], base=config)
+    scoped_output = Path(config["output_dir"])
+    # Some method runners keep plans beside their checkpoints. Their plan
+    # storage directory must never replace the benchmark image/metric root.
+    result_root = (scoped_output if storage_root == requested_output or
+                   storage_root / config["model_name"] == scoped_output else storage_root)
     task, method = config["task"], config["method"]
     checkpoint = Path(config["adapter"]["checkpoint"])
     identities = {p.name: file_digest(p) for p in sorted(checkpoint.iterdir()) if p.is_file()}
