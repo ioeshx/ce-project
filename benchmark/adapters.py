@@ -6,6 +6,7 @@ import importlib
 import os
 from pathlib import Path
 import tempfile
+import time
 from typing import Protocol
 
 from .common import locked, read_json, write_json
@@ -153,7 +154,11 @@ def atomic_image(image, path):
             os.unlink(tmp)
 
 
-def sample_manifest(manifest, mode="both"):
+def sample_manifest(manifest, mode="both", *, manifest_path=None):
+    from .sampling_time import cuda_devices, local_now, publish, synchronize
+    started_at, started = local_now(), time.perf_counter()
+    if mode not in {"both", "reference", "image"}:
+        raise ValueError("Sampling mode must be both, reference or image.")
     if manifest.get("dataset", {}).get("imported_from"):
         raise ValueError("Imported CASU sampling is immutable. Reuse the images or prepare a new protocol.")
     if not manifest.get("config") or manifest.get("adapter_identity", {}).get("kind") == "existing":
@@ -164,40 +169,67 @@ def sample_manifest(manifest, mode="both"):
         raise ValueError("Adapter weights/source changed after preparation; prepare a new manifest.")
     if config["adapter"]["kind"] == "existing":
         raise ValueError("Existing-image adapter does not generate images.")
+    validation_seconds = time.perf_counter() - started
     modes = ["reference", "image"] if mode == "both" else [mode]
+    phases = []
     for field in modes:
         # Serializes shared original fills; lock released even if generation fails.
         lock_root = Path(manifest["records"][0][field]).parent
+        phase = {"field": field, "image_dir": str(lock_root), "generated_images": 0, "reused_images": 0,
+                 **dict.fromkeys(("model_load_seconds", "generation_seconds", "image_save_seconds", "cleanup_seconds",
+                                  "lock_wait_seconds", "image_check_seconds"), 0.0)}
+        phases.append(phase)
+        waiting = time.perf_counter()
         with locked(lock_root / ".sampling.lock"):
+            phase["lock_wait_seconds"] = time.perf_counter() - waiting
             def complete(row):
                 if not valid_image(row[field]):
                     return False
                 from PIL import Image
                 with Image.open(row[field]) as im:
                     return im.size == (config["sampling"]["width"], config["sampling"]["height"])
+            checking = time.perf_counter()
             missing = [r for r in manifest["records"] if not complete(r)]
+            phase["image_check_seconds"] = time.perf_counter() - checking
+            phase["reused_images"] = len(manifest["records"]) - len(missing)
             print(f"[sample:{field}] {len(missing)} missing/corrupt of {len(manifest['records'])}", flush=True)
             if not missing:
                 continue
             cfg = dict(config)
             if field == "reference":
                 cfg["adapter"] = {"kind": "original"}
+            loading = time.perf_counter()
             adapter = create_adapter(cfg)
             try:
+                devices = cuda_devices(adapter, cfg["sampling"])
+                synchronize(devices)
+                phase["cuda_devices"] = devices
+                phase["model_load_seconds"] = time.perf_counter() - loading
                 if getattr(adapter, "runtime_info", None):
                     write_json(lock_root / "sampling-runtime.json", adapter.runtime_info)
                 size = cfg["sampling"]["batch_size"]
                 for start in range(0, len(missing), size):
                     batch = missing[start:start + size]
+                    synchronize(devices)
+                    generating = time.perf_counter()
                     images = list(adapter.generate(batch, cfg["sampling"]))
+                    synchronize(devices)
+                    phase["generation_seconds"] += time.perf_counter() - generating
                     if len(images) != len(batch):
                         raise ValueError("Adapter must return exactly one image per record, in order.")
+                    saving = time.perf_counter()
                     for row, image in zip(batch, images):
                         if image.size != (cfg["sampling"]["width"], cfg["sampling"]["height"]):
                             raise ValueError(f"Adapter returned incorrect image dimensions for {row['sample_id']}.")
                         atomic_image(image, row[field])
+                        phase["generated_images"] += 1
+                    phase["image_save_seconds"] += time.perf_counter() - saving
                     print(f"[sample:{field}] {min(start + size, len(missing))}/{len(missing)}", flush=True)
             finally:
+                cleaning = time.perf_counter()
                 adapter.close()
                 del adapter
                 release_memory()
+                phase["cleanup_seconds"] = time.perf_counter() - cleaning
+    return publish(manifest, mode, started_at, time.perf_counter() - started, phases,
+                   validation_seconds, manifest_path)

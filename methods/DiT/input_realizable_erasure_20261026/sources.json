@@ -1,0 +1,315 @@
+{
+  "created_date": "2026-10-26",
+  "timezone": "Asia/Shanghai",
+  "scope": "本轮独立方法构想；使用当前需求与论文材料，不使用其他对话结论。",
+  "proposal_status": "unvalidated_research_proposal",
+  "model_experiments_run": false,
+  "local_catalogues_used_for_discovery_only": [
+    "papers/dit_primary_expanded_20261024/results.csv",
+    "papers/dit_primary_accepted_20261024/results.csv",
+    "papers/dit_transfer_additions_20261025/results.csv",
+    "papers/pub/experiment_audit/manifest.json",
+    "papers/pub/experiment_audit/own_methods_dit_training_free.csv",
+    "papers/pub/experiment_audit/recent_dit_training_free_intersection.csv"
+  ],
+  "notes": [
+    "The short files under papers/metadata contain only opening pages for the two key papers; full sources were used for method details.",
+    "Source paths and hashes identify the exact local artifacts read; publication status was not the objective of this round.",
+    "Novelty checks are bounded and incomplete; no first-method or exhaustive novelty claim is made.",
+    "Latency figures quoted in the literature note are from DVE Table 6, not new measurements."
+  ],
+  "sources": [
+    {
+      "id": "P49",
+      "title": "Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers",
+      "primary_url": "https://arxiv.org/html/2608.12829v1",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_ACCEPTED_ACM_MM_2026_2608.12829_Semantic_Steering_for_Controllable_Generation_Tuning_Free_Concept_Erasure_in_Multimodal_Diffusion_Transformers.pdf",
+          "bytes": 3882685,
+          "sha256": "0166da6cc32ccc6da09ec1e537cbc1bda7edb30d9170ce3e75ec6e3d854809b4"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "3.2",
+        "3.3",
+        "4.3"
+      ],
+      "role": "重点：内部文本表征方向与注入位置；核对全文",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "DVE",
+      "title": "Differential Vector Erasure: Unified Training-Free Concept Erasure for Flow Matching Models",
+      "primary_url": "https://arxiv.org/html/2602.01089v1",
+      "version_used": "v1",
+      "local_artifacts": [
+        {
+          "path": "papers/downloads/2026_ARXIV_2602.01089_Differential_Vector_Erasure_Unified_Training_Free_Concept_Erasure_for_Flow_Matching_Models.pdf",
+          "bytes": 9569423,
+          "sha256": "2f693bb246ba2649810e2c2772dbfc0688df40fe93d69b65fab5fe44c09c0b2e"
+        },
+        {
+          "path": "papers/dit_primary_expanded_20261024/text/2602.01089.txt",
+          "bytes": 61637,
+          "sha256": "f8d7ead53758ffa22b01772f9f9f23d522fc8bc73cb938d35fc0aaf1a5959f95"
+        }
+      ],
+      "evidence_scope": "local_primary_full_text_and_online_primary_cross_check",
+      "sections_used": [
+        "4.1",
+        "4.2",
+        "4.3",
+        "5.1",
+        "5.4 Table 6",
+        "Appendix A.1",
+        "Appendix A.2"
+      ],
+      "role": "重点：输出差分速度、选择性纠正、缓存/早期变体与假设边界",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P03",
+      "title": "Closed-Form Concept Erasure via Double Projections",
+      "primary_url": "https://arxiv.org/abs/2604.10032",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_PUBLISHED_CVPR_2026_2604.10032_Closed_Form_Concept_Erasure_via_Double_Projections.pdf",
+          "bytes": 608193,
+          "sha256": "42df2c94786df2b3ba96596adfcb33c5a62cc7d2bd3ad7a95ecf631f05c9345c"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/03.reading.txt",
+          "bytes": 54666,
+          "sha256": "1e34f2afff82e5149d0e525e68d5a44ae67e19a3274bcc1fc4855bb48e33e150"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "4.1",
+        "4.2",
+        "4.3"
+      ],
+      "role": "近邻：解析权重/embedding 编辑",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P06",
+      "title": "GrOCE : Graph-Guided Online Concept Erasure for Text-to-Image Diffusion Models",
+      "primary_url": "https://arxiv.org/abs/2511.12968",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_PUBLISHED_CVPR_2026_2511.12968_GrOCE_Graph_Guided_Online_Concept_Erasure_for_Text_to_Image_Diffusion_Models.pdf",
+          "bytes": 7994422,
+          "sha256": "b90e696db5433f33ca37039183ba188896f2685647af3ac273ad8de6db471162"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/06.reading.txt",
+          "bytes": 46718,
+          "sha256": "eba3d8ef01ecadf1aaa7ed137f2bc0aeefef4c21e6b701368bf9afcbd628fb11"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "4.1",
+        "4.2",
+        "4.3"
+      ],
+      "role": "近邻：文本图与选择性抑制",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P09",
+      "title": "Prototype-Guided Concept Erasure in Diffusion Models",
+      "primary_url": "https://arxiv.org/abs/2603.08271",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_PUBLISHED_CVPR_2026_2603.08271_Prototype_Guided_Concept_Erasure_in_Diffusion_Models.pdf",
+          "bytes": 1521469,
+          "sha256": "e6752783da65980a8f5d817b71e5288b33dabc049c76ebb52306b0ded7d2c0e2"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/09.reading.txt",
+          "bytes": 47551,
+          "sha256": "cf9f02dfc495f8fd970512ae9523c862b95c7656e1c939ff2ce829e52a254c56"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "3.2",
+        "3.3",
+        "Algorithm 1"
+      ],
+      "role": "近邻：图像与文本 prototype，包含学习准备",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P24",
+      "title": "CASteer: Cross-Attention Steering for Controllable Concept Erasure",
+      "primary_url": null,
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_PUBLISHED_ICLR_2026_CASteer_Cross_Attention_Steering_for_Controllable_Concept_Erasure.pdf",
+          "bytes": 8294072,
+          "sha256": "d4c2f0355e0eb8ec16c947f160f9e5f0f0b991964f2f4cc3f985a94105418ba0"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/24.reading.txt",
+          "bytes": 50676,
+          "sha256": "9c46c3edd99bff741b788237a4b85b11e5fe3c8ff10dadc5a4af4500f525d525"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "3.2",
+        "3.3",
+        "3.4"
+      ],
+      "role": "近邻：成对激活 steering 与跨步复用",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P28",
+      "title": "Localized Concept Erasure in Text-to-Image Diffusion Models via High-Level Representation Misdirection",
+      "primary_url": "https://arxiv.org/abs/2602.19631",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_PUBLISHED_ICLR_2026_2602.19631_Localized_Concept_Erasure_in_Text_to_Image_Diffusion_Models_via_High_Level_Representation_Misdirection.pdf",
+          "bytes": 46573274,
+          "sha256": "86bd88afa89e57d647d7bb6ee9c033fbcdc15f76f7092b3cd4d99010ebd340eb"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/28.reading.txt",
+          "bytes": 111407,
+          "sha256": "301f76caf9c3ea68b1636aadda31d75564f7ad23f6a436eef2110e3905bd34d1"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "3",
+        "Figure 1"
+      ],
+      "role": "近邻：训练文本编码器早期层，监督高层输出",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P33",
+      "title": "Concept Removal Guidance: Evidence-Calibrated Negative Guidance for Safe Diffusion Sampling",
+      "primary_url": "https://arxiv.org/abs/2606.29801",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_PUBLISHED_ICML_2026_2606.29801_Concept_Removal_Guidance_Evidence_Calibrated_Negative_Guidance_for_Safe_Diffusion_Sampling.pdf",
+          "bytes": 18641979,
+          "sha256": "5c527e204bd4259d96869d90cc83999f392dc4caeb04d2763b7c3600aa5b64b9"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/33.reading.txt",
+          "bytes": 86249,
+          "sha256": "449ea147bcffe530a18d1909c4c5248812244b750461911c9f0d3c3373861453"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "3.1",
+        "3.2"
+      ],
+      "role": "近邻：生成动态中的概念证据与负引导",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "P48",
+      "title": "Erase but Preserve: Controllable Removal of Copyrighted Animation Characters via Optimized Semantic Anchors",
+      "primary_url": "https://arxiv.org/abs/2608.12806",
+      "local_artifacts": [
+        {
+          "path": "papers/pub/2026_ACCEPTED_ACM_MM_2026_2608.12806_Erase_but_Preserve_Controllable_Removal_of_Copyrighted_Animation_Characters_via_Optimized_Semantic_Anchors.pdf",
+          "bytes": 3648895,
+          "sha256": "a8a4fd530f0adb1b030f45b39534c2a26b6fe3d70c6e0e98ed5a9469d238f4d3"
+        },
+        {
+          "path": "papers/pub/experiment_audit/text/48.reading.txt",
+          "bytes": 51884,
+          "sha256": "f8adeef00c4f1f729f27a110f96a3aecb92b7b3a79c8982906c0f53a72182b92"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "3.1",
+        "3.2",
+        "3.3"
+      ],
+      "role": "近邻：可学习 anchor 与输入表示替换",
+      "publication_status": "not_reaudited_this_round"
+    },
+    {
+      "id": "SAFREE",
+      "title": "SAFREE: Training-Free and Adaptive Guard for Safe Text-to-Image And Video Generation",
+      "primary_url": "https://arxiv.org/abs/2410.12761",
+      "additional_primary_url": "https://proceedings.iclr.cc/paper_files/paper/2025/file/8de5384f522efff26884559599c09312-Paper-Conference.pdf",
+      "evidence_scope": "primary_abstract_and_readable_primary_excerpt",
+      "role": "近邻：输入子空间过滤、自验证和采样干预"
+    },
+    {
+      "id": "STG",
+      "title": "Training-Free Safe Text Embedding Guidance for Text-to-Image Diffusion Models",
+      "primary_url": "https://arxiv.org/abs/2510.24012",
+      "local_artifacts": [
+        {
+          "path": "papers/inference_no_projection/pdfs/2025_STG.pdf",
+          "bytes": 4957378,
+          "sha256": "83cf99dd05def3dba4f712e5f9f65bfe32191778ff563671839208eabd1a79df"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "sections_used": [
+        "4.3",
+        "Table 1"
+      ],
+      "role": "近邻：用图像安全函数指导文本条件修改；与无外部安全函数的流程区分"
+    },
+    {
+      "id": "SHIFT",
+      "title": "SHIFT: Steering Hidden Intermediates in Flow Transformers",
+      "primary_url": "https://arxiv.org/abs/2604.09213",
+      "local_artifacts": [
+        {
+          "path": "papers/dit_primary_expanded_20261024/text/2604.09213.txt",
+          "bytes": 63941,
+          "sha256": "1ebb8eeb25ebe3877afdf42852f861b5821880ca15ffe8c2e230f9542b6a7ea2"
+        }
+      ],
+      "evidence_scope": "local_primary_method_sections",
+      "role": "近邻：pooled 原生条件和 DiT 激活 steering；区分不同分支与学习准备"
+    },
+    {
+      "id": "PULLBACK",
+      "title": "Controllable Diverse Sampling through Pullback Directions",
+      "primary_url": "https://arxiv.org/abs/2610.14294",
+      "evidence_scope": "primary_abstract_only",
+      "full_text_novelty_comparison": "pending",
+      "role": "补充创新性边界：条件到图像的局部敏感性已有研究，任务为多样性"
+    },
+    {
+      "id": "ASFCE",
+      "title": "ASFCE: Adaptive Semantic Field for Training-Free Concept Erasure",
+      "primary_url": "https://openreview.net/pdf?id=2T1rIKmssO",
+      "evidence_scope": "primary_search_excerpt_of_abstract_and_first_page",
+      "access_limitation": "Direct full-text opening returned an OpenReview browser verification page.",
+      "full_text_novelty_comparison": "pending",
+      "role": "补充待核对近邻；不据此断言完整算法、DiT 实验或发表状态"
+    },
+    {
+      "id": "ZIMAGE",
+      "title": "Z-Image: An Efficient Image Generation Foundation Model with Single-Stream Diffusion Transformer",
+      "primary_url": "https://arxiv.org/html/2511.22699v5",
+      "additional_primary_url": "https://github.com/Tongyi-MAI/Z-Image",
+      "evidence_scope": "primary_architecture_and_training_sections_plus_author_repository",
+      "sections_used": [
+        "architecture",
+        "4.3 Pre-training"
+      ],
+      "role": "验证候选：单流结构与 flow matching 训练；未运行模型"
+    }
+  ]
+}

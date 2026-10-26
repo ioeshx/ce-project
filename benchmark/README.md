@@ -21,6 +21,7 @@ CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复�
 | 每次评测明细 | `benchmark/results/<model_name>/<实验>/<方法>/evaluations/evaluation-<开始时间>/` |
 | FID特征缓存 | `benchmark/cache/fid/<实验>/<original或方法>/<概念-用途-数量-采样概要-时间>/<概念>-<用途>.npz` |
 | 汇总结果 | `benchmark/results/<model_name>/<实验>-metric.csv` 和同名 `.txt` |
+| 采样耗时 | `benchmark/results/<model_name>/<实验>-sampling-time.csv` 和同名 `.txt` |
 | 图表 | `benchmark/results/<model_name>/plots/<实验>/<实验-目标-采样概要-n数量-group-序号>.png/.pdf` |
 | 方法实验配置 | `benchmark/results/<model_name>/plans/<方法>/`；历史CFRR/OutputResponse计划也随SD1.4结果迁移 |
 
@@ -29,6 +30,29 @@ CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复�
 路径中的方法名会保留文字，空白及路径分隔符转换成连字符；同名清洗碰撞、同秒创建碰撞使用 `-run-2`、`-run-3` 等顺序编号。原图和方法图是否复用始终比较 `run.json` 中的完整数据/采样/方法身份，不依赖目录名或时间，因此不同采样参数不会误用同一批图片。`--original-dir`可指定原模型根目录，SD1.4默认是 `benchmark/original`，DiT默认是 `benchmark/original/<model_name>`；`cache`只放派生特征等可重建缓存。
 
 旧目录迁移记录及原始清单备份在 `benchmark/migrations/readable-layout-<时间>/`；记录内保存旧路径、新路径和清理项。迁移不重新采样、不改历史协议、不删除检查点，已有完整/未完成的正式图集均保留。`benchmark/results/smoke`、测试专用原图及测试特征已清理；后续单元测试使用临时目录。
+
+## 采样耗时
+
+所有经过统一采样入口的SD1.4、FLUX、SD3及推理插件都会自动计时，原有`sample`、`run`、`dit`命令无需增加参数。每个指定实验的采样完成后，立即打印耗时表，并保存：
+
+- `results/<model_name>/<task>-sampling-time.csv`及同名`.txt`：每个方法保留最近一次成功完成的采样调用，其他方法保留。
+- `results/<model_name>/<task>/<method>/sampling-time.json`：最近一次调用的完整记录。
+- `results/<model_name>/<task>/<method>/samplings/sampling-<开始时间>/timing.json`：每次调用的历史记录，同秒重复使用可读序号。
+
+| 字段 | 含义 |
+|---|---|
+| `total_seconds` | 本次采样入口的总墙钟时间，包括权重身份检查、缓存检查、等待采样锁、模型加载、生成、写图和模型释放；不包括prepare和指标计算 |
+| `model_load_seconds` | 加载原模型或方法适配器的时间 |
+| `generation_seconds` | 实际`generate`耗时，包含文本编码、去噪、VAE解码及方法额外推理；不含加载模型和PNG写入 |
+| `image_save_seconds` | 图片尺寸校验、PNG写入和可读性检查耗时 |
+| `generated_images` / `reused_images` | 本次实际生成与复用的图片数 |
+| `seconds_per_image` / `images_per_second` | 按本次实际生成张数计算的生成速度，不包含模型加载和写图 |
+
+`reference_*`与`image_*`列分别记录原模型参考图和方法图的张数、加载及生成时间，JSON中的`phases`保留完整分段数据。`mode=both`会统计两套图片路径；原模型图片别名命中刚生成的参考图时只计复用，不重复生成或重复计算生成耗时。
+
+生成时间使用单调时钟，测量前后同步实际使用的CUDA设备，包括FLUX按层切分涉及的两张卡。插件公开`pipe`时自动发现设备；若使用隐藏的额外GPU，可提供`sampling_devices=["cuda:0", "cuda:1"]`供计时同步。
+
+断点续跑只记录本次补图所用时间，历史调用保留在`samplings/`中。全部命中缓存时，最新记录标记为`cached`、新生成张数为0、平均生成耗时显示N/A；此前真正采样的记录仍可查看。生成失败不会覆盖最近的成功记录。耗时从新启动的采样进程开始记录，历史运行不根据图片修改时间估算。
 
 ## 数据与协议
 

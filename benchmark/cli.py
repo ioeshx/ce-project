@@ -178,7 +178,7 @@ def main(argv=None):
                         manifest["config"][group][key] = config[group][key]
         if not getattr(args, "import_casu", None):
             from .adapters import sample_manifest
-            sample_manifest(manifest, args.mode or ("image" if config["task"] == "i2p" else "both"))
+            sample_manifest(manifest, args.mode or ("image" if config["task"] == "i2p" else "both"), manifest_path=path)
         if args.command == "run":
             from .evaluate import evaluate
             evaluate(path, config)

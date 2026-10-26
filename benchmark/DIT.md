@@ -143,6 +143,8 @@ benchmark/results/
 
 同一模型、同一实验中，每个method仅保留最新一行；成功重算替换本方法行，其他方法与模型不受影响。逐图明细按时间保留。计算完成后自动打印/保存文本表格，并从CSV绘制PNG/PDF。COCO的CS面板同时显示方法和原模型的分数。
 
+采样完成后还会自动打印计时表，保存到本模型目录的`i2p-sampling-time.csv/.txt`、`mscoco-sampling-time.csv/.txt`。总耗时、模型加载、纯生成、写图、实际生成/复用张数分别记录；纯生成按实际使用的GPU同步计时。完整分段记录位于`<task>/<method>/sampling-time.json`及`<task>/<method>/samplings/sampling-<开始时间>/timing.json`。续跑只计本次补图，全部命中缓存时平均生成耗时为N/A；此前采样记录仍保留。详细字段见[README采样耗时](README.md#采样耗时)。
+
 ```bash
 python -m benchmark report --model flux1_dev --task i2p
 python -m benchmark plot --model flux1_dev --task mscoco
