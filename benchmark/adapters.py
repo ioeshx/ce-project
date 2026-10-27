@@ -174,7 +174,9 @@ def sample_manifest(manifest, mode="both", *, manifest_path=None):
     phases = []
     for field in modes:
         # Serializes shared original fills; lock released even if generation fails.
-        lock_root = Path(manifest["records"][0][field]).parent
+        original_alias = field == "image" and config["adapter"]["kind"] == "original"
+        first = manifest["records"][0]
+        lock_root = Path(first["reference"] if original_alias else first[field]).resolve().parent
         phase = {"field": field, "image_dir": str(lock_root), "generated_images": 0, "reused_images": 0,
                  **dict.fromkeys(("model_load_seconds", "generation_seconds", "image_save_seconds", "cleanup_seconds",
                                   "lock_wait_seconds", "image_check_seconds"), 0.0)}
@@ -221,7 +223,8 @@ def sample_manifest(manifest, mode="both", *, manifest_path=None):
                     for row, image in zip(batch, images):
                         if image.size != (cfg["sampling"]["width"], cfg["sampling"]["height"]):
                             raise ValueError(f"Adapter returned incorrect image dimensions for {row['sample_id']}.")
-                        atomic_image(image, row[field])
+                        destination = Path(row["reference"]).resolve() if original_alias and Path(row[field]).is_symlink() else row[field]
+                        atomic_image(image, destination)
                         phase["generated_images"] += 1
                     phase["image_save_seconds"] += time.perf_counter() - saving
                     print(f"[sample:{field}] {min(start + size, len(missing))}/{len(missing)}", flush=True)

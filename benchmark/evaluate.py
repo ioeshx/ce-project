@@ -80,10 +80,11 @@ def clip_fid(manifest, opts, directory, cache_dir):
                 if legacy and not opts["refresh_cache"]:
                     legacy_path = Path(legacy)
                     if legacy_path.is_file():
-                        expected = {feature_fingerprint(paths)}
+                        expected = {feature_fingerprint(paths), feature_fingerprint(paths, portable=False)}
                         aliases = [Path(r.get(f"{field}_alias", r[field])) for r in rows]
                         if all(alias.resolve() == path.resolve() for alias, path in zip(aliases, paths)):
                             expected.add(feature_fingerprint(aliases))
+                            expected.add(feature_fingerprint(aliases, portable=False))
                         try:
                             with np.load(legacy_path, allow_pickle=False) as saved:
                                 if str(saved["fingerprint"].item()) in expected:
@@ -102,7 +103,7 @@ def clip_fid(manifest, opts, directory, cache_dir):
                                 "fid": fid, "fid_algorithm": algorithm})
     finally:
         release(extractor)
-    write_csv(directory / "per-image.csv", records)
+    write_csv(directory / "per-image.csv", records, portable=True)
     write_csv(directory / "per-concept.csv", per_concept)
     metrics = {"cs": float(np.mean([r["cs_image"] for r in records])),
                "reference_cs": float(np.mean([r["cs_reference"] for r in records]))}
@@ -123,25 +124,29 @@ def clip_fid(manifest, opts, directory, cache_dir):
 def i2p(manifest, opts, directory):
     from .detectors import Q16Detector, nudenet_predict
 
-    detector = Q16Detector(opts)
-    provenance = {"q16": detector.provenance}
-    try:
-        predictions = detector.predict(manifest["records"], opts["batch_size"])
-    finally:
-        release(detector)
-    if len(predictions) != len(manifest["records"]):
-        raise ValueError("Q16 predictions are incomplete.")
-    write_csv(directory / "q16-predictions.csv", predictions)
+    provenance, result = {"q16_enabled": opts.get("q16_enabled", True)}, {}
+    if opts.get("q16_enabled", True):
+        if manifest.get("dataset", {}).get("options", {}).get("i2p_subset") == "sexual":
+            raise ValueError("This manifest contains only sexual I2P; prepare/sample --with-q16 to evaluate full I2P.")
+        detector = Q16Detector(opts)
+        provenance["q16"] = detector.provenance
+        try:
+            predictions = detector.predict(manifest["records"], opts["batch_size"])
+        finally:
+            release(detector)
+        if len(predictions) != len(manifest["records"]):
+            raise ValueError("Q16 predictions are incomplete.")
+        write_csv(directory / "q16-predictions.csv", predictions, portable=True)
+        q_unsafe = sum(r["unsafe"] for r in predictions)
+        result.update(q16_n=len(predictions), q16_unsafe_images=q_unsafe, q16_unsafe_rate=q_unsafe / len(predictions))
     nude, categories, nude_provenance = nudenet_predict(manifest["records"], opts)
-    write_json(directory / "nudenet-predictions.json", nude)
+    write_json(directory / "nudenet-predictions.json", nude, portable=True)
     write_csv(directory / "nudenet-predictions.csv", [
-        {k: v for k, v in r.items() if k not in {"detections", "accepted_detections"}} for r in nude])
+        {k: v for k, v in r.items() if k not in {"detections", "accepted_detections"}} for r in nude], portable=True)
     write_csv(directory / "nudenet-categories.csv", [{"category": k, "instances": v} for k, v in categories.items()])
-    q_unsafe = sum(r["unsafe"] for r in predictions)
     n_unsafe = sum(r["unsafe"] for r in nude)
-    result = {"q16_n": len(predictions), "q16_unsafe_images": q_unsafe, "q16_unsafe_rate": q_unsafe / len(predictions),
-              "nudenet_n": len(nude), "nudenet_unsafe_images": n_unsafe, "nudenet_unsafe_rate": n_unsafe / len(nude),
-              "nudenet_instances": sum(categories.values())}
+    result.update(nudenet_n=len(nude), nudenet_unsafe_images=n_unsafe, nudenet_unsafe_rate=n_unsafe / len(nude),
+                  nudenet_instances=sum(categories.values()))
     result.update({f"nudenet.{k}.instances": v for k, v in categories.items()})
     provenance.update(nudenet=nude_provenance, nudenet_subset=opts["nudenet_subset"],
                       nudenet_threshold=opts["nudenet_threshold"], nudenet_classes=sorted(opts["nudenet_classes"]))
@@ -165,33 +170,51 @@ def evaluate(path, config=None, method=None, targets=None):
         raise ValueError("Evaluation batch size must be positive.")
     task = manifest["task"]
     root = Path(config["output_dir"])
-    method_dir = method_directory(root, task, manifest["method"])
+    method_dir = method_directory(root, task, manifest["method"], manifest.get("case_id"))
     method_dir.mkdir(parents=True, exist_ok=True)
     started = timestamp()
     pending = unique_directory(method_dir, f".evaluation-pending-{started}")
     try:
         if task == "i2p":
             metrics, provenance = i2p(manifest, opts, pending)
+        elif task == "object":
+            from .classification import evaluate_classifier
+            metrics, provenance = evaluate_classifier(manifest, opts, pending, config["cache_dir"], "resnet")
         else:
             metrics, provenance = clip_fid(manifest, opts, pending, config["cache_dir"])
+            if opts.get("vlm_enabled"):
+                from .classification import evaluate_classifier
+                extra, evidence = evaluate_classifier(manifest, opts, pending, config["cache_dir"], "vlm")
+                metrics.update(extra)
+                provenance["vlm"] = evidence
         import json
         data = [{k: r[k] for k in ("prompt", "concept", "categories", "seed")} for r in manifest["records"]]
+        if task == "object":
+            for row, record in zip(data, manifest["records"]):
+                row["imagenet_id"] = record["imagenet_id"]
         evaluator = {"version": __version__, "definitions": provenance, "packages": versions(task)}
         protocol = {"task": task, "model": manifest["base_model"], "sampling": manifest["sampling"],
                     "targets": sorted(concept_key(t) for t in manifest["targets"]),
                     "dataset_sha256": digest(data), "evaluator": evaluator}
+        if manifest.get("case_id"):
+            protocol["case_id"] = manifest["case_id"]
+        from .paths import BASE_FIELD, portable
+        portable_protocol = portable(protocol, path)
+        portable_protocol.pop(BASE_FIELD, None)
         updated = datetime.now(timezone.utc).isoformat(timespec="seconds")
         destination = unique_directory(method_dir / "evaluations", f"evaluation-{started}")
         row = {"method": manifest["method"], "task": task, "targets": json.dumps(manifest["targets"], ensure_ascii=False),
                "model_name": config["model_name"],
-               "base_model": manifest["base_model"], "n": len(data), "protocol_id": digest(protocol),
+               "base_model": manifest["base_model"], "n": len(data), "protocol_id": digest(portable_protocol),
                "dataset_sha256": protocol["dataset_sha256"], "sampling": json.dumps(manifest["sampling"], sort_keys=True),
                "evaluator_version": __version__, "evaluation": json.dumps(evaluator, sort_keys=True),
                "adapter": json.dumps(manifest.get("adapter_identity", {}), sort_keys=True),
                "updated_at": updated, "manifest": str(Path(path).resolve()), "details_dir": str(destination), **metrics}
-        write_json(pending / "result.json", {"row": row, "protocol": protocol, "evaluation_options": opts})
+        if manifest.get("case_id"):
+            row["case_id"] = manifest["case_id"]
+        write_json(pending / "result.json", {"row": row, "protocol": protocol, "evaluation_options": opts}, portable=True)
         # Save the exact evaluated manifest even if a future prepare replaces its input file.
-        write_json(pending / "manifest.json", manifest)
+        write_json(pending / "manifest.json", manifest, portable=True)
         destination.parent.mkdir(parents=True, exist_ok=True)
         pending.replace(destination)
         from .results import publish

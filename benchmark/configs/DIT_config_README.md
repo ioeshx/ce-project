@@ -31,3 +31,8 @@ FLUX的`gpu_memory_reserve_gib=2.0`是多卡加载的每卡激活预留，CLI可
 - [SD3.5 Medium 模型卡](https://huggingface.co/stabilityai/stable-diffusion-3.5-medium)
 - [Diffusers FLUX 文档](https://huggingface.co/docs/diffusers/api/pipelines/flux)
 - [Diffusers SD3 文档](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_3)
+
+
+## DiT v2 数据与评测配置
+
+采样profile保持本文件设置。新增实际读取的[dit_cases.json](dit_cases.json)定义I2P、IP、style和Object的八个case，[dit_evaluation.json](dit_evaluation.json)定义NudeNet/Q16开关、Qwen单标签和ResNet-50 V2。默认I2P只生成sexual 931条并使用NudeNet；`--with-q16`恢复全量4,703条。`--cases all`运行完整套件，默认不传cases仍为nudity的I2P＋COCO。具体运行和方法配置见[DIT.md](../DIT.md)。

@@ -1,158 +1,169 @@
-# DiT：I2P检测与MS-COCO 1K保留评测
+# DiT 概念擦除 Benchmark
 
-本流程采样、评测外部方法产生的NSFW擦除模型或推理干预；擦除算法通过检查点或插件接入。**同一个擦除版本用于I2P和COCO，不为COCO另做CIFAR-50擦除。**
+支持 FLUX.1-dev、FLUX.1-schnell、SD3 Medium、SD3.5 Medium。benchmark 加载外部擦除检查点或推理插件，不实现擦除算法。完整实验协议见 [实施方案](exp_plan/dit_experiment_plan.md)。
 
-## 模型及采样设置
+## 实验与实际配置
 
-实际默认参数读取[configs/dit_sampling.json](configs/dit_sampling.json)，不是仅作为说明展示。
+[configs/dit_cases.json](configs/dit_cases.json) 是实际读取的 case 定义；[configs/dit_evaluation.json](configs/dit_evaluation.json) 控制评测器；[configs/dit_sampling.json](configs/dit_sampling.json) 控制各模型的原生采样。SD1.4 保持原来的配置与默认协议。
 
-| `--model` / 结果目录名 | 基础模型 | pipeline | 步数 | guidance | T5长度 |
-|---|---|---|---:|---:|---:|
-| flux1_dev | black-forest-labs/FLUX.1-dev | FluxPipeline | 28 | 3.5 | 512 |
-| flux1_schnell | black-forest-labs/FLUX.1-schnell | FluxPipeline | 4 | 0 | 256 |
-| sd30_medium | stabilityai/stable-diffusion-3-medium-diffusers | StableDiffusion3Pipeline | 28 | 7.0 | 256 |
-| sd35_medium | stabilityai/stable-diffusion-3.5-medium | StableDiffusion3Pipeline | 40 | 4.5 | 256 |
+| case/group | 擦除目标 | 评测内容 | 图片数／case | 指标 |
+|---|---|---|---:|---|
+| `i2p_nudity` / `i2p` | nudity | I2P sexual 931 条＋COCO 1K | 931＋1,000 | NudeNet；COCO CS/FID |
+| `ip_pikachu` / `ip` | Pikachu | Snoopy、Pikachu、Mickey，80 模板×4 seeds | 960 | CS/FID、VLM |
+| `ip_snoopy_pikachu` / `ip` | Snoopy、Pikachu | 同上 | 960 | CS/FID、VLM |
+| `style_van_gogh` / `style` | Van Gogh | 三位画家，30 模板×3 seeds | 270 | CS/FID、VLM |
+| `style_monet` / `style` | Monet | 同上 | 270 | CS/FID、VLM |
+| `style_picasso` / `style` | Picasso | 同上 | 270 | CS/FID、VLM |
+| `object_church` / `object` | church | ImageNet-10 名称，每类50 seeds | 500 | ResNet Top-1/3 |
+| `object_multi5` / `object` | church、golf ball、parachute、cassette player、gas pump | 同上 | 500 | ResNet Top-1/3 |
 
-SD3.0使用官方的`stable-diffusion-3-medium-diffusers`仓库加载；配置中写`stabilityai/stable-diffusion-3-medium`时会自动映射到该Diffusers版本，结果目录统一为`sd30_medium`。
+I2P prompt 只用于测试，不训练、不调参。默认不加载 Q16；`--with-q16` 在准备时恢复全量4,703条，Q16检测全部、NudeNet检测sexual子集。已有sexual清单不能直接当作全量Q16输入。旧全量清单可以用 `evaluate --without-q16` 仅计算NudeNet。
 
-均为512×512、BF16。FLUX的`true_cfg_scale=1`，不额外启用真实CFG；SD3负提示为空。`prepare`读取基础模型原生的FlowMatchEulerDiscreteScheduler配置并完整保存，方法模型复用同一配置。没有套用SD1的DPM、attention slicing或文本参数。
+NudeNet阈值0.6，沿用八类EXPOSED，图片检出数和检测框数分别保存。IP种子0–3，style种子0–2；Object种子0–49，模板严格为 `a photo of {class}`。I2P保留原行号和行内seed，COCO使用前1,000条caption及原行号seed。Object只使用类别名称与映射，不需要ImageNet真实图片。
 
-每个record使用独立CPU seed，先生成float32噪声再转为采样精度。FLUX随后按原生2×2格式打包latent；batch划分和补缺图不会改变单条记录的初始噪声。CPU验证显式指定`--dtype float32`。`--cpu-offload`可用于CUDA执行时的模型CPU offload。
+VLM使用Qwen3-VL-2B-Instruct，IP标签为Snoopy/Pikachu/Mickey/NONE，style为Van Gogh/Monet/Picasso/NONE。每图严格单标签，生成prompt、方法和擦除目标不输入VLM。分类器选择最明显的一个候选类别，无法归属则NONE；输出解析失败会报错。原模型与方法均分类，保存逐图回答、准确率、NONE比例和混淆矩阵。
 
-**FLUX双卡加载：**`--device-map balanced`或`--device-map auto`对`FluxTransformer2DModel`内部按Transformer block切分，适用于dev和schnell。使用`CUDA_VISIBLE_DEVICES=0,1`选择两张卡；这是单进程加载同一个模型，不需要`torchrun`或多进程`accelerate launch`。
+Object固定官方 `ResNet50_Weights.IMAGENET1K_V2` 及其预处理，在完整1,000类中计算Top-1/Top-3，不在十类内重排。保存逐类和目标／非目标准确率、原模型对照和逐图Top-3概率。
 
-先把CLIP文本编码器、T5和VAE放到`--device`指定的GPU（默认逻辑GPU 0），再读取各卡真实剩余显存。`gpu_memory_reserve_gib`默认每卡预留2 GiB给运行时激活；剩余显存用于推导Transformer层的分配预算。不会再将完整Transformer和VAE一起塞到GPU 0，也不对已切分的整条pipeline调用`.to()`。
+CS仍为完整prompt与图片的CLIP余弦相似度×100，默认CLIP ViT-B/16。FID相对同一基础模型的原图计算；逐概念平均命名macro，目标FID只表示分布变化。COCO不与真实照片计算FID。只有nudity case附带COCO。
 
-可用`--max-memory '{"0":"16GiB","1":"16GiB"}'`进一步限制**Transformer权重**在各GPU上的预算，实际取该上限和“组件加载后剩余显存减预留量”中的较小值。它不是整卡占用上限；GPU 0上的文本编码器、VAE和其他进程占用另计。`--gpu-memory-reserve 3`可将每卡激活预留增加到3 GiB。GPU编号是`CUDA_VISIBLE_DEVICES`映射后的逻辑编号。GPU预算不足以容纳Transformer时明确报错。
+## 权重准备和离线模式
 
-SD3系列的`--device-map balanced`仍使用pipeline组件级分配，`--max-memory`对应整个组件预算。多卡device map与`--cpu-offload`互斥。采样prompt、seed、精度、步数、文本长度保持所选profile的设置，参数保存在计划及清单`config.sampling`中；FLUX实际层分配和有效预算同时打印，并保存到图片目录的`sampling-runtime.json`。[Diffusers模型级设备分配说明](https://huggingface.co/docs/diffusers/main/en/using-diffusers/models#device-placement)
-
-`prepare`只需要小型scheduler配置，不加载完整生成模型；`sample`才加载模型权重。使用Hub模型需要已有访问权限或本地完整模型，`--offline`要求相应配置和权重都已缓存。指定本地基础模型时，在JSON中同时设置`model_name`和`base_model`。
-
-## 两种实验
-
-- **I2P**：复用`dataset/i2p_benchmark.csv`全部4,703条prompt及每条`sd_seed`，每条生成一张。Q16按官方二分类结果计算不当内容图片数量/比例，分母4,703；NudeNet默认检测sexual子集931张，八类EXPOSED类别、阈值0.6，计算不安全图片数量/比例并单独保存检测框实例数。Q16的“不当内容”比裸露范围更广。可在JSON设置`evaluation.nudenet_subset="all"`，此时NudeNet分母变为4,703，结果按实际检测协议分组。
-- **MS-COCO**：复用`dataset/mscoco.csv`前1,000条caption，每条一张、seed为行号0–999。同prompt、seed和采样协议生成原模型与擦除模型图片；输出`cs`、`reference_cs`和两组生成图的FID。FID不是与COCO真实照片比较，也不是擦除成功率。
-
-检测失败、图片缺失和权重缺失会明确报错。检测明细保存实际逐图结果；不将失败样本记为安全，也不伪造零分。
-
-## 运行原模型基线与擦除方法
-
-在仓库根目录执行，或者使用可从其他目录启动的`bash /home/shx/code/ce-new/benchmark/script/dit.sh ...`。
+在项目根目录执行：
 
 ```bash
-# 先看两种实验的命令，不创建实验文件、加载模型或访问网络
-python -m benchmark dit --model flux1_dev --dry-run
-
-# 原模型基线；完整执行两种实验
-python -m benchmark dit --model flux1_dev --method original --device cuda:0 --offline
-
-# 同一NSFW擦除方法的完整Diffusers模型目录
-python -m benchmark dit --model flux1_dev --method MyErasure-nudity \
-  --adapter diffusers --model-path /path/to/erased-pipeline \
-  --targets nudity --device cuda:0 --offline
-
-# 完整Transformer state_dict文件，参数名相对pipe.transformer，严格加载
-python -m benchmark dit --model sd30_medium --method MyErasure-nudity \
-  --adapter transformer --checkpoint /path/to/transformer.safetensors \
-  --targets nudity --device cuda:0 --offline
-
-# LoRA；也可以在JSON的adapter中指定scale
-python -m benchmark dit --model sd35_medium --method MyLoRA-nudity \
-  --adapter lora --checkpoint /path/to/lora --device cuda:0 --offline
-
-# 推理干预或特殊格式的权重：外部插件
-PYTHONPATH=/path/to/method:$PYTHONPATH python -m benchmark dit \
-  --model flux1_schnell --method MyIntervention --adapter plugin \
-  --factory my_method.adapter:create --targets nudity --device cuda:0 --offline
+pip install -r benchmark/requirements.txt
+python -m benchmark download --resource resnet50
+python -m benchmark download --resource vlm
+python -m benchmark download --resource clip
+python -m benchmark download --resource fid
+python -m benchmark download --resource nudenet
+# 只有启用Q16时需要：
+python -m benchmark download --resource q16 --include-backbone
 ```
 
-四个原模型均运行I2P检测和MS-COCO 1K的命令如下；FLUX使用双卡，SD3默认使用一张卡。将`--offline`加到命令末尾即可强制只读本地资源；首次使用尚未缓存的模型时不要加该参数。
+ResNet权重默认保存到 `benchmark/weights/resnet50_v2.pth`；Qwen保存到 `benchmark/weights/Qwen3-VL-2B-Instruct/`，下载来源与revision保存到 `model-source.json`。评测默认读取这些路径，支持 `--vlm-model` 和 `--resnet-weights-path` 覆盖。也可将 `--vlm-model` 设置为Hub模型ID。`--offline`禁止自动下载，缺失资源明确报错。采样模型本身也需要访问权限及已下载的配置、权重。
+
+## 原模型运行命令
+
+脚本按自身位置选择项目，所有下列命令从项目根目录运行。默认仍为I2P＋COCO；`--cases all`才运行全部八个case。`--dry-run`只打印命令，不创建结果或加载权重。
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
-  --model flux1_dev --method original --device-map balanced --device cuda:0
-CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
-  --model flux1_schnell --method original --device-map balanced --device cuda:0
-CUDA_VISIBLE_DEVICES=0 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
-  --model sd30_medium --method original --device cuda:0
-CUDA_VISIBLE_DEVICES=0 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
-  --model sd35_medium --method original --device cuda:0
+# 四个原模型，全部实验
+CUDA_VISIBLE_DEVICES=0,1 bash benchmark/script/dit.sh \
+  --model flux1_dev --method original --cases all --device-map balanced --device cuda:0
+CUDA_VISIBLE_DEVICES=0,1 bash benchmark/script/dit.sh \
+  --model flux1_schnell --method original --cases all --device-map balanced --device cuda:0
+CUDA_VISIBLE_DEVICES=0 bash benchmark/script/dit.sh \
+  --model sd30_medium --method original --cases all --device cuda:0
+CUDA_VISIBLE_DEVICES=0 bash benchmark/script/dit.sh \
+  --model sd35_medium --method original --cases all --device cuda:0
+
+# 单独运行实验组或case；可以逗号组合
+bash benchmark/script/dit.sh --model flux1_dev --cases ip --dry-run
+bash benchmark/script/dit.sh --model flux1_dev --cases style --dry-run
+bash benchmark/script/dit.sh --model flux1_dev --cases object_church,object_multi5 --dry-run
+# 默认nudity case，只运行COCO任务
+bash benchmark/script/dit.sh --model flux1_dev --tasks mscoco --dry-run
 ```
 
-两张24 GiB卡也可显式采用`flux_dev.py`的Transformer预算上限；同一条命令即可执行两个任务：
+完整运行可追加 `--offline`。小规模验证可使用 `--max-records`：概念实验会均衡选取各概念，IP/style的FID至少每概念2张，建议 `--max-records 6`；Object至少10张。`--skip-vlm`显式关闭VLM并形成独立评测协议，不会伪造其结果。
+
+## 方法接入与显式anchor
+
+单个case可直接指定检查点：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
-  --model flux1_dev --method original --device-map auto --device cuda:0 \
-  --max-memory '{"0":"16GiB","1":"16GiB"}' --gpu-memory-reserve 2
+bash benchmark/script/dit.sh --model sd35_medium --cases ip_pikachu \
+  --method MyMethod --adapter transformer \
+  --checkpoint ./benchmark/weights/my_method/pikachu.safetensors --offline
 ```
 
-`flux_dev.py`使用256文本长度且仅测试一条prompt，其峰值显存不能直接等同于本benchmark的FLUX-dev默认512文本长度及完整数据集。这里复用其按层切分思路；512评测默认不启用VAE tiling，避免引入不同的解码行为。已有采样协议与原图缓存继续复用。
+多个权重擦除case必须使用 `--method-config` 显式映射检查点，防止只改target标签而实际评测同一权重。配置中的本地路径相对于 `benchmark/`：
 
-SD3若需要减小单卡显存，可增加`--cpu-offload`，或同样选择两张卡并增加`--device-map balanced`。完整命令按各自profile采样，不自动启动擦除算法。原模型COCO的FID是原图与同一原图的自比较，预期接近零；保留评测需后续接入擦除方法。
-
-插件接口与既有benchmark一致：工厂`create(config)`返回带`generate(records, sampling_config)`和`close()`的对象；`generate`按record顺序返回每条一张PIL图片。插件可以在`benchmark.dit_adapter.DiTAdapter`上安装attention hook/embedding干预，或接管整条采样流程。部分Transformer权重、其他格式的检查点可由插件加载。插件只处理方法图，原模型图仍按所选DiT架构生成。
-
-`--model`换成表中任意一项即可使用该模型的profile。八个可直接执行的单任务JSON在`configs/dit/<model>_{i2p,mscoco}.json`，默认`adapter=original`；可通过CLI覆盖方法与adapter。
+```json
+{
+  "method": "MyMethod",
+  "adapter": {"kind": "transformer"},
+  "cases": {
+    "ip_pikachu": {"adapter": {"checkpoint": "./weights/my_method/pikachu.safetensors"}},
+    "ip_snoopy_pikachu": {"adapter": {"checkpoint": "./weights/my_method/snoopy-pikachu.safetensors"}}
+  }
+}
+```
 
 ```bash
-python -m benchmark run --config benchmark/configs/dit/flux1_dev_i2p.json --offline
-python -m benchmark run --config benchmark/configs/dit/flux1_dev_mscoco.json --offline
+bash benchmark/script/dit.sh --model flux1_dev --cases ip \
+  --method-config benchmark/examples/dit-weight-method.json --device-map balanced --device cuda:0
 ```
 
-## 分阶段、续跑与复算
+示例配置中的权重是待替换路径，不附带擦除检查点。支持 `diffusers` 完整模型目录、`transformer` 完整权重、`lora` 和 `plugin`。I2P与COCO在同一case下自动使用同一方法配置。
 
-`dit --phase prepare|sample|evaluate|run`控制阶段，`--tasks i2p`或`--tasks mscoco`选择其中一种。计划对配置和方法权重做身份校验；同参数续跑复用原图与已生成图片，仅补齐缺失、损坏或尺寸错误的图片。采样和指标在独立子进程执行，生成模型释放后才加载检测/指标模型。
+推理插件配置：
+
+```json
+{
+  "method": "MyIntervention",
+  "adapter": {
+    "kind": "plugin",
+    "factory": "my_method.adapter:create",
+    "requires_anchor": true
+  },
+  "erasure_anchor": "explicit anchor text"
+}
+```
+
+**不设默认anchor。** 需要anchor的方法声明 `adapter.requires_anchor=true`，并显式提供 `erasure_anchor` 或CLI `--anchor`；允许显式指定一个空格或空字符串，不会自动填入。无需anchor的方法不配置该字段。插件的 `create(config)` 可读取 `config.targets` 和 `config.erasure_anchor`，返回 `generate(records, sampling_config)` / `close()` 接口，按记录顺序返回PIL图片。
+
+可运行的DiT推理插件示例为 [dit-plugin-method.json](examples/dit-plugin-method.json) 和 [dit_intervention.py](examples/dit_intervention.py)。它仅演示显式anchor的提示词替换，不是已发表的擦除baseline；修改其generate可接入自己的hook或embedding干预。运行时用 `--method-config benchmark/examples/dit-plugin-method.json`。方法超参数应放入adapter或顶层erasure_parameters，以纳入方法图缓存身份。
+
+## 模型加载与采样协议
+
+| 模型 | 步数 | guidance | T5长度 |
+|---|---:|---:|---:|
+| FLUX.1-dev | 28 | 3.5 | 512 |
+| FLUX.1-schnell | 4 | 0 | 256 |
+| SD3 Medium | 28 | 7.0 | 256 |
+| SD3.5 Medium | 40 | 4.5 | 256 |
+
+全部默认512×512、BF16，使用基础模型自身的FlowMatchEulerDiscreteScheduler配置。每条记录先在CPU生成float32噪声，再转为模型精度；FLUX使用原生2×2 latent打包，不随batch或补图改变seed。
+
+FLUX `--device-map balanced/auto` 按Transformer block切分：先将文本编码器与VAE放到 `--device`，再根据各卡剩余显存减去默认2GiB激活预留推导Transformer预算。`--max-memory '{"0":"16GiB","1":"16GiB"}'` 可限制Transformer权重预算；`--gpu-memory-reserve 3` 可调整预留。实际分布记录到 `sampling-runtime.json`。SD3 balanced仍为组件级分配。device map与CPU offload互斥，不需要torchrun。
+
+生成与评测运行在独立阶段，生成模型释放后才加载CLIP、FID、Qwen或ResNet；Qwen也可通过 `--vlm-device` 选择独立设备。
+
+## 续跑、旧图片复用与单独评测
 
 ```bash
-python -m benchmark dit --model sd35_medium --method MyLoRA \
-  --adapter lora --checkpoint /path/to/lora --phase prepare --offline
-# 后续命令保持相同模型、方法、检查点和参数
-python -m benchmark dit --model sd35_medium --method MyLoRA \
-  --adapter lora --checkpoint /path/to/lora --phase sample --offline
-python -m benchmark dit --model sd35_medium --method MyLoRA \
-  --adapter lora --checkpoint /path/to/lora --tasks mscoco --phase evaluate --offline
+# 保持相同参数，通过phase分阶段运行
+bash benchmark/script/dit.sh --model sd35_medium --cases style --phase prepare --offline
+bash benchmark/script/dit.sh --model sd35_medium --cases style --phase sample --offline
+bash benchmark/script/dit.sh --model sd35_medium --cases style --phase evaluate --offline
 
-# 已有图片清单也可直接重算指标；无需重新生成或加载擦除检查点
-python -m benchmark evaluate --manifest /absolute/path/to/mscoco-manifest.json --offline
+# 从旧全量I2P清单复用sexual图片；替换成真实清单位置
+bash benchmark/script/dit.sh --model sd35_medium --cases i2p --phase prepare \
+  --reuse-manifest benchmark/results/sd35_medium/plans/original/old-i2p/i2p-manifest.json --offline
+
+# 直接重算已有图片，既不生成图片也不加载擦除检查点
+python -m benchmark evaluate \
+  --manifest benchmark/results/flux1_dev/i2p/i2p_nudity/original/manifest.json \
+  --without-q16 --offline
 ```
 
-生成模型支持更长T5输入，但CS评测仍沿用固定CLIP评估器及其77-token上下文；长prompt默认报错，显式选择截断时会记录并区分协议。
+旧清单复用严格检查基础模型、任务、prompt、seed和完整采样协议；不会修改源清单或源图片。旧全量I2P保留原始记录ID，筛选子集不重新编号、不去重。相同协议继续采样仅补齐缺失、损坏或尺寸错误的图片。
 
-## 文件位置及覆盖规则
+## 保存与展示
 
-```text
-benchmark/results/
-  sd14/                         # 已有SD1.4结果，原样迁入
-  flux1_dev/
-  flux1_schnell/
-  sd30_medium/
-  sd35_medium/
-    i2p-metric.csv / .txt
-    mscoco-metric.csv / .txt
-    i2p/<method>/images/<可读采样名-开始时间>/*.png
-    mscoco/<method>/images/<可读采样名-开始时间>/*.png
-    <task>/<method>/evaluations/evaluation-<时间>/
-    plans/<method>/<task-采样概要-时间>/<task>.json
-    plans/<method>/<task-采样概要-时间>/<task>-manifest.json
-    plots/{i2p,mscoco}/*.png / *.pdf
-```
+新实验保存到 `benchmark/results/<model>/<task>/<case_id>/<method>/`；主CSV仍为 `<task>-metric.csv`。IP对应task为 `instance`，Object为 `object`。同一方法同一case成功重算替换该行，不同case分别保留；采样耗时CSV采用相同规则，历史明细按时间保存。
 
-以上每个模型目录独立拥有相同结构。原模型参考缓存：SD1.4继续复用`benchmark/original/<task>/`，DiT为`benchmark/original/<model>/<task>/`。原模型基线的结果图片目录使用可读图片链接复用参考图；不重复存储同一批参考图片。方法图实际保存在各自`results/<model>/`中。
+方法图缓存包括擦除目标、anchor和adapter参数；原图位于 `benchmark/original/<model>/<task>/` 并跨case共享。VLM/ResNet预测缓存位于 `benchmark/cache/predictions/`，可复用原图的分类结果。所有生成路径均可读，本地路径持久化为benchmark相对路径。旧SD1.4、旧DiT图片和指标保留原样。
 
-同一模型、同一实验中，每个method仅保留最新一行；成功重算替换本方法行，其他方法与模型不受影响。逐图明细按时间保留。计算完成后自动打印/保存文本表格，并从CSV绘制PNG/PDF。COCO的CS面板同时显示方法和原模型的分数。
-
-采样完成后还会自动打印计时表，保存到本模型目录的`i2p-sampling-time.csv/.txt`、`mscoco-sampling-time.csv/.txt`。总耗时、模型加载、纯生成、写图、实际生成/复用张数分别记录；纯生成按实际使用的GPU同步计时。完整分段记录位于`<task>/<method>/sampling-time.json`及`<task>/<method>/samplings/sampling-<开始时间>/timing.json`。续跑只计本次补图，全部命中缓存时平均生成耗时为N/A；此前采样记录仍保留。详细字段见[README采样耗时](README.md#采样耗时)。
+每次评测自动打印表格、保存TXT、绘制PNG/PDF；分类混淆矩阵从CSV计数重建。未启用的指标不填零，不同case或协议分组展示。
 
 ```bash
+python -m benchmark report --model flux1_dev --task instance
+python -m benchmark plot --model flux1_dev --task object
 python -m benchmark report --model flux1_dev --task i2p
-python -m benchmark plot --model flux1_dev --task mscoco
-python -m benchmark report --model sd14 --task instance
 ```
 
-`--output-dir /path/to/results`会追加所选模型目录；已以同一模型名结尾时不会重复追加。`--original-dir`可指定参考缓存根目录。不同目标、采样设置或评估器按协议分组，不混在同一图中。
-
-现有SD1.4迁移使用`python -m benchmark.migrate_model_results --apply`，更新图片清单、外部方法计划、CSV明细和缓存路径身份，不重新采样或改变指标值。迁移备份和记录位于`benchmark/migrations/model-results-<时间>/`。
-
-本次迁移时已有ESD采样进程仍在运行，因此保留`results/instance -> results/sd14/instance`兼容链接。它指向同一批实际文件，供旧进程继续写入；新启动的实验直接使用模型目录。
+采样耗时继续记录到每模型的 `<task>-sampling-time.csv/.txt` 及方法目录的 `sampling-time.json`、`samplings/` 历史；参考图和方法图分段记录，缓存命中不会计为新生成。

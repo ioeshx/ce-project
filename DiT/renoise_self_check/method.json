@@ -1,0 +1,17 @@
+{
+  "method": "RenoiseSelfCheck-l0.01-r0.3-t0-m0-c0.4-s0",
+  "image_output_dir": "../DiT/renoise_self_check/results",
+  "adapter": {
+    "kind": "plugin",
+    "factory": "DiT.renoise_self_check.method:RenoiseSelfCheck",
+    "source_files": ["method.py", "model.py", "run.py"],
+    "self_check": {
+      "lambda_ref": 0.01,
+      "rho": 0.3,
+      "theta": 0.0,
+      "margin": 0.0,
+      "check_fraction": 0.4,
+      "probe_seed": 0
+    }
+  }
+}

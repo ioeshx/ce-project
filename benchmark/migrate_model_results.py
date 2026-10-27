@@ -65,6 +65,7 @@ class ModelResultsMigration:
     def prepare_feature_rebases(self):
         """Re-key existing Inception features when only image paths change."""
         from .metrics import feature_fingerprint
+        from .paths import relative_path
         version = importlib.metadata.version("torch-fidelity")
         seen = set()
         for path in self.files:
@@ -86,10 +87,11 @@ class ModelResultsMigration:
                     seen.add(paths)
                     if not all(Path(p).is_file() for p in paths):
                         continue
-                    entries = [(self.translate(p), Path(p).stat().st_size, Path(p).stat().st_mtime_ns) for p in paths]
+                    entries = [(relative_path(self.translate(p)), Path(p).stat().st_size, Path(p).stat().st_mtime_ns) for p in paths]
                     old = feature_fingerprint([Path(p) for p in paths])
                     new = hashlib.sha256(json.dumps(["torch-fidelity-inception-v3-compat-2048", version, entries]).encode()).hexdigest()
                     self.features[old] = new
+                    self.features[feature_fingerprint([Path(p) for p in paths], portable=False)] = new
 
     def apply(self):
         if not self.moves:

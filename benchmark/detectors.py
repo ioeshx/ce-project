@@ -32,7 +32,9 @@ class Q16Detector:
             raise ImportError("Q16 requires official OpenAI CLIP: pip install git+https://github.com/openai/CLIP.git")
         path = Path(opts["q16_prompts"]).expanduser()
         if not path.is_file():
-            raise FileNotFoundError(f"Missing official Q16 prompts: {path}. Run python -m benchmark download --resource q16.")
+            from .paths import relative_path
+            raise FileNotFoundError(f"Missing official Q16 prompts: {relative_path(path)} (relative to benchmark/). "
+                                    "Run python -m benchmark download --resource q16.")
         name = opts["q16_clip"]
         provenance = path.with_suffix(".source.json")
         if provenance.is_file():
@@ -164,5 +166,6 @@ def download_q16(destination, clip_model="ViT-L/14", include_backbone=False):
         import clip
         model, _ = clip.load(clip_model, device="cpu", jit=False)
         del model
-    print(f"[download] {path}")
+    from .paths import relative_path
+    print(f"[download] benchmark/{relative_path(path)}")
     return path

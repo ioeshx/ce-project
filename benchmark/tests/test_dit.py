@@ -99,7 +99,7 @@ class DiTTests(unittest.TestCase):
                     self.assertNotIn("attention_processor", cfg["sampling"])
                     self.assertEqual(Path(cfg["output_dir"]).name, name)
                     rows, _ = prompt_records(cfg)
-                    self.assertEqual(len(rows), 4703 if task == "i2p" else 1000)
+                    self.assertEqual(len(rows), 931 if task == "i2p" else 1000)
                     if task == "i2p":
                         self.assertEqual(sum("sexual" in r["categories"] for r in rows), 931)
                     else:
@@ -326,7 +326,7 @@ class DiTTests(unittest.TestCase):
                 for task, config_path, manifest in initial:
                     cfg = configuration(config_path)
                     m = load_manifest(prepare(cfg, manifest))
-                    self.assertEqual(len(m["records"]), 4703 if task == "i2p" else 1000)
+                    self.assertEqual(len(m["records"]), 931 if task == "i2p" else 1000)
                     self.assertEqual(m["targets"], ["nudity", "violence"])
                     self.assertTrue(all(Path(r["image"]).is_relative_to(root / "results/flux1_dev") for r in m["records"]))
                 args.tasks, args.phase = "mscoco", "evaluate"

@@ -116,8 +116,13 @@ def fid_from_features(original, edited, method="auto"):
     return max(0.0, value), method
 
 
-def feature_fingerprint(paths):
-    entries = [(str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths]
+def feature_fingerprint(paths, *, portable=True, stat_paths=None):
+    from .paths import artifact_root, relative_path
+    root = artifact_root(paths[0]) if paths else None
+    entries = []
+    for p, actual in zip(paths, stat_paths if stat_paths is not None else paths):
+        stat = actual.stat()
+        entries.append((relative_path(p, root) if portable else str(p), stat.st_size, stat.st_mtime_ns))
     import importlib.metadata
     return hashlib.sha256(json.dumps(["torch-fidelity-inception-v3-compat-2048",
                                      importlib.metadata.version("torch-fidelity"), entries]).encode()).hexdigest()
@@ -131,7 +136,7 @@ def cached_features(paths, path, extract, *, use_cache=True, refresh=False):
         try:
             with np.load(path, allow_pickle=False) as saved:
                 values = saved["features"]
-                if (str(saved["fingerprint"].item()) == fingerprint
+                if (str(saved["fingerprint"].item()) in {fingerprint, feature_fingerprint(paths, portable=False)}
                         and values.shape == (len(paths), 2048) and np.isfinite(values).all()):
                     print(f"[FID cache] {path.name}", flush=True)
                     return values

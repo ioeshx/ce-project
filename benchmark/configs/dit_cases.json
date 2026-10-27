@@ -1,0 +1,296 @@
+{
+  "schema": "benchmark-dit-cases-v2",
+  "default_case": "i2p_nudity",
+  "cases": {
+    "i2p_nudity": {
+      "group": "i2p",
+      "targets": [
+        "nudity"
+      ],
+      "tasks": {
+        "i2p": {
+          "dataset": {
+            "i2p_subset": "sexual"
+          },
+          "evaluation": {
+            "q16_enabled": false
+          }
+        },
+        "mscoco": {
+          "dataset": {
+            "limit_prompts": 1000
+          }
+        }
+      }
+    },
+    "ip_pikachu": {
+      "group": "ip",
+      "targets": [
+        "Pikachu"
+      ],
+      "tasks": {
+        "instance": {
+          "dataset": {
+            "concepts": [
+              "Snoopy",
+              "Pikachu",
+              "Mickey"
+            ],
+            "seeds": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "stable_ids": true
+          },
+          "evaluation": {
+            "vlm_enabled": true
+          }
+        }
+      }
+    },
+    "ip_snoopy_pikachu": {
+      "group": "ip",
+      "targets": [
+        "Snoopy",
+        "Pikachu"
+      ],
+      "tasks": {
+        "instance": {
+          "dataset": {
+            "concepts": [
+              "Snoopy",
+              "Pikachu",
+              "Mickey"
+            ],
+            "seeds": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "stable_ids": true
+          },
+          "evaluation": {
+            "vlm_enabled": true
+          }
+        }
+      }
+    },
+    "style_van_gogh": {
+      "group": "style",
+      "targets": [
+        "Van Gogh"
+      ],
+      "tasks": {
+        "style": {
+          "dataset": {
+            "concepts": [
+              "Van Gogh",
+              "Monet",
+              "Picasso"
+            ],
+            "seeds": [
+              0,
+              1,
+              2
+            ],
+            "stable_ids": true
+          },
+          "evaluation": {
+            "vlm_enabled": true
+          }
+        }
+      }
+    },
+    "style_monet": {
+      "group": "style",
+      "targets": [
+        "Monet"
+      ],
+      "tasks": {
+        "style": {
+          "dataset": {
+            "concepts": [
+              "Van Gogh",
+              "Monet",
+              "Picasso"
+            ],
+            "seeds": [
+              0,
+              1,
+              2
+            ],
+            "stable_ids": true
+          },
+          "evaluation": {
+            "vlm_enabled": true
+          }
+        }
+      }
+    },
+    "style_picasso": {
+      "group": "style",
+      "targets": [
+        "Picasso"
+      ],
+      "tasks": {
+        "style": {
+          "dataset": {
+            "concepts": [
+              "Van Gogh",
+              "Monet",
+              "Picasso"
+            ],
+            "seeds": [
+              0,
+              1,
+              2
+            ],
+            "stable_ids": true
+          },
+          "evaluation": {
+            "vlm_enabled": true
+          }
+        }
+      }
+    },
+    "object_church": {
+      "group": "object",
+      "targets": [
+        "church"
+      ],
+      "tasks": {
+        "object": {
+          "dataset": {
+            "path": "dataset/imagenet10.csv",
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49
+            ],
+            "stable_ids": true
+          }
+        }
+      }
+    },
+    "object_multi5": {
+      "group": "object",
+      "targets": [
+        "church",
+        "golf ball",
+        "parachute",
+        "cassette player",
+        "gas pump"
+      ],
+      "tasks": {
+        "object": {
+          "dataset": {
+            "path": "dataset/imagenet10.csv",
+            "seeds": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49
+            ],
+            "stable_ids": true
+          }
+        }
+      }
+    }
+  }
+}

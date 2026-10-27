@@ -11,5 +11,6 @@
   },
   "dataset": {
     "limit_prompts": 1000
-  }
+  },
+  "case_id": "i2p_nudity"
 }

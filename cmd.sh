@@ -1,3 +1,27 @@
+
+
+
+# I2P：sexual 931条 NudeNet检测 + MS-COCO 1K质量评测
+bash benchmark/script/dit.sh \
+  --model sd35_medium --method original --cases i2p --offline
+
+# IP：分别擦除 Pikachu、Snoopy+Pikachu 的两组评测
+bash benchmark/script/dit.sh \
+  --model sd35_medium --method original --cases ip --offline
+
+# style：Van Gogh、Monet、Picasso 各自擦除的三组评测
+bash benchmark/script/dit.sh \
+  --model sd35_medium --method original --cases style --offline
+
+# Object：church单概念、五概念联合擦除的两组评测
+bash benchmark/script/dit.sh \
+  --model sd35_medium --method original --cases object --offline
+
+CUDA_VISIBLE_DEVICES=0,1 bash benchmark/script/dit.sh \
+  --model flux1_dev --method original --cases all \
+  --device-map balanced --device cuda:0 --offline
+# --model flux1_schnell sd30_medium sd35_medium
+
 # FLUX.1-dev：双卡
 CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
   --model flux1_dev --method original \
@@ -5,7 +29,7 @@ CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
 
 # FLUX.1-schnell：双卡
 CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/benchmark/script/dit.sh \
-  --model flux1_schnell --method original \
+  --model  --method original \
   --device-map balanced --device cuda:0
 
 # SD3.0 Medium：单卡

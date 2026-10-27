@@ -1,0 +1,96 @@
+{
+  "schema": "renoise-self-check-implementation-planning-v1",
+  "status": "historical_template_resolved_by_implementation",
+  "description": "Historical planning template retained below. User choices have been implemented in DiT/renoise_self_check; use its README.md and method.json for current resolved settings. Remaining nulls below describe the old planning stage, not outstanding questions.",
+  "implementation": "DiT/renoise_self_check/README.md",
+  "fixed_method_contract": {
+    "parameter_training": false,
+    "online_external_verifier": false,
+    "intervention": "output_velocity",
+    "concepts_per_record": 1,
+    "candidate_count": 2,
+    "baseline_candidate_lambda": 0,
+    "direction": "v_anchor - v_forget",
+    "candidate_followup": "original_user_condition_at_candidate_next_state",
+    "probe_noise_shared_between_candidates": true,
+    "score": "per_sample_mean_squared_error_anchor_minus_forget",
+    "acceptance_rule": "R0 > theta and R1 < R0 - margin",
+    "tie_choice": "original_velocity",
+    "real_sampler_commits_per_iteration": 1
+  },
+  "delivery": {
+    "implementation_directory": null,
+    "entrypoints": null,
+    "first_delivery_phases": null
+  },
+  "model": {
+    "model_names": null,
+    "weights_path_or_id": null,
+    "revision_or_local_snapshot": null,
+    "python_environment": null
+  },
+  "records": {
+    "source": null,
+    "concept_mapping": null,
+    "selection_or_limit": null,
+    "generation_seed_list_or_sampling_rule": null
+  },
+  "concept_definitions": null,
+  "sampling": {
+    "source_mode": null,
+    "selected_profile_path_and_key": null,
+    "explicit_overrides": null,
+    "resolved_snapshot": null
+  },
+  "self_check": {
+    "checkpoints": {
+      "mode": null,
+      "explicit_step_indices_or_noise_levels": null,
+      "count_if_generated": null,
+      "noise_interval_if_generated": null,
+      "grid_mapping_and_collision_rule": null
+    },
+    "lambda_ref_or_separate_run_sweep": null,
+    "rho_values": null,
+    "rho_collision_policy": null,
+    "probe_pair_count": null,
+    "noise_samples_per_level": null,
+    "score_aggregation": null,
+    "probe_noise_root_seed": null,
+    "audit_noise_root_seed_if_enabled": null,
+    "theta": null,
+    "margin": null,
+    "threshold_scope": null,
+    "calibration": {
+      "mode": null,
+      "development_records_if_enabled": null,
+      "selection_criterion_if_enabled": null
+    },
+    "guidance": {
+      "direction_generation_policy": null,
+      "probe_output_mode": null,
+      "probe_embedded_guidance_if_applicable": null,
+      "probe_external_cfg_if_selected": null
+    }
+  },
+  "execution": {
+    "devices_and_placement": null,
+    "model_forward_dtype": null,
+    "latent_arithmetic_and_score_dtype": null,
+    "sample_batch_size": null,
+    "candidate_execution_mode": null,
+    "local_files_only": null
+  },
+  "output": {
+    "directory": null,
+    "tensor_recording_level": null,
+    "intermediate_trajectory_resume": null
+  },
+  "validation": {
+    "reference_generation": null,
+    "candidate_full_rollout_diagnostics": null,
+    "diagnostic_record_selection": null,
+    "offline_evaluation": null,
+    "numerical_comparison_tolerances": null
+  }
+}

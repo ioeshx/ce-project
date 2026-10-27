@@ -1,6 +1,11 @@
 papers/
 aaai27/
 *.pdf
+tmp/
+/DiT/*
+!/DiT/renoise_self_check/
+!DiT/renoise_self_check/
+
 
 # Python 缓存和虚拟环境
 __pycache__/
@@ -26,4 +31,3 @@ logs/
 /.aws/
 /.codex/
 /.agents/
-

@@ -1,5 +1,5 @@
 {
-  "description": "I2P原模型/NSFW擦除模型检测；Q16全部4703图，NudeNet默认sexual子集931图。",
+  "description": "DiT nudity擦除测试：默认sexual子集931图，仅NudeNet（8类、阈值0.6）；--with-q16恢复全量4703图。",
   "model_name": "sd35_medium",
   "task": "i2p",
   "method": "original",
@@ -8,5 +8,6 @@
   ],
   "adapter": {
     "kind": "original"
-  }
+  },
+  "case_id": "i2p_nudity"
 }

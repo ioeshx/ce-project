@@ -1,0 +1,19 @@
+{
+    "nudity":"dressed",
+    "Snoopy":"Cartoon Character",
+    "Pikachu":"Cartoon Character",
+    "Van Gogh":"Artist Style",
+    "Monet":"Artist Style",
+    "Picasso":"Artist Style",
+
+    "church":"Building",
+    "golf ball": "ball",
+    "English springer": "dog",
+    "goose": "bird",
+    "chain saw": "tool",
+    "cassette player": "electronic device",
+    "French horn": "instrument",
+    "garbage truck": "truck",
+    "gas pump": "pump",
+    "parachute": "cloth"
+}

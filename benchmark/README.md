@@ -4,7 +4,7 @@
 CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复用说明见
 [项目采样规范](../SAMPLING.md)。显式覆盖必须保存实际协议；历史结果保持原样。
 
-在仓库根目录运行 `python -m benchmark --help`。评测独立于擦除算法，只需要图片与清单；采样器是可选模块。支持SD1的instance、style、I2P、MS-COCO，以及FLUX.1-dev/schnell、SD3 Medium、SD3.5 Medium的I2P和MS-COCO 1K。DiT模型配置、命令和方法接入见[DIT.md](DIT.md)。
+在仓库根目录运行 `python -m benchmark --help`。评测独立于擦除算法，只需要图片与清单；采样器是可选模块。支持SD1的instance、style、I2P、MS-COCO，以及FLUX.1-dev/schnell、SD3 Medium、SD3.5 Medium的I2P＋MS-COCO 1K、IP、style和Object实验。DiT模型配置、命令和方法接入见[DIT.md](DIT.md)。
 
 **结果已按模型分目录：**`benchmark/results/{sd14,flux1_dev,flux1_schnell,sd30_medium,sd35_medium}/`。旧SD1.4图片、清单、指标及图表归入`results/sd14/`；默认不指定`--model`时仍使用SD1.4。
 
@@ -31,11 +31,41 @@ CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复�
 
 旧目录迁移记录及原始清单备份在 `benchmark/migrations/readable-layout-<时间>/`；记录内保存旧路径、新路径和清理项。迁移不重新采样、不改历史协议、不删除检查点，已有完整/未完成的正式图集均保留。`benchmark/results/smoke`、测试专用原图及测试特征已清理；后续单元测试使用临时目录。
 
+## 相对路径与跨机器迁移
+
+配置、采样计划、图片清单、缓存登记和结果JSON/CSV中的本地文件路径统一相对于**当前项目的`benchmark/`目录**，用`path_base: "benchmark"`标记。例如：
+
+```json
+{
+  "path_base": "benchmark",
+  "output_dir": "results/flux1_dev",
+  "original_dir": "original/flux1_dev",
+  "cache_dir": "cache",
+  "evaluation": {"q16_prompts": "weights/Q16/ViT-L-14/prompts.p"}
+}
+```
+
+本地模型和检查点使用`./weights/model`或`../baseline/...`等相对引用；`black-forest-labs/FLUX.1-dev`等Hub模型ID保持原样。读取时根据当前文件所在项目定位资源，运行时解析为实际文件路径，不把机器目录写回配置。CLI中显式指定的`--config`、`--manifest`、`--checkpoint`等路径仍按调用命令时的目录解释；脚本从自身位置进入项目，避免导入另一个同名benchmark副本。
+
+已有绝对路径清单可以直接读取，原来的`.../ce-new/benchmark/...`会映射到当前`benchmark/`；图片软链接也会转换为相对链接。建议在复制项目后执行一次完整迁移，将已有结果和登记也持久化为相对路径：
+
+```bash
+# 在当前机器的项目根目录执行，先预览再转换。
+python -m benchmark.migrate_paths
+python -m benchmark.migrate_paths --apply
+```
+
+若还有旧版采样进程在写入某模型目录，可加`--exclude-model sd35_medium`先转换其他模型，任务结束后再执行不带排除选项的命令。
+
+迁移不运行模型、不重采样、不修改图片像素或指标值；FID只更新与路径有关的缓存身份，特征数组保持不变。原始数据集和方法检查点保留原样，旧元数据备份位于`benchmark/migrations/relative-paths-<时间>/`。复制时保留文件时间和软链接，可继续复用FID缓存。新路径随`ce-new`或`ce-project`目录移动，不需要替换机器前缀。
+
+资源文件本身仍需复制：如果另一台机器没有Q16的`prompts.p`，在项目根目录运行`python -m benchmark download --resource q16 --include-backbone`准备对应资源；相对路径不会自动生成缺失权重。已有图片可用`python -m benchmark evaluate --manifest benchmark/results/.../i2p-manifest.json`只重算指标。
+
 ## 采样耗时
 
 所有经过统一采样入口的SD1.4、FLUX、SD3及推理插件都会自动计时，原有`sample`、`run`、`dit`命令无需增加参数。每个指定实验的采样完成后，立即打印耗时表，并保存：
 
-- `results/<model_name>/<task>-sampling-time.csv`及同名`.txt`：每个方法保留最近一次成功完成的采样调用，其他方法保留。
+- `results/<model_name>/<task>-sampling-time.csv`及同名`.txt`：每个方法保留最近一次成功完成的采样调用，其他方法保留；DiT v2以method＋case_id分别保留。
 - `results/<model_name>/<task>/<method>/sampling-time.json`：最近一次调用的完整记录。
 - `results/<model_name>/<task>/<method>/samplings/sampling-<开始时间>/timing.json`：每次调用的历史记录，同秒重复使用可读序号。
 
@@ -56,7 +86,7 @@ CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复�
 
 ## 数据与协议
 
-原始 `dataset/*.csv` 保持不变，无须重新下载。
+原始 `dataset/*.csv` 保持不变，无须重新下载。下表为SD1.4默认协议；DiT v2的不同数量与评测设置见[DIT.md](DIT.md)。
 
 | 实验 | 默认提示来源 | 展开方式 | 数量 |
 |---|---|---|---:|
@@ -93,10 +123,10 @@ Q16来自 [ml-research/Q16](https://github.com/ml-research/Q16)，使用官方 `
 {
   "task": "i2p",
   "evaluation": {
-    "q16_prompts": "/absolute/path/prompts.p",
+    "q16_prompts": "weights/Q16/ViT-L-14/prompts.p",
     "q16_clip": "ViT-L/14",
-    "q16_clip_path": "/absolute/path/ViT-L-14.pt",
-    "nudenet_weights": "/absolute/path/320n.onnx",
+    "q16_clip_path": "weights/clip/ViT-L-14.pt",
+    "nudenet_weights": "weights/nudenet/320n.onnx",
     "local_files_only": true
   }
 }
@@ -133,14 +163,14 @@ instance默认CSV首先出现Snoopy，因此最后一个例子包含目标。更
 分阶段运行（prepare打印可读清单路径，目录名不包含哈希）：
 
 ```bash
-python -m benchmark prepare --config my-config.json --manifest /tmp/my-manifest.json
-python -m benchmark sample --manifest /tmp/my-manifest.json
-python -m benchmark evaluate --manifest /tmp/my-manifest.json
+python -m benchmark prepare --config my-config.json --manifest benchmark/results/sd14/my-manifest.json
+python -m benchmark sample --manifest benchmark/results/sd14/my-manifest.json
+python -m benchmark evaluate --manifest benchmark/results/sd14/my-manifest.json
 # 只补原模型/方法图片
-python -m benchmark sample --manifest /tmp/my-manifest.json --mode reference
-python -m benchmark sample --manifest /tmp/my-manifest.json --mode image
+python -m benchmark sample --manifest benchmark/results/sd14/my-manifest.json --mode reference
+python -m benchmark sample --manifest benchmark/results/sd14/my-manifest.json --mode image
 # 重新计算，保留图片；必要时在配置中设置evaluation.refresh_cache=true
-python -m benchmark evaluate --manifest /tmp/my-manifest.json --device cpu --offline
+python -m benchmark evaluate --manifest benchmark/results/sd14/my-manifest.json --device cpu --offline
 ```
 
 instance/style/COCO默认先补齐原图再补方法图；I2P只生成方法图。采样会校验已有图片并补齐缺失或损坏文件。原模型缓存键覆盖prompt、seed、基础模型、尺寸、scheduler、CFG、steps、dtype、negative prompt等；不同方法/目标共享同一协议的原图。方法图缓存另包含权重SHA256和适配器参数，插件还包含入口文件SHA256。插件依赖其他模块、远端模型或隐式外部参数时，务必在 `adapter.revision` 中显式标记版本；生成代码应在运行期间保持固定。
@@ -149,7 +179,7 @@ instance/style/COCO默认先补齐原图再补方法图；I2P只生成方法图�
 
 ### 已有图片：直接评测
 
-使用原生JSON清单，无需模型检查点。一个完整清单示例见 `examples/existing-manifest.json`；复制后填写真实路径、prompt、seed和真实采样协议。`sample_id`必须唯一；每个分布内图片路径也必须唯一；同一行的原图与方法图允许是同一文件。相对路径相对于清单目录解析，prepare产生绝对路径。绝不从文件名恢复prompt。评测会验证每张图片、尺寸和参考图，损坏/缺失立即报错。
+使用原生JSON清单，无需模型检查点。一个完整清单示例见 `examples/existing-manifest.json`；复制后填写真实路径、prompt、seed和真实采样协议。`sample_id`必须唯一；每个分布内图片路径也必须唯一；同一行的原图与方法图允许是同一文件。新清单包含`path_base: "benchmark"`，图片路径相对于benchmark目录解析；prepare只写入相对路径。未带标记的旧手写相对清单仍相对于清单目录解析。绝不从文件名恢复prompt。评测会验证每张图片、尺寸和参考图，损坏/缺失立即报错。
 
 ```bash
 python -m benchmark evaluate --manifest my-existing-manifest.json \
@@ -163,15 +193,15 @@ python -m benchmark evaluate --manifest my-existing-manifest.json \
 保持同样的数据及sampling配置，只更改method和adapter：
 
 ```json
-{"task":"instance", "method":"ESD", "adapter":{"kind":"diffusers", "model_path":"/path/to/saved_pipeline"}}
+{"task":"instance", "method":"ESD", "adapter":{"kind":"diffusers", "model_path":"./weights/saved_pipeline"}}
 ```
 
 ```json
-{"task":"instance", "method":"full-UNet", "adapter":{"kind":"unet", "checkpoint":"/path/to/unet.safetensors"}}
+{"task":"instance", "method":"full-UNet", "adapter":{"kind":"unet", "checkpoint":"./weights/unet.safetensors"}}
 ```
 
 ```json
-{"task":"instance", "method":"LoRA-method", "adapter":{"kind":"lora", "checkpoint":"/path/to/lora_directory", "scale":1.0}}
+{"task":"instance", "method":"LoRA-method", "adapter":{"kind":"lora", "checkpoint":"./weights/lora_directory", "scale":1.0}}
 ```
 
 UNet文件使用Diffusers键名的完整state dict，严格加载；支持safetensors和 `torch.load(weights_only=True)` 的state dict（可包在 `state_dict` 字段）。LDM/自定义稀疏补丁等特殊格式通过插件转换，不猜测格式。
@@ -200,8 +230,8 @@ CASU旧图导入（需要该目录完整manifest和dataset.json，不需要原�
 ```bash
 python -m benchmark prepare --method CASU-2-legacy \
   --import-casu casu-2/runs/paper-sd1/images/instance_snoopy \
-  --manifest /tmp/casu-legacy.json
-python -m benchmark evaluate --manifest /tmp/casu-legacy.json --device cuda --offline
+  --manifest benchmark/results/sd14/casu-legacy.json
+python -m benchmark evaluate --manifest benchmark/results/sd14/casu-legacy.json --device cuda --offline
 # 也可以直接导入后评测
 python -m benchmark run --method CASU-2-legacy \
   --import-casu casu-2/runs/paper-sd1/images/instance_snoopy --offline
@@ -268,7 +298,7 @@ python -m benchmark plot --task instance
 python -m benchmark report --model flux1_dev --task i2p
 python -m benchmark plot --model sd35_medium --task mscoco
 # 自定义结果目录
-python -m benchmark plot --task i2p --output-dir /path/to/results
+python -m benchmark plot --task i2p --output-dir benchmark/results
 ```
 
 按目标组合、实际数据prompt/seed、基础模型、采样和评估器协议分组。不同目标或20/50步不会混在同一图；同一分组只有一种方法时显示单方法图。instance/style显示逐概念CS、非目标macro FID和目标CS/非目标FID散点；I2P分别展示图片比例和检测框实例；COCO显示CS/FID双面板。目标CS衡量提示匹配变化，不等同于独立识别器的擦除成功率。
@@ -280,3 +310,9 @@ python -m unittest discover -s benchmark/tests -v
 ```
 
 覆盖数据规模和seed、模板、清单对齐/损坏、FID自比较与低秩一致性、非整批CS均值、全目标N/A、成功覆盖/失败保留、并发写入、CSV独立绘图和CASU导入等。单元测试中的替身仅用于检查逻辑，写入临时目录后删除，不产生实验结果。真实验收记录见 `VALIDATION.md`；测试只写临时目录并自动清理，历史smoke产物已按要求移除，小样本数字不能用作论文对比。
+
+## DiT v2 扩展
+
+DiT默认I2P改为sexual子集931条，仅NudeNet（八类、阈值0.6），Q16通过`--with-q16`恢复全量协议。新增IP两组、style三组与Object两组；IP/style计算CS/FID和Qwen3-VL-2B单标签分类，Object计算固定ResNet-50 V2完整千类Top-1/Top-3。
+
+`bash benchmark/script/dit.sh --model flux1_dev --cases all --dry-run`可查看完整命令。新结果位于`results/<model>/<task>/<case_id>/<method>/`，指标和耗时CSV以method＋case_id保留最新行；原模型图跨case共享。旧SD1.4与旧DiT结果不改写。详细命令、方法映射、显式anchor和权重准备见[DIT.md](DIT.md)。

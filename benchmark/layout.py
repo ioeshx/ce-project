@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .common import ROOT, digest, locked, read_json, slug, write_json
+from .common import ROOT, concept_key, digest, locked, read_json, slug, write_json
 
 
 def timestamp(epoch=None):
@@ -18,7 +18,7 @@ def timestamp(epoch=None):
 
 def content_label(task, records):
     concepts = list(dict.fromkeys(slug(r.get("concept", "")).lower() for r in records if r.get("concept")))
-    if task in {"instance", "style"}:
+    if task in {"instance", "style", "object"}:
         content = "-".join(concepts) if len(concepts) <= 3 else f"{len(concepts)}-concepts"
         return f"{content or 'concepts'}-{len(records)}-images"
     if task == "mscoco":
@@ -68,12 +68,15 @@ def registered_directory(parent, label, identity, *, started_at=None, stable=Fal
         name = slug(label) if stable else f"{slug(label)}-{started_at or timestamp()}"
         directory = unique_directory(parent, name)
         write_json(directory / "run.json", {"schema": "benchmark-readable-run-v1", "label": label,
-                   "started_at": started_at or timestamp(), "identity": identity})
+                   "started_at": started_at or timestamp(), "identity": identity}, portable=True)
         return directory
 
 
-def method_directory(root, task, method):
-    return registered_directory(Path(root) / task, method, {"method": method}, stable=True)
+def method_directory(root, task, method, case_id=None):
+    parent = Path(root) / task
+    if case_id:
+        parent = parent / case_id
+    return registered_directory(parent, method, {"method": method}, stable=True)
 
 
 def sampling_identity(records, model, sampling):
@@ -91,8 +94,17 @@ def original_directory(config, records, protocol):
 
 
 def image_directory(config, records, protocol, adapter):
-    root = method_directory(config["output_dir"], config["task"], config["method"])
+    image_root = config["output_dir"]
+    if config.get("image_output_dir"):
+        image_root = Path(config["image_output_dir"]) / config["model_name"]
+    root = method_directory(image_root, config["task"], config["method"], config.get("case_id"))
     identity = {"sampling": sampling_identity(records, config["base_model"], protocol), "adapter": adapter}
+    if config.get("case_id"):
+        identity["erasure"] = {"targets": sorted(concept_key(t) for t in config["targets"])}
+        if "erasure_anchor" in config:
+            identity["erasure"]["anchor"] = config["erasure_anchor"]
+        if "erasure_parameters" in config:
+            identity["erasure"]["parameters"] = config["erasure_parameters"]
     return registered_directory(root / "images", run_label(config["task"], records, protocol), identity)
 
 
@@ -111,4 +123,5 @@ def plot_name(task, row, group_number):
     from .erasure_protocol import target_label
     sampling = json.loads(row["sampling"])
     targets = slug(target_label(json.loads(row.get("targets", "[]")))).lower()
-    return f"{task}-{targets}-{sampling_label(sampling)}-n{row['n']}-group-{group_number:02d}"
+    case = f"{row['case_id']}-" if row.get("case_id") else ""
+    return f"{task}-{case}{targets}-{sampling_label(sampling)}-n{row['n']}-group-{group_number:02d}"

@@ -1,0 +1,10 @@
+{
+  "description": "可运行的提示替换接入示例，不是论文擦除baseline；请替换为自己的干预实现。",
+  "method": "PromptReplacement-example",
+  "adapter": {
+    "kind": "plugin",
+    "factory": "benchmark.examples.dit_intervention:create",
+    "requires_anchor": true
+  },
+  "erasure_anchor": "an ordinary subject"
+}

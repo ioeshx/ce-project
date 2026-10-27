@@ -3,6 +3,7 @@
 set -euo pipefail
 export HF_ENDPOINT="https://hf-mirror.com"
 
-BENCHMARK_WORKSPACE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-export PYTHONPATH="$BENCHMARK_WORKSPACE${PYTHONPATH:+:$PYTHONPATH}"
+export BENCHMARK_CALLER_DIR="$PWD"
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
+export PYTHONPATH=".${PYTHONPATH:+:$PYTHONPATH}"
 exec "${PYTHON:-python}" -m benchmark dit "$@"

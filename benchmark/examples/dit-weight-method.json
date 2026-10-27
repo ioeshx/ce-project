@@ -1,0 +1,18 @@
+{
+  "method": "MyMethod",
+  "adapter": {
+    "kind": "transformer"
+  },
+  "cases": {
+    "ip_pikachu": {
+      "adapter": {
+        "checkpoint": "./weights/my_method/pikachu.safetensors"
+      }
+    },
+    "ip_snoopy_pikachu": {
+      "adapter": {
+        "checkpoint": "./weights/my_method/snoopy-pikachu.safetensors"
+      }
+    }
+  }
+}

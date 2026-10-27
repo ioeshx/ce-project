@@ -4,6 +4,8 @@ DiT的四个模型及双实验入口见[../DIT.md](../DIT.md)。`dit_sampling.js
 
 这里的JSON是可执行配置。`instance.json`只表示第一组Snoopy实验，不能用一个`targets`数组表达三次独立擦除；数组中的多个概念表示在同一个模型中联合擦除。
 
+JSON中的本地路径以`benchmark/`为基准，例如`dataset/mscoco.csv`、`weights/Q16/ViT-L-14/prompts.p`、`results/flux1_dev`；本地模型/检查点可写`./weights/my-model`或`../baseline/...`。准备后的配置会带`path_base: "benchmark"`标记，不保存机器目录；Hub模型ID保持原样。CLI显式传入的路径仍相对于命令调用目录。
+
 ## 当前七组正式实验
 
 | case | JSON | 擦除目标 | 正式评测 |
@@ -63,3 +65,13 @@ benchmark/results/sd14/output-response-plans/<method>/<task-采样概要-时间>
 - `description`：中文说明，保留在配置中，不参与算法计算。
 
 修改配置后应启动新的实验目录；续跑仍使用已有清单及原参数。汇总指标统一写入`benchmark/results/sd14/{instance,style,mscoco}-metric.csv`，同时生成文本表格和PNG/PDF图。
+
+## DiT v2 实验配置
+
+- [dit_cases.json](dit_cases.json)：八个实际读取的擦除case，包含I2P＋COCO、两组IP、三组style、两组Object。
+- [dit_evaluation.json](dit_evaluation.json)：默认NudeNet-only、Qwen单标签分类及固定ResNet-50 V2配置。
+- [dit_sampling.json](dit_sampling.json)：四模型采样参数，继续由所有case共享。
+
+`python -m benchmark dit --model flux1_dev --cases all --dry-run`可查看完整计划；默认不传cases仍运行nudity的I2P＋COCO。单任务入口可用`--case ip_pikachu --task instance`。IP种子0–3、style种子0–2、Object种子0–49；SD1.4保持原有设置。
+
+默认I2P为sexual 931条且不加载Q16，`--with-q16`在prepare时切换全量4,703条。需要anchor的方法声明`adapter.requires_anchor=true`并显式设置`erasure_anchor`，没有默认空格。多个权重case通过`--method-config`按case映射检查点。运行、权重准备及输出规则见[DiT说明](../DIT.md)。

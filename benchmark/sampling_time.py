@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .common import atomic_text, locked, write_csv, write_json
+from .common import atomic_text, locked, read_result_csv, write_csv, write_json
 from .layout import method_directory, unique_directory
 from .model_profiles import model_name, results_directory
 
@@ -53,7 +53,7 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
     config = manifest["config"]
     model = model_name(manifest["base_model"], config.get("model_name"))
     root = results_directory(config["output_dir"], model)
-    method = method_directory(root, manifest["task"], manifest["method"])
+    method = method_directory(root, manifest["task"], manifest["method"], manifest.get("case_id"))
     directory = unique_directory(method / "samplings", "sampling-" + started_at.strftime("%Y%m%d-%H%M%S"))
     generated = sum(p["generated_images"] for p in phases)
     reused = sum(p["reused_images"] for p in phases)
@@ -62,6 +62,8 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
            "status": "completed" if generated else "cached", "n": len(manifest["records"]),
            "generated_images": generated, "reused_images": reused,
            "total_seconds": total_seconds, "validation_seconds": validation_seconds}
+    if manifest.get("case_id"):
+        row["case_id"] = manifest["case_id"]
     for key in ("model_load_seconds", "generation_seconds", "image_save_seconds", "cleanup_seconds",
                 "lock_wait_seconds", "image_check_seconds"):
         row[key] = sum(p[key] for p in phases)
@@ -81,16 +83,16 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
                                 "generation_seconds": "Sum of adapter.generate wall time, including native text encoding, denoising and decoding; synchronized on participating CUDA devices; excludes model loading and PNG writes.",
                                 "seconds_per_image": "generation_seconds / newly generated images; null when all requested images are cached.",
                                 "resume": "Only this invocation is timed; previous invocation records are retained under samplings/."}}
-    write_json(directory / "timing.json", document)
+    write_json(directory / "timing.json", document, portable=True)
     path = root / f"{manifest['task']}-sampling-time.csv"
     with locked(path.with_suffix(".lock")):
         rows = []
         if path.exists():
-            with path.open(encoding="utf-8", newline="") as handle:
-                rows = list(csv.DictReader(handle))
-        rows = sorted([r for r in rows if r["method"] != row["method"]] + [row], key=lambda r: r["method"].casefold())
-        write_csv(path, rows)
-        write_json(method / "sampling-time.json", document)
+            rows = read_result_csv(path)
+        from .results import result_key
+        rows = sorted([r for r in rows if result_key(r) != result_key(row)] + [row], key=result_key)
+        write_csv(path, rows, portable=True)
+        write_json(method / "sampling-time.json", document, portable=True)
         text = table(rows)
         atomic_text(path.with_suffix(".txt"), text + "\n")
     print(text, flush=True)
@@ -101,6 +103,8 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
 def table(rows):
     columns = ["method", "status", "generated_images", "reused_images", "model_load_seconds",
                "generation_seconds", "image_save_seconds", "total_seconds", "seconds_per_image"]
+    if any(r.get("case_id") for r in rows):
+        columns.insert(1, "case_id")
     values = []
     for row in rows:
         values.append(["N/A" if row.get(key) is None or row.get(key) == "" else

@@ -79,11 +79,11 @@ DVE 的投影是一个即时几何判据。它没有直接比较“采用这次�
 
 在当前相同状态 `(z,s)` 上，用同一模型计算：
 
-\[
+$$
 d = v(z,s,a)-v(z,s,f),\qquad v^{(\lambda)}=v(z,s,p)+\lambda d,\quad \lambda\in\{0,\lambda_{\rm ref}\}.
-\]
+$$
 
-`λ_ref` 是开发集确定的一个固定强度，不在每个测试提示上搜索。此处三次预测使用相同的生成 guidance 约定；自检时的原始条件输出另行区分。第一版使用完整差分，不接 DVE 的原始投影 gate，以便独立评价新的选择规则，也让原 gate 可能漏掉的纠正仍有机会被检查。
+$λ_{ref}$ 是开发集确定的一个固定强度，不在每个测试提示上搜索。此处三次预测使用相同的生成 guidance 约定；自检时的原始条件输出另行区分。第一版使用完整差分，不接 DVE 的原始投影 gate，以便独立评价新的选择规则，也让原 gate 可能漏掉的纠正仍有机会被检查。
 
 方向设计是继承部分，不作为创新点。当 `p=f`、`λ_ref=1` 且 guidance 设置一致时，候选 velocity 恰好变成安全参照的 velocity。这也给出最直接的符号检查。
 
@@ -97,9 +97,9 @@ d = v(z,s,a)-v(z,s,f),\qquad v^{(\lambda)}=v(z,s,p)+\lambda d,\quad \lambda\in\{
 
 用重新预测的 velocity 形成候选干净 latent 估计。在线性 RF 噪声坐标中：
 
-\[
+$$
 \hat x^{(j)}=z_{\rm next}^{(j)}-s_{\rm next}\,v(z_{\rm next}^{(j)},s_{\rm next},p).
-\]
+$$
 
 这是局部的 clean estimate，不当成实际终点。第一版不把候选完整采样到终点，否则计算成本容易失控。
 
@@ -109,13 +109,13 @@ d = v(z,s,a)-v(z,s,f),\qquad v^{(\lambda)}=v(z,s,p)+\lambda d,\quad \lambda\in\{
 
 对每个候选构造一次新的“加噪—预测”问题：
 
-\[
+$$
 \begin{aligned}
 \tilde z^{(j)}&=(1-\rho)\hat x^{(j)}+\rho\epsilon,\qquad u^{(j)}=\epsilon-\hat x^{(j)},\\
 R_j&=\operatorname{MSE}\!\left(v(\tilde z^{(j)},\rho,a_{\rm probe}),u^{(j)}\right)
     -\operatorname{MSE}\!\left(v(\tilde z^{(j)},\rho,f_{\rm probe}),u^{(j)}\right).
 \end{aligned}
-\]
+$$
 
 `R_j` 较大，表示目标概念条件相对安全参照更能解释该候选的 velocity 重建任务。它只是**待验证的相对兼容性指标，不是概念概率，也不是精确的条件对数似然比**。
 

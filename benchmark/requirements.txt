@@ -2,7 +2,7 @@
 torch>=2.2
 torchvision>=0.17
 diffusers>=0.35
-transformers>=4.44,<6
+transformers>=4.57,<6
 accelerate>=0.30
 peft>=0.13
 safetensors>=0.4

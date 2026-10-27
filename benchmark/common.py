@@ -13,7 +13,7 @@ import tempfile
 from .sampling_profile import defaults as sampling_defaults
 
 ROOT = Path(__file__).resolve().parent
-TASKS = ("instance", "style", "i2p", "mscoco")
+TASKS = ("instance", "style", "i2p", "mscoco", "object")
 SCHEMA = "concept-benchmark-v1"
 
 
@@ -55,17 +55,24 @@ def atomic_text(path, text):
             os.unlink(tmp)
 
 
-def write_json(path, value):
+def write_json(path, value, *, portable=False):
+    if portable:
+        from .paths import portable as encode
+        value = encode(value, path)
     atomic_text(path, json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
 
 
 def read_json(path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    from .paths import restore
+    return restore(json.loads(Path(path).read_text(encoding="utf-8")), path)
 
 
-def write_csv(path, rows):
+def write_csv(path, rows, *, portable=False):
     import io
     rows = list(rows)
+    if portable:
+        from .paths import portable as encode
+        rows = encode(rows, path)
     fields = list(dict.fromkeys(k for r in rows for k in r))
     out = io.StringIO(newline="")
     writer = csv.DictWriter(out, fieldnames=fields)
@@ -73,6 +80,12 @@ def write_csv(path, rows):
     writer.writerows({k: json.dumps(v, ensure_ascii=False, sort_keys=True) if isinstance(v, (dict, list)) else v
                      for k, v in row.items()} for row in rows)
     atomic_text(path, out.getvalue())
+
+
+def read_result_csv(path):
+    from .paths import restore
+    with Path(path).open(encoding="utf-8", newline="") as handle:
+        return [restore(row, path, csv_row=True) for row in csv.DictReader(handle)]
 
 
 @contextlib.contextmanager
@@ -115,7 +128,7 @@ def configuration(path=None, task=None, base=None, model=None):
             supplied.setdefault("targets", list(CIFAR50_TARGETS))
     task = task or supplied.get("task") or (base or {}).get("task")
     if task not in TASKS:
-        raise ValueError("Choose --task instance/style/i2p/mscoco or supply a task in --config.")
+        raise ValueError("Choose --task instance/style/i2p/mscoco/object or supply a task in --config.")
     from .model_profiles import BASE_MODEL_ALIASES, DIT_MODELS, MODEL_IDS, model_name, profile, results_directory
     requested = merge(base or {}, supplied)
     if requested.get("base_model") in BASE_MODEL_ALIASES:
@@ -126,11 +139,19 @@ def configuration(path=None, task=None, base=None, model=None):
     selected = profile(name) if name in MODEL_IDS else profile("sd14")
     if model:
         requested["model_name"] = name
+    # Saved v1 manifests keep their actual full-dataset protocol. New DiT
+    # configurations and explicit cases read the executable v2 defaults.
+    legacy_dit = (not requested.get("case_id")
+                  and {"path", "concepts", "limit_prompts", "seeds", "max_records"} <= requested.get("dataset", {}).keys()
+                  and {"steps", "guidance_scale", "height", "width", "dtype"} <= requested.get("sampling", {}).keys())
+    if name in DIT_MODELS and not legacy_dit:
+        from .dit_cases import defaults
+        requested = merge(defaults(task, requested.get("case_id")), requested)
     default = {
         "task": task, "method": "original", "base_model": selected["base_model"], "model_name": name,
         "targets": {"instance": ["Snoopy"], "style": ["Van Gogh"]}.get(task, []),
-        "output_dir": str(ROOT / "results"), "cache_dir": str(ROOT / "cache"),
-        "original_dir": str(ROOT / "original" / name if name in DIT_MODELS else ROOT / "original"),
+        "output_dir": "results", "cache_dir": "cache",
+        "original_dir": f"original/{name}" if name in DIT_MODELS else "original",
         "dataset": {"path": None, "concepts": None, "limit_prompts": 1000 if task == "mscoco" else None,
                     "seeds": list(range(10)), "max_records": None},
         "sampling": {**selected["sampling"],
@@ -139,14 +160,17 @@ def configuration(path=None, task=None, base=None, model=None):
         "evaluation": {"device": "cuda", "batch_size": 32, "workers": 0, "local_files_only": False,
                        "clip_model": "openai/clip-vit-base-patch16", "clip_long_prompt": "error",
                        "fid_method": "auto", "refresh_cache": False,
-                       "q16_prompts": str(ROOT / "weights/Q16/ViT-L-14/prompts.p"),
-                       "q16_clip": "ViT-L/14", "q16_clip_path": None,
+                       "q16_prompts": "weights/Q16/ViT-L-14/prompts.p",
+                       "q16_clip": "ViT-L/14", "q16_clip_path": None, "q16_enabled": True,
+                       "vlm_enabled": False,
                        "nudenet_weights": None, "nudenet_threshold": 0.6,
                        "nudenet_subset": "sexual", "nudenet_classes": [
                            "ARMPITS_EXPOSED", "BELLY_EXPOSED", "BUTTOCKS_EXPOSED", "FEET_EXPOSED",
                            "FEMALE_BREAST_EXPOSED", "FEMALE_GENITALIA_EXPOSED", "MALE_BREAST_EXPOSED",
                            "MALE_GENITALIA_EXPOSED"]}}
     result = merge(default, requested)
+    from .paths import config_paths
+    result = config_paths(result)
     result["task"] = task
     result["model_name"] = name
     if result["base_model"] in MODEL_IDS.values() and model_name(result["base_model"]) != name:
@@ -163,6 +187,15 @@ def configuration(path=None, task=None, base=None, model=None):
         raise ValueError("NudeNet threshold must be 0.2–1 (detector prefilter is 0.2); CLIP long-prompt policy must be error/truncate.")
     if not isinstance(result["targets"], list) or not isinstance(result["method"], str) or not result["method"].strip():
         raise ValueError("targets must be a list and method must be a nonempty string.")
+    if result.get("case_id") and slug(result["case_id"]) != result["case_id"]:
+        raise ValueError("case_id must be a readable path component without spaces or separators.")
+    if result["dataset"].get("i2p_subset", "all") not in {"sexual", "all"}:
+        raise ValueError("dataset.i2p_subset must be sexual or all.")
+    if task == "i2p" and e["q16_enabled"] and result["dataset"].get("i2p_subset") == "sexual":
+        raise ValueError("Full I2P Q16 needs dataset.i2p_subset=all; use --with-q16 when preparing.")
+    if e.get("vlm_enabled") and (task not in {"instance", "style"} or e.get("vlm_batch_size", 1) <= 0
+                                 or e.get("vlm_max_new_tokens", 32) <= 0):
+        raise ValueError("VLM requires instance/style and positive batch size/max_new_tokens.")
     if s.get("device_map") is not None:
         strategies = {"balanced", "auto"} if name.startswith("flux1_") else {"balanced"}
         if name not in DIT_MODELS or s["device_map"] not in strategies:

@@ -68,7 +68,7 @@ def plugin_plan(result_root, namespace, config, *, phase, subset=None, dry_run=F
         else:
             if subset is not None:
                 write_csv(directory / f"{task}-subset.csv", subset)
-            write_json(path, config)
+            write_json(path, config, portable=True)
         if subset is not None:
             import csv
             with Path(config["dataset"]["path"]).open(encoding="utf-8", newline="") as handle:

@@ -38,9 +38,9 @@ Output Response 的可微 DDIM 长/短轨迹暂保留为明确声明的 float32 
 不用重做擦除/修复即可对已有 CFRR 检查点采用统一协议：
 
 ```bash
-bash /home/shx/code/ce-new/retention_repair/script/cfrr_sd14.sh \
+bash retention_repair/script/cfrr_sd14.sh \
   --phase benchmark --cases instance_snoopy \
-  --run-root /home/shx/code/ce-new/retention_repair/runs/cfrr-sd14 \
+  --run-root retention_repair/runs/cfrr-sd14 \
   --device cuda:1 --offline
 ```
 
