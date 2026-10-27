@@ -1,0 +1,3 @@
+# Minimal upstream UCE editor + this workspace's shared evaluators.
+-r ../../benchmark/requirements.txt
+diffusers>=0.34.0
