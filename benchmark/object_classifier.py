@@ -33,18 +33,22 @@ class ResNetClassifier:
         import torch
         from torchvision.models import resnet50, ResNet50_Weights
         path = weight_path(opts)
-        if not path.is_file():
-            if opts["local_files_only"]:
-                raise FileNotFoundError("Offline ResNet-50 V2 weights missing; run python -m benchmark download --resource resnet50.")
-            download_resnet(path)
+        weights = ResNet50_Weights.IMAGENET1K_V2
+        if opts["local_files_only"] and not path.is_file():
+            raise FileNotFoundError("Offline ResNet-50 V2 weights missing; run python -m benchmark download --resource resnet50.")
+        if opts.get("resnet_weights_path"):
+            if not path.is_file():
+                download_resnet(path)
+            self.model = resnet50(weights=None)
+            self.model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=True)
+        else:
+            # Torchvision reuses its standard cache and downloads missing weights.
+            self.model = resnet50(weights=weights)
         checksum = file_digest(path)
         if not checksum.startswith("11ad3fa6"):
             raise ValueError("ResNet weights do not match the fixed official ImageNet-1K V2 release.")
         self.device = opts["device"]
-        self.model = resnet50(weights=None)
-        self.model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True), strict=True)
         self.model.to(self.device).eval()
-        weights = ResNet50_Weights.IMAGENET1K_V2
         self.preprocess = weights.transforms()
         if any(weights.meta["categories"][index].casefold() != name for name, index in IMAGENET10.items()):
             raise ValueError("Installed torchvision ImageNet category mapping differs from this protocol.")

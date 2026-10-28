@@ -33,12 +33,14 @@ def parse_label(text, task):
 
 def download_vlm(destination=None, model="Qwen/Qwen3-VL-2B-Instruct", revision=None):
     from huggingface_hub import HfApi, snapshot_download
-    from .common import ROOT, write_json
-    revision = revision or HfApi().model_info(model).sha
-    destination = destination or ROOT / "weights/Qwen3-VL-2B-Instruct"
+    from .common import write_json
+    if destination is not None:
+        revision = revision or HfApi().model_info(model).sha
+    # A missing local_dir uses the Hub cache, including its default branch ref.
     path = snapshot_download(model, revision=revision, local_dir=destination)
-    write_json(Path(path) / "model-source.json", {"model": model, "revision": revision,
-               "source": f"https://huggingface.co/{model}/tree/{revision}"})
+    if destination is not None:
+        write_json(Path(path) / "model-source.json", {"model": model, "revision": revision,
+                   "source": f"https://huggingface.co/{model}/tree/{revision}"})
     return path
 
 

@@ -76,7 +76,7 @@ def parser():
     q.add_argument("--dry-run", action="store_true")
     q = sub.add_parser("download", help="独立准备指标权重；不生成实验分数")
     q.add_argument("--resource", choices=("q16", "clip", "fid", "nudenet", "vlm", "resnet50"), required=True)
-    q.add_argument("--destination", type=Path, help="资源输出位置：Q16/ResNet为文件，VLM为目录；默认保存benchmark/weights下")
+    q.add_argument("--destination", type=Path, help="可选资源输出位置；VLM/ResNet默认使用标准缓存，Q16默认保存在benchmark/weights下")
     q.add_argument("--clip-model", default="ViT-L/14", help="Q16对应的OpenAI CLIP模型")
     q.add_argument("--include-backbone", action="store_true")
     return p
@@ -182,7 +182,7 @@ def main(argv=None):
                 download_vlm(args.destination)
             elif args.resource == "resnet50":
                 from .object_classifier import download_resnet
-                download_resnet(args.destination or ROOT / "weights/resnet50_v2.pth")
+                download_resnet(args.destination)
             else:
                 from nudenet import NudeDetector
                 NudeDetector()

@@ -1,11 +1,11 @@
 {
   "q16_enabled": false,
   "vlm_enabled": false,
-  "vlm_model": "./weights/Qwen3-VL-2B-Instruct",
+  "vlm_model": "Qwen/Qwen3-VL-2B-Instruct",
   "vlm_revision": null,
   "vlm_dtype": "bfloat16",
   "vlm_max_new_tokens": 32,
   "vlm_batch_size": 1,
   "resnet_weights": "IMAGENET1K_V2",
-  "resnet_weights_path": "weights/resnet50_v2.pth"
+  "resnet_weights_path": null
 }

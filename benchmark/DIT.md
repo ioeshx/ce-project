@@ -42,7 +42,9 @@ python -m benchmark download --resource nudenet
 python -m benchmark download --resource q16 --include-backbone
 ```
 
-ResNet权重默认保存到 `benchmark/weights/resnet50_v2.pth`；Qwen保存到 `benchmark/weights/Qwen3-VL-2B-Instruct/`，下载来源与revision保存到 `model-source.json`。评测默认读取这些路径，支持 `--vlm-model` 和 `--resnet-weights-path` 覆盖。也可将 `--vlm-model` 设置为Hub模型ID。`--offline`禁止自动下载，缺失资源明确报错。采样模型本身也需要访问权限及已下载的配置、权重。
+评测默认通过 Transformers 加载 `Qwen/Qwen3-VL-2B-Instruct`，通过 Torchvision 加载 `ResNet50_Weights.IMAGENET1K_V2`。联网时自动下载缺失权重到 Hugging Face Hub／Torch 标准缓存，不要求 `benchmark/weights/` 下存在这些模型；上述 download 命令可提前填充同一缓存。`--offline` 禁止自动下载，只使用已有缓存或显式指定的本地权重；希望自动下载时不要传该选项。采样模型本身也需要访问权限及相应资源。
+
+仍可通过 `--vlm-model /本地模型目录` 和 `--resnet-weights-path /本地权重文件` 使用本地资源。download 命令显式传 `--destination` 时保存到该位置，VLM 同时写入来源与 revision 的 `model-source.json`；评测时需相应指定本地位置。已准备清单中的显式本地路径会保留，切换到新默认值时重新 prepare，或在 evaluate 时覆盖配置。
 
 ## 原模型运行命令
 
