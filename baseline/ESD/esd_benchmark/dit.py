@@ -10,6 +10,7 @@ import sys
 
 from benchmark.common import ROOT, configuration, file_digest
 from benchmark.dit_cases import definitions, select_cases
+from benchmark.execution import compatible_settings, cpu_parent, run_function
 from benchmark.model_profiles import profile, resolve_scheduler
 from benchmark.plugin_plans import plugin_plan
 from . import METHOD_ROOT, WORKSPACE
@@ -88,6 +89,7 @@ def case_configs(args, case_id, case):
                     Path(__file__), Path(__file__).with_name("dit_training.py"),
                     METHOD_ROOT / "esd_flux.py", METHOD_ROOT / "utils/esd_trainer.py",
                     METHOD_ROOT / "utils/flux_utils.py", METHOD_ROOT / "utils/esd_checkpoint.py")}}
+    settings = compatible_settings(args.run_root / args.model / case_id, settings, METHOD_ROOT.name)
     configs = []
     for task in case["tasks"]:
         if args.tasks and task not in args.tasks:
@@ -125,8 +127,7 @@ def case_configs(args, case_id, case):
     return settings, configs
 
 
-def run(args, experiments):
-    env = dict(os.environ)
+def run(args, experiments, env):
     env["PYTHONPATH"] = os.pathsep.join((str(METHOD_ROOT), str(WORKSPACE), env.get("PYTHONPATH", "")))
     for case_id, settings, configs in experiments:
         case_root = args.run_root / args.model / case_id
@@ -135,10 +136,10 @@ def run(args, experiments):
         if args.phase in {"all", "train"}:
             print(f"[train] {case_root / 'checkpoint'}", flush=True)
             if not args.dry_run:
-                import torch
-                from .dit_training import train
-                torch.set_num_threads(args.cpu_threads)
-                train(case_root / "checkpoint", settings, offline=args.offline, cpu_threads=args.cpu_threads)
+                run_function("esd_benchmark.dit_training:train",
+                             {"checkpoint": str(case_root / "checkpoint"), "settings": settings,
+                              "offline": args.offline, "cpu_threads": args.cpu_threads},
+                             env=env, cwd=WORKSPACE, cpu_threads=args.cpu_threads)
         if args.phase == "train":
             continue
         for cfg in configs:
@@ -195,7 +196,8 @@ def main(argv=None):
     for _, settings, _ in experiments:
         if settings["iterations"] < len(settings["targets"]):
             p.error("Training iterations must cover every target at least once.")
-    run(args, experiments)
+    with cpu_parent(args, p) as env:
+        run(args, experiments, env)
     return 0
 
 

@@ -10,6 +10,7 @@ import sys
 
 from benchmark.common import ROOT, configuration, file_digest, read_json
 from benchmark.dit_cases import definitions, select_cases
+from benchmark.execution import compatible_settings, cpu_parent, run_function
 from benchmark.model_profiles import profile, resolve_scheduler
 from benchmark.plugin_plans import plugin_plan
 from . import METHOD_ROOT, WORKSPACE
@@ -77,6 +78,7 @@ def case_configs(args, case_id, case):
                 "sources": {path.name: file_digest(path) for path in (
                     Path(__file__), Path(__file__).with_name("dit_editing.py"),
                     METHOD_ROOT / "trainscripts/uce_flux_edit.py")}}
+    settings = compatible_settings(args.run_root / args.model / case_id, settings, METHOD_ROOT.name)
     configs = []
     for task in case["tasks"]:
         if args.tasks and task not in args.tasks:
@@ -115,8 +117,7 @@ def case_configs(args, case_id, case):
     return settings, configs
 
 
-def run(args, experiments):
-    env = dict(os.environ)
+def run(args, experiments, env):
     env["PYTHONPATH"] = os.pathsep.join((str(METHOD_ROOT), str(WORKSPACE), env.get("PYTHONPATH", "")))
     for case_id, settings, configs in experiments:
         case_root = args.run_root / args.model / case_id
@@ -124,10 +125,9 @@ def run(args, experiments):
         if args.phase in {"all", "erase"}:
             print(f"[edit] {case_root / 'checkpoint'}", flush=True)
             if not args.dry_run:
-                import torch
-                from .dit_editing import edit
-                torch.set_num_threads(args.cpu_threads)
-                edit(case_root / "checkpoint", settings, offline=args.offline)
+                run_function("uce_benchmark.dit_editing:edit",
+                             {"checkpoint": str(case_root / "checkpoint"), "settings": settings, "offline": args.offline},
+                             env=env, cwd=WORKSPACE, cpu_threads=args.cpu_threads)
         if args.phase == "erase":
             continue
         for cfg in configs:
@@ -181,7 +181,8 @@ def main(argv=None):
             p.error("An erased target cannot also be a preserve concept.")
         if any(target.casefold() == guide.casefold() for target, guide in zip(settings["targets"], settings["guides"])):
             p.error("A target cannot be its own anchor.")
-    run(args, experiments)
+    with cpu_parent(args, p) as env:
+        run(args, experiments, env)
     return 0
 
 

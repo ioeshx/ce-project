@@ -9,6 +9,7 @@ import time
 
 from benchmark.common import file_digest, read_json, write_json
 from benchmark.adapters import release_memory
+from benchmark.execution import runtime_device
 
 PROJECTIONS = ("context_embedder", "time_text_embed.text_embedder.linear_1")
 FORMAT = "uce-dit-text-projections-v1"
@@ -79,7 +80,7 @@ def edit(checkpoint, settings, *, offline=False):
     started = time.perf_counter()
     flux = settings["model_name"] == "flux1_dev"
     cls = FluxPipeline if flux else StableDiffusion3Pipeline
-    device = settings["edit_device"]
+    device = runtime_device(settings["edit_device"])
     # No denoiser or VAE is needed to obtain the concept representations.
     pipe = cls.from_pretrained(settings["base_model"], transformer=None, vae=None,
                                torch_dtype=getattr(torch, settings["embedding_dtype"]),

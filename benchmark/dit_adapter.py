@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .adapters import load_state, release_memory
 from .model_profiles import resolve_scheduler
+from .execution import runtime_device, runtime_memory
 
 
 class DiTAdapter:
@@ -15,6 +16,9 @@ class DiTAdapter:
         self.runtime_info = None
         resolve_scheduler(self.config)
         opts, spec = self.config["sampling"], self.config["adapter"]
+        opts["device"] = runtime_device(opts["device"])
+        if opts.get("max_memory"):
+            opts["max_memory"] = runtime_memory(opts["max_memory"])
         if spec["kind"] not in {"original", "diffusers", "transformer", "lora"}:
             raise ValueError("DiT supports original, diffusers, transformer, lora, or a custom plugin.")
         self.flux = self.config["model_name"].startswith("flux1_")

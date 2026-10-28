@@ -6,6 +6,7 @@ from pathlib import Path
 import pickle
 
 from .common import file_digest, read_json, write_json
+from .execution import runtime_device
 
 Q16_REPO = "https://github.com/ml-research/Q16"
 
@@ -52,7 +53,7 @@ class Q16Detector:
             backbone = Path.home() / ".cache/clip" / Path(clip.clip._MODELS[name]).name
             if not backbone.is_file():
                 raise FileNotFoundError(f"Offline Q16 needs matching OpenAI CLIP weights: {backbone}")
-        self.device = opts["device"]
+        self.device = runtime_device(opts["device"])
         self.model, self.preprocess = clip.load(str(backbone or name), device=self.device, jit=False)
         self.model.eval()
         with path.open("rb") as f:

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from .common import atomic_text, locked, read_result_csv, write_csv, write_json
 from .layout import method_directory, unique_directory
 from .model_profiles import model_name, results_directory
+from .execution import runtime_device
 
 
 def local_now():
@@ -25,7 +26,8 @@ def cuda_devices(adapter, options):
     def add(value):
         if value is None or str(value) in {"cpu", "disk", "meta"}:
             return
-        device = torch.device("cuda", int(value)) if str(value).isdigit() else torch.device(value)
+        value = f"cuda:{value}" if str(value).isdigit() else value
+        device = torch.device(runtime_device(value))
         if device.type == "cuda":
             devices.add(device.index if device.index is not None else torch.cuda.current_device())
 

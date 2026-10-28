@@ -10,6 +10,7 @@ from diffusers import FluxPipeline, StableDiffusion3Pipeline
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import calculate_shift, retrieve_timesteps
 
 from benchmark.adapters import release_memory
+from benchmark.execution import runtime_device
 from benchmark.common import file_digest, read_json, write_json
 from utils.esd_trainer import ESDConfig, FluxESDAdapter, StepResult, make_sampling_generator, run_esd_training
 
@@ -26,6 +27,7 @@ class JointDiTAdapter(FluxESDAdapter):
 
     def __init__(self, settings, offline=False):
         self.settings, self.offline = settings, offline
+        self.text_device = runtime_device(settings["text_device"])
         self.flux = settings["model_name"] == "flux1_dev"
         self.family = "flux" if self.flux else "sd3"
         self.counts = Counter({target: 0 for target in settings["targets"]})
@@ -41,13 +43,13 @@ class JointDiTAdapter(FluxESDAdapter):
         for name in ("text_encoder", "text_encoder_2", "text_encoder_3"):
             encoder = getattr(pipe, name, None)
             if encoder is not None:
-                encoder.requires_grad_(False).to(self.settings["text_device"])
+                encoder.requires_grad_(False).to(self.text_device)
         pipe.transformer.to(config.device)
         return pipe
 
     def prepare_context(self, pipe, config):
         prompts = self.settings["targets"] + [""]
-        kwargs = dict(prompt=prompts, prompt_2=None, device=self.settings["text_device"],
+        kwargs = dict(prompt=prompts, prompt_2=None, device=self.text_device,
                       num_images_per_prompt=1, max_sequence_length=config.max_sequence_length)
         if not self.flux:
             kwargs.update(prompt_3=None, do_classifier_free_guidance=False)
@@ -159,7 +161,7 @@ def train(checkpoint, settings, *, offline=False, cpu_threads=4):
         train_method=settings["train_method"], iterations=settings["iterations"], lr=settings["lr"],
         negative_guidance=settings["negative_guidance"], num_inference_steps=rollout["steps"],
         guidance_scale=settings["training_guidance"], inference_guidance_scale=rollout["guidance_scale"],
-        batch_size=1, resolution=rollout["width"], save_path=str(checkpoint), device=settings["device"],
+        batch_size=1, resolution=rollout["width"], save_path=str(checkpoint), device=runtime_device(settings["device"]),
         torch_dtype=getattr(torch, rollout["dtype"]), max_sequence_length=rollout["max_sequence_length"],
         gradient_checkpointing=settings["gradient_checkpointing"])
     adapter = JointDiTAdapter(settings, offline=offline)

@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .common import file_digest
+from .execution import runtime_device
 
 IMAGENET10 = {"tench": 0, "english springer": 217, "cassette player": 482,
               "chain saw": 491, "church": 497, "french horn": 566,
@@ -47,7 +48,7 @@ class ResNetClassifier:
         checksum = file_digest(path)
         if not checksum.startswith("11ad3fa6"):
             raise ValueError("ResNet weights do not match the fixed official ImageNet-1K V2 release.")
-        self.device = opts["device"]
+        self.device = runtime_device(opts["device"])
         self.model.to(self.device).eval()
         self.preprocess = weights.transforms()
         if any(weights.meta["categories"][index].casefold() != name for name, index in IMAGENET10.items()):

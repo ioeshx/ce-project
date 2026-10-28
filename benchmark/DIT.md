@@ -48,13 +48,15 @@ python -m benchmark download --resource q16 --include-backbone
 
 ## 原模型运行命令
 
+所有采样和评测进程现在通过 `CUDA_VISIBLE_DEVICES` 仅暴露 `--device` 指定的一张 GPU；进程内重编号为 `cuda:0`，配置仍记录用户指定的设备。若外部已经设置 `CUDA_VISIBLE_DEVICES`，`--device` 使用该可见列表中的逻辑编号，例如 `CUDA_VISIBLE_DEVICES=1 --device cuda:0` 使用物理 GPU 1。`--vlm-device` 等辅助设备可选 CPU 或同一张 GPU，不能指定另一张卡。`--max-memory` 的 GPU key 也必须与 `--device` 一致；`device_map` 仅在该可见 GPU 内自动放置，不再跨其他显卡分配。显存不足时可使用 CPU offload。
+
 脚本按自身位置选择项目，所有下列命令从项目根目录运行。默认仍为I2P＋COCO；`--cases all`才运行全部八个case。`--dry-run`只打印命令，不创建结果或加载权重。
 
 ```bash
 # 四个原模型，全部实验
-CUDA_VISIBLE_DEVICES=0,1 bash benchmark/script/dit.sh \
+CUDA_VISIBLE_DEVICES=0 bash benchmark/script/dit.sh \
   --model flux1_dev --method original --cases all --device-map balanced --device cuda:0
-CUDA_VISIBLE_DEVICES=0,1 bash benchmark/script/dit.sh \
+CUDA_VISIBLE_DEVICES=0 bash benchmark/script/dit.sh \
   --model flux1_schnell --method original --cases all --device-map balanced --device cuda:0
 CUDA_VISIBLE_DEVICES=0 bash benchmark/script/dit.sh \
   --model sd30_medium --method original --cases all --device cuda:0
@@ -130,9 +132,9 @@ bash benchmark/script/dit.sh --model flux1_dev --cases ip \
 
 全部默认512×512、BF16，使用基础模型自身的FlowMatchEulerDiscreteScheduler配置。每条记录先在CPU生成float32噪声，再转为模型精度；FLUX使用原生2×2 latent打包，不随batch或补图改变seed。
 
-FLUX `--device-map balanced/auto` 按Transformer block切分：先将文本编码器与VAE放到 `--device`，再根据各卡剩余显存减去默认2GiB激活预留推导Transformer预算。`--max-memory '{"0":"16GiB","1":"16GiB"}'` 可限制Transformer权重预算；`--gpu-memory-reserve 3` 可调整预留。实际分布记录到 `sampling-runtime.json`。SD3 balanced仍为组件级分配。device map与CPU offload互斥，不需要torchrun。
+FLUX `--device-map balanced/auto` 根据唯一可见 GPU 的剩余显存减去默认2GiB激活预留，推导Transformer预算；文本编码器与VAE也使用该卡。以 `--device cuda:1` 为例，`--max-memory '{"1":"16GiB"}'` 限制该卡的Transformer权重预算；`--gpu-memory-reserve 3` 可调整预留。实际分布记录到 `sampling-runtime.json`。SD3 balanced仍按组件分配，但同样只能使用指定GPU。device map与CPU offload互斥，显存不足时可改用 `--cpu-offload`。
 
-生成与评测运行在独立阶段，生成模型释放后才加载CLIP、FID、Qwen或ResNet；Qwen也可通过 `--vlm-device` 选择独立设备。
+生成与评测运行在独立阶段，生成模型释放后才加载CLIP、FID、Qwen或ResNet；Qwen可通过 `--vlm-device cpu` 改用CPU，使用GPU时必须与 `--device` 相同。
 
 ## 续跑、旧图片复用与单独评测
 

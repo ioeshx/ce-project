@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 
 from .common import ROOT, TASKS, configuration, merge, read_json
 
@@ -35,7 +36,7 @@ def parser():
         detector.add_argument("--without-q16", dest="with_q16", action="store_false", help="只计算NudeNet；可用于旧全量清单")
         q.add_argument("--skip-vlm", action="store_true", help="显式关闭IP/style的VLM，结果按不同评测协议分组")
         q.add_argument("--vlm-model", help="Qwen3-VL模型ID或本地目录")
-        q.add_argument("--vlm-device", help="VLM独立评测设备；默认跟随--device")
+        q.add_argument("--vlm-device", help="VLM设备；只能为cpu或--device指定的同一张GPU")
         q.add_argument("--resnet-weights-path", type=Path, help="官方ResNet-50 V2权重的本地文件")
         q.add_argument("--targets", help="以逗号分隔；例如 Snoopy,Mickey")
         q.add_argument("--device", help="采样及指标设备；evaluate仅设置指标设备，如 cpu 或 cuda:0")
@@ -51,7 +52,7 @@ def parser():
         q.add_argument("--device-map", choices=("balanced", "auto"),
                        help="FLUX按Transformer层切分；SD3支持balanced组件分配")
         q.add_argument("--max-memory", type=json.loads,
-                       help='FLUX为Transformer预算，SD3为组件预算，例如 \'{"0":"16GiB","1":"16GiB"}\'')
+                       help='仅限制--device对应GPU的预算，例如 --device cuda:1 --max-memory \'{"1":"16GiB"}\'')
         q.add_argument("--gpu-memory-reserve", dest="gpu_memory_reserve_gib", type=float,
                        help="FLUX按层切分时每卡为激活预留的GiB，默认2；在已加载文本编码器/VAE后计算")
         q.add_argument("--cache-dir", type=Path)
@@ -209,6 +210,15 @@ def main(argv=None):
             path = import_casu(args.import_casu, config, args.manifest) if args.import_casu else prepare(config, args.manifest)
             print(f"[manifest] {path}")
             return 0
+        from .execution import DEVICE_ENV, cpu_parent
+        if not os.environ.get(DEVICE_ENV):
+            group = "evaluation" if args.command == "evaluate" else "sampling"
+            binding = argparse.Namespace(**vars(args))
+            binding.max_memory = config[group].get("max_memory")
+            binding.vlm_device = config["evaluation"].get("vlm_device")
+            with cpu_parent(binding, p, device=config[group]["device"]) as env:
+                # Replace this process before importing CUDA/model libraries.
+                os.execvpe(sys.executable, [sys.executable, "-m", "benchmark", *(argv or sys.argv[1:])], env)
         import torch
         torch.set_num_threads(args.cpu_threads)
         if args.command == "evaluate":

@@ -11,6 +11,7 @@ from typing import Protocol
 
 from .common import locked, read_json, write_json
 from .data import valid_image
+from .execution import runtime_device
 
 
 class GeneratorAdapter(Protocol):
@@ -36,7 +37,7 @@ class DiffusersAdapter:
 
         self.config = config
         opts, spec = config["sampling"], config["adapter"]
-        device = opts["device"]
+        device = runtime_device(opts["device"])
         if str(device).startswith("cuda") and not torch.cuda.is_available():
             raise ValueError("CUDA unavailable; set sampling.device=cpu.")
         dtype = opts["dtype"]

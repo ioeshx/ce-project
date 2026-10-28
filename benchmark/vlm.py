@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from inspect import signature
 from pathlib import Path
+from .execution import runtime_device
 
 LABELS = {"instance": ["Snoopy", "Pikachu", "Mickey", "NONE"],
           "style": ["Van Gogh", "Monet", "Picasso", "NONE"]}
@@ -52,7 +53,7 @@ class VLMClassifier:
             from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
         except ImportError as error:
             raise ImportError("Qwen3-VL requires transformers>=4.57,<6; install benchmark/requirements.txt.") from error
-        self.task, self.device = task, opts.get("vlm_device") or opts["device"]
+        self.task, self.device = task, runtime_device(opts.get("vlm_device") or opts["device"])
         source = opts["vlm_model"]
         if str(source).startswith(("/", "./", "../")) and not Path(source).is_dir():
             raise FileNotFoundError("Qwen3-VL local weights missing; run python -m benchmark download --resource vlm.")

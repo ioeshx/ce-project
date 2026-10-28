@@ -1,0 +1,2 @@
+cuda:0 21.58GiB / 24GiB
+cuda:1 12243MiB

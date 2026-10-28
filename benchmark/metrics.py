@@ -6,9 +6,11 @@ from pathlib import Path
 import hashlib
 import json
 from zipfile import BadZipFile
+from .execution import runtime_device
 
 class CLIPScorer:
     def __init__(self, model_name, device, local_files_only=False, long_prompt="error"):
+        device = runtime_device(device)
         import torch
         from transformers import AutoImageProcessor, AutoTokenizer, CLIPImageProcessor, CLIPModel, CLIPProcessor
 
@@ -51,6 +53,7 @@ class CLIPScorer:
 
 class FIDExtractor:
     def __init__(self, device, local_files_only=False):
+        device = runtime_device(device)
         import torch
         from torch_fidelity.feature_extractor_inceptionv3 import URL_INCEPTION_V3, FeatureExtractorInceptionV3
 

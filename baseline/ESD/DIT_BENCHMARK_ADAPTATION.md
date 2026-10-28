@@ -1,5 +1,7 @@
 # ESD 的 DiT 实验适配
 
+执行层更新：训练、采样和评测均在独立子进程执行，总控隐藏 GPU，训练子进程退出后释放 CUDA 上下文。公共实现为 `benchmark/execution.py`；训练适配只新增运行设备映射，ESD 目标与优化器未改。全部 CUDA 组件限制在 `--device` 指定的单卡，文本编码或指标仍可使用 CPU；辅助 GPU 和内存预算不能指向其他卡。子进程内该卡编号为 `cuda:0`，保存设置仍使用用户指定的编号。本次执行层升级通过精确源码摘要映射兼容已有检查点和计划，不改写历史记录。
+
 默认 **SD3.5 Medium**，另支持 **FLUX.1-dev**。新增两个 Python 文件、四个单项脚本和一个总入口，均保存在 ESD 目录。未修改公共 `benchmark/`、原生 `utils/` 训练代码或已有 SD1.4 入口，没有新增测试文件。
 
 FLUX 直接复用当前仓库的 `FluxESDAdapter.training_step` 和公共训练循环。**SD3.5 是本地新增的 ESD 训练适配，不是作者提供的官方 SD3.5 实现**；沿用相同的教师／学生目标、参数切换、MSE 和 Adam，只适配 SD3 的文本条件、时间步和 Flow Matching rollout。ESD 需要梯度训练，不属于 training-free 方法。

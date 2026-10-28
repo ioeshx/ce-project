@@ -74,7 +74,9 @@ bash /home/shx/code/ce-project/baseline/unified-concept-editing/scripts/benchmar
 
 依赖复用 `requirements-benchmark.txt`；评测权重准备见 `benchmark/DIT.md`。IP/style 默认需要 Qwen3-VL-2B-Instruct，Object 需要官方 ResNet-50 V2，I2P 需要 NudeNet，CS/FID 需要 CLIP 和 Inception 权重。支持 `--vlm-model`、`--resnet-weights-path`、`--nudenet-weights` 等本地路径。`--skip-vlm` 显式形成不含 VLM 的评测协议。
 
-采样可选 `--cpu-offload` 或多卡 `--device-map balanced`，二者互斥。FLUX 另支持 `auto`、`--max-memory`、`--gpu-memory-reserve`，均传给公共采样器。编辑阶段单独加载文本编码器，默认在 `--device` 上执行，可用 `--edit-device cpu` 改为 CPU；两层闭式求解始终在 CPU 以 FP32 执行。
+采样可选 `--cpu-offload` 或 `--device-map balanced`，二者互斥。FLUX 另支持 `auto`、`--max-memory`、`--gpu-memory-reserve`，均传给公共采样器。当前执行层仅暴露 `--device` 指定的一张 GPU，自动放置也限制在该卡内；其他 GPU 的辅助设备或内存预算在入口报错。编辑默认在同一卡执行，可用 `--edit-device cpu` 改为 CPU；两层闭式求解始终在 CPU 以 FP32 执行。
+
+编辑、采样和评测均在独立子进程执行，总控进程隐藏全部 GPU。编辑结束后子进程退出，CUDA 上下文随之释放，不再让总控保留数百 MB 显存。公共实现为 `benchmark/execution.py`，`dit_editing.py` 只新增运行设备映射，未改闭式公式。执行层升级对旧源码摘要采用明确的 before/after 兼容映射，继续复用原检查点和计划，不改写历史记录；其他参数或算法源码发生变化仍要求新实验。
 
 ## 编辑算法和迁移差异
 
