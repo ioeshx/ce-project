@@ -185,6 +185,9 @@ def main(argv=None):
     if args.targets:
         pairs = {target: pairs[target] for target in args.targets}
 
+    args.seed = random.Random(None).randint(0, 2**32 - 1)
+    args.template_seed = random.Random(None).randint(0, 2**32 - 1)
+
     scenes = ("in a quiet garden", "beside a lake", "on a city street", "in a bright studio",
               "against a mountain landscape", "in a sunlit room", "near a forest", "by the seaside")
     lights = ("soft daylight", "warm evening light", "diffuse overcast light", "gentle side lighting")
