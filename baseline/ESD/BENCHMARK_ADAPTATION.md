@@ -1,5 +1,7 @@
 # ESD统一实验适配记录
 
+DiT 新入口：SD3.5 Medium（默认）和 FLUX.1-dev 的四类实验、训练参数及迁移差异见 [DiT 适配记录](DIT_BENCHMARK_ADAPTATION.md)。下文保留原 SD1.4 实验说明。
+
 更新：2026-10-24。原始提交：`2ff19a10d6084fababbdcb75e10deb56bd21fddb`。
 
 ## 1. 支持的实验

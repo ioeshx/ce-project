@@ -71,10 +71,10 @@ class SamplingTimeTests(unittest.TestCase):
             self.assertEqual(events, ["load", "sync", "sync", "generate", "sync", "save", "save",
                                       "sync", "generate", "sync", "save", "close"])
             self.assertEqual(read_json(Path(row["details_file"]))["row"]["manifest"], str(path))
-            with (root / "results/sd14/mscoco-sampling-time.csv").open() as handle:
+            with (root / "results/sd14/time/mscoco-sampling-time.csv").open() as handle:
                 saved = next(csv.DictReader(handle))
             self.assertEqual(float(saved["generation_seconds"]), 8)
-            self.assertTrue((root / "results/sd14/mscoco-sampling-time.txt").is_file())
+            self.assertTrue((root / "results/sd14/time/mscoco-sampling-time.txt").is_file())
 
     def test_resume_cached_other_methods_and_failure_do_not_erase_history(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -104,7 +104,7 @@ class SamplingTimeTests(unittest.TestCase):
                 # Original aliases from the other method may reuse references;
                 # either way the summary must retain this distinct method.
                 sample_manifest(other, "image")
-            csv_path = root / "results/sd14/mscoco-sampling-time.csv"
+            csv_path = root / "results/sd14/time/mscoco-sampling-time.csv"
             with csv_path.open() as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual({r["method"] for r in rows}, {"fixture", "other-fixture"})

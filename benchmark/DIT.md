@@ -168,4 +168,4 @@ python -m benchmark plot --model flux1_dev --task object
 python -m benchmark report --model flux1_dev --task i2p
 ```
 
-采样耗时继续记录到每模型的 `<task>-sampling-time.csv/.txt` 及方法目录的 `sampling-time.json`、`samplings/` 历史；参考图和方法图分段记录，缓存命中不会计为新生成。
+采样耗时汇总记录到 `results/<model_name>/time/<task>-sampling-time.csv/.txt`，对应 `.lock` 也位于 `time/`。方法目录继续保存 `sampling-time.json` 和 `samplings/` 历史；参考图和方法图分段记录，缓存命中不会计为新生成。

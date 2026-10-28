@@ -2,6 +2,8 @@
 
 本工作区的instance、style、I2P Q16、I2P NudeNet及CIFAR-50→MS-COCO统一实验入口、配置差异和修改记录见[中文适配说明](BENCHMARK_ADAPTATION.md)。五个独立脚本及总入口位于`scripts/benchmark_*.sh`，上游UCE核心算法保持原样。
 
+SD3.5 Medium（默认）和 FLUX.1-dev 的 I2P、IP、style、Object 实验见 [DiT 适配说明](DIT_BENCHMARK_ADAPTATION.md)，总入口为 `scripts/benchmark_dit_all.sh`。SD3.5 使用本地迁移的文本投影闭式编辑。
+
 ###  [Project Website](https://unified.baulab.info) | [Arxiv Preprint](https://arxiv.org/pdf/2308.14761.pdf)
 
 ## Update: FLUX and SDXL Support for UCE🚀🚀🚀

@@ -1,4 +1,4 @@
-# SD-only integration and this workspace's common evaluators; no torch_xla.
+# SD and DiT integrations plus this workspace's common evaluators; no torch_xla.
 -r ../../benchmark/requirements.txt
 diffusers>=0.37.1
 tqdm>=4.67

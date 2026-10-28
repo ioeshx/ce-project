@@ -1,5 +1,7 @@
 # UCE统一实验适配记录
 
+DiT 新入口：SD3.5 Medium（默认）和 FLUX.1-dev 的 I2P、IP、style、Object 实验及迁移差异见 [DiT 适配记录](DIT_BENCHMARK_ADAPTATION.md)。下文保留原 SD1.4 实验说明。
+
 更新：2026-10-24。适配的上游提交：`7c724d9d7d19190e9bd33fe62fb656f1df87cd8e`。
 
 ## 1. 支持范围与实际实验配置

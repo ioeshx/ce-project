@@ -84,7 +84,7 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
                                 "seconds_per_image": "generation_seconds / newly generated images; null when all requested images are cached.",
                                 "resume": "Only this invocation is timed; previous invocation records are retained under samplings/."}}
     write_json(directory / "timing.json", document, portable=True)
-    path = root / f"{manifest['task']}-sampling-time.csv"
+    path = root / "time" / f"{manifest['task']}-sampling-time.csv"
     with locked(path.with_suffix(".lock")):
         rows = []
         if path.exists():

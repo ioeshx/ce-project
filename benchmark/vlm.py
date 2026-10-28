@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from inspect import signature
 from pathlib import Path
 
 LABELS = {"instance": ["Snoopy", "Pikachu", "Mickey", "NONE"],
@@ -58,6 +59,8 @@ class VLMClassifier:
         kwargs = {"revision": opts.get("vlm_revision"), "local_files_only": opts["local_files_only"]}
         self.processor = AutoProcessor.from_pretrained(source, **kwargs)
         self.processor.tokenizer.padding_side = "left"
+        # Older supported Transformers releases still take flat processing kwargs.
+        self.supports_processor_kwargs = "processor_kwargs" in signature(self.processor.apply_chat_template).parameters
         dtype = getattr(torch, opts.get("vlm_dtype", "bfloat16")) if str(self.device).startswith("cuda") else torch.float32
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(source, dtype=dtype, **kwargs).to(self.device).eval()
         self.max_new_tokens = opts.get("vlm_max_new_tokens", 32)
@@ -79,8 +82,11 @@ class VLMClassifier:
             # No filename, generation prompt, method or erasure target enters the conversation.
             messages.append([{"role": "user", "content": [
                 {"type": "image", "image": image}, {"type": "text", "text": instruction(self.task)}]}])
+        padding_kwargs = {"padding": True}
+        if self.supports_processor_kwargs:
+            padding_kwargs = {"processor_kwargs": padding_kwargs}
         inputs = self.processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True,
-                                                    padding=True, return_dict=True, return_tensors="pt").to(self.device)
+                                                    return_dict=True, return_tensors="pt", **padding_kwargs).to(self.device)
         with torch.inference_mode():
             generated = self.model.generate(**inputs, do_sample=False, max_new_tokens=self.max_new_tokens)
         responses = self.processor.batch_decode(generated[:, inputs.input_ids.shape[1]:], skip_special_tokens=True,

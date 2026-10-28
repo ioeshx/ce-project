@@ -10,11 +10,16 @@ from zipfile import BadZipFile
 class CLIPScorer:
     def __init__(self, model_name, device, local_files_only=False, long_prompt="error"):
         import torch
-        from transformers import CLIPModel, CLIPProcessor
+        from transformers import AutoImageProcessor, AutoTokenizer, CLIPImageProcessor, CLIPModel, CLIPProcessor
 
         self.device = device
         self.long_prompt = long_prompt
-        self.processor = CLIPProcessor.from_pretrained(model_name, local_files_only=local_files_only, use_fast=False)
+        image_options = {"backend": "pil"} if hasattr(CLIPImageProcessor, "backend") else {"use_fast": False}
+        # Select the image backend separately, without changing the tokenizer backend.
+        self.processor = CLIPProcessor(
+            image_processor=AutoImageProcessor.from_pretrained(
+                model_name, local_files_only=local_files_only, **image_options),
+            tokenizer=AutoTokenizer.from_pretrained(model_name, local_files_only=local_files_only, use_fast=False))
         self.model = CLIPModel.from_pretrained(
             model_name, local_files_only=local_files_only, torch_dtype=torch.float32,
         ).to(device).eval()

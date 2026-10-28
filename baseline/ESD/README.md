@@ -2,6 +2,8 @@
 
 本工作区的instance、style、I2P Q16、I2P NudeNet和CIFAR-50→MS-COCO实验入口、训练配置差异及修改记录见[中文适配说明](BENCHMARK_ADAPTATION.md)。五个独立脚本和总入口在`scripts/benchmark_*.sh`。
 
+SD3.5 Medium（默认）和 FLUX.1-dev 的 I2P、IP、style、Object 实验见 [DiT 适配说明](DIT_BENCHMARK_ADAPTATION.md)，总入口为 `scripts/benchmark_dit_all.sh`。SD3.5 使用本地迁移的 ESD 训练适配器。
+
 ###  [Project Website](https://erasing.baulab.info) | [Arxiv Preprint](https://arxiv.org/pdf/2303.07345.pdf) | [Fine-tuned Weights](https://erasing.baulab.info/weights/esd_models/) | [Demo](https://huggingface.co/spaces/baulab/Erasing-Concepts-In-Diffusion) <br>
 
 ### Updated code 🚀 - Shared diffusers training core

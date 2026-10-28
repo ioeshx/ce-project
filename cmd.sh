@@ -1,5 +1,7 @@
+export HF_ENDPOINT="https://hf-mirror.com"
+baseline/unified-concept-editing/scripts/benchmark_dit_all.sh --device cuda:0 > benchmark/logs/uce_dit.log 2>&1&
 
-
+baseline/ESD/scripts/benchmark_dit_all.sh --device cuda:1 > benchmark/logs/esd_dit.log 2>&1&
 
 # I2P：sexual 931条 NudeNet检测 + MS-COCO 1K质量评测
 bash benchmark/script/dit.sh \

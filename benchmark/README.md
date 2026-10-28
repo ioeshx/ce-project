@@ -21,7 +21,7 @@ CPU float32 噪声后转换、sliced attention。公共配置和历史缓存复�
 | 每次评测明细 | `benchmark/results/<model_name>/<实验>/<方法>/evaluations/evaluation-<开始时间>/` |
 | FID特征缓存 | `benchmark/cache/fid/<实验>/<original或方法>/<概念-用途-数量-采样概要-时间>/<概念>-<用途>.npz` |
 | 汇总结果 | `benchmark/results/<model_name>/<实验>-metric.csv` 和同名 `.txt` |
-| 采样耗时 | `benchmark/results/<model_name>/<实验>-sampling-time.csv` 和同名 `.txt` |
+| 采样耗时 | `benchmark/results/<model_name>/time/<实验>-sampling-time.csv` 和同名 `.txt`、`.lock` |
 | 图表 | `benchmark/results/<model_name>/plots/<实验>/<实验-目标-采样概要-n数量-group-序号>.png/.pdf` |
 | 方法实验配置 | `benchmark/results/<model_name>/plans/<方法>/`；历史CFRR/OutputResponse计划也随SD1.4结果迁移 |
 
@@ -65,7 +65,7 @@ python -m benchmark.migrate_paths --apply
 
 所有经过统一采样入口的SD1.4、FLUX、SD3及推理插件都会自动计时，原有`sample`、`run`、`dit`命令无需增加参数。每个指定实验的采样完成后，立即打印耗时表，并保存：
 
-- `results/<model_name>/<task>-sampling-time.csv`及同名`.txt`：每个方法保留最近一次成功完成的采样调用，其他方法保留；DiT v2以method＋case_id分别保留。
+- `results/<model_name>/time/<task>-sampling-time.csv`及同名`.txt`、`.lock`：每个方法保留最近一次成功完成的采样调用，其他方法保留；DiT v2以method＋case_id分别保留。对应的汇总写入锁也位于`time/`。
 - `results/<model_name>/<task>/<method>/sampling-time.json`：最近一次调用的完整记录。
 - `results/<model_name>/<task>/<method>/samplings/sampling-<开始时间>/timing.json`：每次调用的历史记录，同秒重复使用可读序号。
 

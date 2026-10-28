@@ -73,7 +73,7 @@ class DiTCaseTests(unittest.TestCase):
             self.assertEqual([r["reference"] for r in a["records"]], [r["reference"] for r in b["records"]])
             self.assertNotEqual(a["records"][0]["image"], b["records"][0]["image"])
             from benchmark.common import read_result_csv
-            rows = read_result_csv(root / "results/flux1_dev/instance-sampling-time.csv")
+            rows = read_result_csv(root / "results/flux1_dev/time/instance-sampling-time.csv")
             self.assertEqual({r["case_id"] for r in rows}, {"ip_pikachu", "ip_snoopy_pikachu"})
             changed = copy.deepcopy(a["config"])
             changed["targets"] = ["Snoopy"]
