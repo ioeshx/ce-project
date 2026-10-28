@@ -1,5 +1,8 @@
 """Sample with an anchor prompt first, then switch to the target prompt."""
 from __future__ import annotations
+import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
 
 import argparse
 from itertools import product

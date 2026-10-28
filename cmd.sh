@@ -1,3 +1,5 @@
+python DiT/early_semantic/run.py --percent 10
+
 export HF_ENDPOINT="https://hf-mirror.com"
 baseline/unified-concept-editing/scripts/benchmark_dit_all.sh --device cuda:0 > benchmark/logs/uce_dit.log 2>&1&
 
