@@ -5,6 +5,7 @@ tmp/
 /DiT/*
 !/DiT/renoise_self_check/
 !DiT/renoise_self_check/
+!/DiT/early_semantic/
 
 
 # Python 缓存和虚拟环境
