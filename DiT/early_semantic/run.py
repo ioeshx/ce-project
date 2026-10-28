@@ -117,10 +117,12 @@ def sample_prompt(model, record, anchor_steps, output_dir, negative):
         stem = f"step_{i + 1:03d}_{phase}"
         frames.append(dict(step=i + 1, phase=phase, timestep=time_values[i],
                            sigma=sigmas[i], sigma_next=sigmas[i + 1],
-                           clean_image=f"{stem}_clean.png", latent_image=f"{stem}_latent.png"))
+                           clean_image=f"clean/{stem}_clean.png", latent_image=f"latent/{stem}_latent.png"))
 
     # Decode after sampling: VAE CPU-offload hooks must not move the transformer
     # off the GPU between every pair of denoising steps. Snapshots stay on CPU.
+    for name in ("clean", "latent"):
+        (output_dir / name).mkdir(parents=True, exist_ok=True)
     for frame, (clean, latent) in zip(frames, snapshots):
         decode_image(model, clean).save(output_dir / frame["clean_image"])
         image = decode_image(model, latent)

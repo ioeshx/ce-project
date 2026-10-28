@@ -48,8 +48,8 @@ z = scheduler.step(velocity, timestep, z).prev_sample
 
 每一步保存两种图像：
 
-- `*_clean.png`：`Decode(z_i - sigma_i * v_i)`，是当前条件和 velocity 对干净图像的预测，使用 **更新前** 的 latent 与 sigma。
-- `*_latent.png`：`Decode(z_{i+1})`，是完成这一步 Euler 更新后的实际状态；前期直接解码仍会有噪声。
+- `clean/*_clean.png`：`Decode(z_i - sigma_i * v_i)`，是当前条件和 velocity 对干净图像的预测，使用 **更新前** 的 latent 与 sigma。
+- `latent/*_latent.png`：`Decode(z_{i+1})`，是完成这一步 Euler 更新后的实际状态；前期直接解码仍会有噪声。
 - `final.png`：最终 `sigma=0` 的 latent 解码，与最后一张 `*_latent.png` 相同。
 
 先完成采样，将每步快照暂存在 CPU，再逐张 VAE 解码保存。这样每步图像保存不会在采样过程中触发 transformer / VAE 反复 CPU offload。不会额外调用 transformer 来生成预览。
@@ -63,16 +63,20 @@ DiT/early_semantic/results/
     └── Snoopy_Cartoon_Character/
         └── 01/
             ├── metadata.json
-            ├── step_001_anchor_clean.png
-            ├── step_001_anchor_latent.png
-            ├── ...
-            ├── step_004_anchor_clean.png
-            ├── step_004_anchor_latent.png
-            ├── step_005_target_clean.png
-            ├── step_005_target_latent.png
-            ├── ...
-            ├── step_040_target_clean.png
-            ├── step_040_target_latent.png
+            ├── clean/
+            │   ├── step_001_anchor_clean.png
+            │   ├── ...
+            │   ├── step_004_anchor_clean.png
+            │   ├── step_005_target_clean.png
+            │   ├── ...
+            │   └── step_040_target_clean.png
+            ├── latent/
+            │   ├── step_001_anchor_latent.png
+            │   ├── ...
+            │   ├── step_004_anchor_latent.png
+            │   ├── step_005_target_latent.png
+            │   ├── ...
+            │   └── step_040_target_latent.png
             └── final.png
 ```
 
