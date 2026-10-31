@@ -1,3 +1,9 @@
+git config --local http.proxy http://127.0.0.1:7890
+git config --local https.proxy http://127.0.0.1:7890
+
+git config --local --unset http.proxy 
+git config --local --unset https.proxy
+
 python DiT/early_semantic/run.py --percent 10
 
 export HF_ENDPOINT="https://hf-mirror.com"
