@@ -4,7 +4,6 @@ aaai27/
 tmp/
 /DiT/*
 !/DiT/renoise_self_check/
-!DiT/renoise_self_check/
 !/DiT/early_semantic/
 !DiT/attention_replacement/
 DiT/early_semantic/results/

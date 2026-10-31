@@ -1,0 +1,4 @@
+-r ../../benchmark/requirements.txt
+# Use installed modern Diffusers/PEFT; do not install the bundled forks.
+diffusers>=0.35
+peft>=0.13
