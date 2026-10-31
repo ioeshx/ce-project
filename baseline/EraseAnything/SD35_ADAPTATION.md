@@ -2,13 +2,15 @@
 
 执行层更新：训练图生成、训练、采样和评测均使用独立子进程，总控隐藏 GPU，各阶段退出后释放 CUDA 上下文。公共实现为 `benchmark/execution.py`；全部 CUDA 模型仅使用 `--device` 指定的一张卡，辅助组件可选 CPU，其他 GPU 选项在入口报错。子进程内该卡映射为 `cuda:0`，保存设置保留原编号。四项损失和交替更新方式未改；精确的源码摘要兼容映射允许复用本次执行层升级之前的训练数据、权重及计划。
 
-新增 SD3.5 Medium 独立训练入口，接入 I2P、IP、style、Object 四类实验。**本次仅新增两个 Python 文件、五个 Shell 脚本；原有 FLUX 入口、损失、采样工具和 scheduler 源码均保持本次修改前的内容。** README 和原适配文档只补充入口链接，未修改 `benchmark/`。
+SD3.5 Medium 独立入口接入 I2P、IP、style、Object 四类实验，由本目录中的两个 Python 文件、五个 Shell 脚本组成。模型调用和训练目标由新增 SD3.5 文件实现，公共执行层及 Object 配置与 FLUX 和其他 baseline 共用。
 
 这是作者 FLUX 实现的 **SD3.5 架构迁移版本**，保留四项损失的数学目标和上下层交替更新方式；不是作者发布的 SD3.5 原生实现。上游源码提交及已有 FLUX 适配说明见 [DIT_BENCHMARK_ADAPTATION.md](DIT_BENCHMARK_ADAPTATION.md)。沿用 `requirements-benchmark.txt` 中的现代 Diffusers/PEFT，无需安装仓库内的旧 fork。
 
 ## 支持的实验
 
 实际读取公共 `benchmark/configs/dit_cases.json`、`dit_sampling.json`、`dit_evaluation.json` 和 `dit_target_anchor.json`，没有在新增文件中复制实验目标或评测模板。
+
+2026-10-31 Object 更新：保留 church 单目标与五目标联合训练，联合目标改为 church、golf ball、parachute、cassette player、banana。评测十类和 anchor 对应关系见[公共类别表](../../benchmark/exp_plan/dit_experiment_plan.md#43-objectimagenet-10)。本次只调整公共 case 配置、ImageNet-10 数据与索引映射、脚本注释和文档；SD3.5 数据准备、训练及四项损失代码未改。新配置需重新 prepare（`--phase all` 自动包含此步骤）；旧五目标训练数据与检查点需使用新的 `--run-root` 重新生成和训练，历史记录保持原样。
 
 | 实验组 | case | 擦除目标 | 评测规模 |
 |---|---|---|---|
@@ -19,7 +21,7 @@
 | style | `style_monet` | Monet | 同上，270 |
 | style | `style_picasso` | Picasso | 同上，270 |
 | Object | `object_church` | church | ImageNet-10，共 500 |
-| Object | `object_multi5` | church、golf ball、parachute、cassette player、gas pump | 同上，500；联合训练 |
+| Object | `object_multi5` | church、golf ball、parachute、cassette player、banana | 同上，500；联合训练 |
 
 共 **8 个训练 case、9 项评测任务、5,661 张方法图**。I2P 默认 NudeNet sexual 子集；`--with-q16` 使用全量 4,703 条并开启 Q16。IP/style 使用公共 Qwen 分类，Object 使用公共 ResNet-50 V2，CS/FID 等设置沿用公共协议。
 

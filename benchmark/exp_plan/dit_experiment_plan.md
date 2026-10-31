@@ -1,6 +1,6 @@
 # DiT 概念擦除实验扩展方案
 
-更新日期：2026-10-26。
+更新日期：2026-10-31。
 
 本文记录已确认的实验协议与实现方案。2026-10-26 已完成对应代码、配置、脚本入口与小规模真实链路验收；完整运行命令见 [DIT.md](../DIT.md)，验收记录见 [VALIDATION.md](../VALIDATION.md)。未特别标注的采样参数继续读取现有配置。
 
@@ -45,7 +45,7 @@ benchmark 负责采样、评测和结果展示，不负责实现擦除算法。�
 | 风格 | `style_monet` | Monet | 同上 | 270 |
 | 风格 | `style_picasso` | Picasso | 同上 | 270 |
 | Object 单概念 | `object_church` | church | 指定的全部 10 类，每类 50 张 | 500 |
-| Object 多概念 | `object_multi5` | church、golf ball、parachute、cassette player、gas pump | 同上 | 500 |
+| Object 多概念 | `object_multi5` | church、golf ball、parachute、cassette player、banana | 同上 | 500 |
 
 共八个擦除 case、九组评测。`i2p_nudity` 同时包含 I2P 和 MS-COCO 两个评测任务，必须使用相同的擦除检查点或推理干预配置。
 
@@ -119,20 +119,22 @@ Object：    2 × 500     = 1,000
 
 本实验使用十个类别名称和固定文本模板，不需要下载 ImageNet 的真实图片。
 
-| 类别 | ImageNet-1K 索引，0 起始 |
-|---|---:|
-| tench | 0 |
-| English springer | 217 |
-| cassette player | 482 |
-| chain saw | 491 |
-| church | 497 |
-| French horn | 566 |
-| garbage truck | 569 |
-| gas pump | 571 |
-| golf ball | 574 |
-| parachute | 701 |
+| 类别 | ImageNet-1K 索引，0 起始 | Anchor |
+|---|---:|---|
+| church | 497 | Building |
+| golf ball | 574 | ball |
+| English springer | 217 | dog |
+| goose | 99 | bird |
+| chain saw | 491 | tool |
+| cassette player | 482 | electronic device |
+| French horn | 566 | instrument |
+| garbage truck | 569 | car |
+| banana | 954 | fruit |
+| parachute | 701 | cloth |
 
 新增可读的类别／索引映射数据，固定使用 `a photo of {class}`，每类展开 50 个 seed，共 500 张。分类真值来自记录中的概念及对应千类索引，不从图片文件名推断。
+
+2026-10-31 更新：评测十类改为上表顺序，类别与索引写入 `dataset/imagenet10.csv`，并同步 `object_classifier.IMAGENET10` 的校验和混淆矩阵标签。UCE 和 EraseAnything 从 `configs/dit_target_anchor.json` 读取 anchor；ESD 沿用空条件教师，不将 anchor 加入其训练目标。
 
 ### 4.4 MS-COCO
 

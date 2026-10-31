@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# EraseAnything FLUX DiT experiment group: object.
+# FLUX Object: church; church + golf ball + parachute + cassette player + banana.
 set -euo pipefail
 ERASE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 exec "${PYTHON:-python}" "$ERASE_ROOT/benchmark_dit.py" --cases object "$@"

@@ -8,11 +8,13 @@
 
 **本页入口实现 FLUX.1-dev 的四类实验。** 作者发布的训练入口、latent 打包、时间步处理、注意力图输出和四项损失都针对 FLUX，因此本页 `benchmark_dit.py` 默认且仅运行 FLUX.1-dev。SD3.5 的模型调用、注意力及损失接入另由新增文件实现，请使用上述独立入口。
 
-新增两个 Python 文件、四个单项脚本和一个总入口，均在本方法目录。未修改 `benchmark/` 或前面适配的其他方法，没有编写新的测试文件。使用当前安装的 Diffusers/PEFT，不安装仓库内的旧 fork。
+FLUX 方法适配由本目录中的两个 Python 文件、四个单项脚本和一个总入口组成。公共执行层及 Object 配置与其他 baseline 共用并同步更新，没有编写新的测试文件。使用当前安装的 Diffusers/PEFT，不安装仓库内的旧 fork。
 
 ## 修改后可行的实验
 
 实际读取 `benchmark/configs/dit_cases.json`、`dit_sampling.json`、`dit_evaluation.json`。训练的 guide 读取 `dit_target_anchor.json`，作为作者 `calculate_upper_loss` 的 `neg_prompts`，可用本地配置覆盖。
+
+2026-10-31 Object 更新：保留 church 单目标与五目标联合训练，联合目标改为 church、golf ball、parachute、cassette player、banana。评测十类和 anchor 对应关系见[公共类别表](../../benchmark/exp_plan/dit_experiment_plan.md#43-objectimagenet-10)，FLUX 与 SD3.5 入口共用新的 `dit_cases.json` 和既有 `dit_target_anchor.json`。此次同步修改公共 `dataset/imagenet10.csv`、`object_classifier.IMAGENET10` 及 Object 脚本注释；数据准备和四项损失代码未改。新 Object 配置会生成新的评测计划，需要重新 prepare（`--phase all` 自动包含此步骤）；旧五目标训练数据与检查点需使用新的 `--run-root` 重新生成和训练，历史记录保持原样。
 
 | 实验组 | case | 擦除目标 | 评测内容 | FLUX.1-dev |
 |---|---|---|---|---|
@@ -23,7 +25,7 @@
 | style | `style_monet` | Monet | 同上，270 张 | 已接入 |
 | style | `style_picasso` | Picasso | 同上，270 张 | 已接入 |
 | Object | `object_church` | church | ImageNet-10，共 500 张，官方 ResNet-50 V2 Top-1/3 | 已接入 |
-| Object | `object_multi5` | church、golf ball、parachute、cassette player、gas pump | 同上，500 张 | 已接入，五目标联合训练 |
+| Object | `object_multi5` | church、golf ball、parachute、cassette player、banana | 同上，500 张 | 已接入，五目标联合训练 |
 
 共 **8 个训练 case、9 项评测任务、5,661 张方法图**。I2P 和 COCO 使用同一份 nudity LoRA；其他 case 不附带 COCO。默认 I2P 不启用 Q16，`--with-q16` 改为全量 4,703 条，NudeNet 仍检测 sexual 子集。这里不使用旧 SD1.4 的 CIFAR-50→COCO 实验。
 

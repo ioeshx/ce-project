@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ImageNet-10: church; church + golf ball + parachute + cassette player + gas pump.
+# ImageNet-10: church; church + golf ball + parachute + cassette player + banana.
 set -euo pipefail
 export HF_ENDPOINT="https://hf-mirror.com"
 

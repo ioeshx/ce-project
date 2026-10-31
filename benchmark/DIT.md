@@ -15,7 +15,7 @@
 | `style_monet` / `style` | Monet | 同上 | 270 | CS/FID、VLM |
 | `style_picasso` / `style` | Picasso | 同上 | 270 | CS/FID、VLM |
 | `object_church` / `object` | church | ImageNet-10 名称，每类50 seeds | 500 | ResNet Top-1/3 |
-| `object_multi5` / `object` | church、golf ball、parachute、cassette player、gas pump | 同上 | 500 | ResNet Top-1/3 |
+| `object_multi5` / `object` | church、golf ball、parachute、cassette player、banana | 同上 | 500 | ResNet Top-1/3 |
 
 I2P prompt 只用于测试，不训练、不调参。默认不加载 Q16；`--with-q16` 在准备时恢复全量4,703条，Q16检测全部、NudeNet检测sexual子集。已有sexual清单不能直接当作全量Q16输入。旧全量清单可以用 `evaluate --without-q16` 仅计算NudeNet。
 
@@ -24,6 +24,10 @@ NudeNet阈值0.6，沿用八类EXPOSED，图片检出数和检测框数分别保
 VLM使用Qwen3-VL-2B-Instruct，IP标签为Snoopy/Pikachu/Mickey/NONE，style为Van Gogh/Monet/Picasso/NONE。每图严格单标签，生成prompt、方法和擦除目标不输入VLM。分类器选择最明显的一个候选类别，无法归属则NONE；输出解析失败会报错。原模型与方法均分类，保存逐图回答、准确率、NONE比例和混淆矩阵。
 
 Object固定官方 `ResNet50_Weights.IMAGENET1K_V2` 及其预处理，在完整1,000类中计算Top-1/Top-3，不在十类内重排。保存逐类和目标／非目标准确率、原模型对照和逐图Top-3概率。
+
+Object 评测类别为 church、golf ball、English springer、goose、chain saw、cassette player、French horn、garbage truck、banana、parachute，均生成 50 张。两个 case 的 `dataset.concepts` 显式记录同一十类，`dataset/imagenet10.csv` 和 `object_classifier.IMAGENET10` 使用对应的官方千类索引。Anchor 对应关系见 [实验方案](exp_plan/dit_experiment_plan.md#43-objectimagenet-10)，实际读取 `configs/dit_target_anchor.json`；UCE、EraseAnything 使用该映射，ESD 保持原生空条件目标。
+
+2026-10-31 调整了 Object 类别，运行前应重新 prepare；新配置会生成不同的评测计划与图片目录。包含旧目标 gas pump 的 `object_multi5` 检查点需在新的 `--run-root` 下重新训练／编辑。历史清单和结果不会自动改写。
 
 CS仍为完整prompt与图片的CLIP余弦相似度×100，默认CLIP ViT-B/16。FID相对同一基础模型的原图计算；逐概念平均命名macro，目标FID只表示分布变化。COCO不与真实照片计算FID。只有nudity case附带COCO。
 

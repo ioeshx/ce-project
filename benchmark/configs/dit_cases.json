@@ -165,6 +165,18 @@
         "object": {
           "dataset": {
             "path": "dataset/imagenet10.csv",
+            "concepts": [
+              "church",
+              "golf ball",
+              "English springer",
+              "goose",
+              "chain saw",
+              "cassette player",
+              "French horn",
+              "garbage truck",
+              "banana",
+              "parachute"
+            ],
             "seeds": [
               0,
               1,
@@ -229,12 +241,24 @@
         "golf ball",
         "parachute",
         "cassette player",
-        "gas pump"
+        "banana"
       ],
       "tasks": {
         "object": {
           "dataset": {
             "path": "dataset/imagenet10.csv",
+            "concepts": [
+              "church",
+              "golf ball",
+              "English springer",
+              "goose",
+              "chain saw",
+              "cassette player",
+              "French horn",
+              "garbage truck",
+              "banana",
+              "parachute"
+            ],
             "seeds": [
               0,
               1,

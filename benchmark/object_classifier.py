@@ -6,9 +6,9 @@ from pathlib import Path
 from .common import file_digest
 from .execution import runtime_device
 
-IMAGENET10 = {"tench": 0, "english springer": 217, "cassette player": 482,
-              "chain saw": 491, "church": 497, "french horn": 566,
-              "garbage truck": 569, "gas pump": 571, "golf ball": 574, "parachute": 701}
+IMAGENET10 = {"church": 497, "golf ball": 574, "english springer": 217,
+              "goose": 99, "chain saw": 491, "cassette player": 482,
+              "french horn": 566, "garbage truck": 569, "banana": 954, "parachute": 701}
 
 
 def weight_path(opts):

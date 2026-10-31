@@ -2,13 +2,15 @@
 
 执行层更新：训练、采样和评测均在独立子进程执行，总控隐藏 GPU，训练子进程退出后释放 CUDA 上下文。公共实现为 `benchmark/execution.py`；训练适配只新增运行设备映射，ESD 目标与优化器未改。全部 CUDA 组件限制在 `--device` 指定的单卡，文本编码或指标仍可使用 CPU；辅助 GPU 和内存预算不能指向其他卡。子进程内该卡编号为 `cuda:0`，保存设置仍使用用户指定的编号。本次执行层升级通过精确源码摘要映射兼容已有检查点和计划，不改写历史记录。
 
-默认 **SD3.5 Medium**，另支持 **FLUX.1-dev**。新增两个 Python 文件、四个单项脚本和一个总入口，均保存在 ESD 目录。未修改公共 `benchmark/`、原生 `utils/` 训练代码或已有 SD1.4 入口，没有新增测试文件。
+默认 **SD3.5 Medium**，另支持 **FLUX.1-dev**。方法适配由 ESD 目录中的两个 Python 文件、四个单项脚本和一个总入口组成。公共执行层及 Object 配置同步更新，原生 `utils/` 训练代码和已有 SD1.4 入口保持原样，没有新增测试文件。
 
 FLUX 直接复用当前仓库的 `FluxESDAdapter.training_step` 和公共训练循环。**SD3.5 是本地新增的 ESD 训练适配，不是作者提供的官方 SD3.5 实现**；沿用相同的教师／学生目标、参数切换、MSE 和 Adam，只适配 SD3 的文本条件、时间步和 Flow Matching rollout。ESD 需要梯度训练，不属于 training-free 方法。
 
 ## 支持的实验
 
 运行时读取 `benchmark/configs/dit_cases.json`、`dit_sampling.json`、`dit_evaluation.json`，与已有 DiT benchmark 保持一致。
+
+2026-10-31 Object 更新：保留 church 单目标与五目标联合擦除，联合目标改为 church、golf ball、parachute、cassette player、banana。评测十类及官方索引见[公共类别表](../../benchmark/exp_plan/dit_experiment_plan.md#43-objectimagenet-10)。此次同步修改公共 `dit_cases.json`、`dataset/imagenet10.csv`、`object_classifier.IMAGENET10` 及 Object 启动脚本注释；ESD 直接读取新的 targets，训练算法未改，仍不使用 anchor。新 Object 配置会生成新的评测计划，需要重新 prepare（`--phase all` 自动包含此步骤）；旧五目标检查点需使用新的 `--run-root` 重新训练，历史记录保持原样。
 
 | 实验组 | case | 擦除目标 | 评测内容 | SD3.5 / FLUX 接入 |
 |---|---|---|---|---|
@@ -19,7 +21,7 @@ FLUX 直接复用当前仓库的 `FluxESDAdapter.training_step` 和公共训练�
 | style | `style_monet` | Monet | 同上，270 张 | 已实现 |
 | style | `style_picasso` | Picasso | 同上，270 张 | 已实现 |
 | Object | `object_church` | church | ImageNet-10，共 500 张，官方 ResNet-50 V2 Top-1/3 | 已实现 |
-| Object | `object_multi5` | church、golf ball、parachute、cassette player、gas pump | 同上，500 张 | 已实现，五目标联合训练 |
+| Object | `object_multi5` | church、golf ball、parachute、cassette player、banana | 同上，500 张 | 已实现，五目标联合训练 |
 
 每个模型共 **8 个训练 case、9 项评测任务、5,661 张方法图**。I2P 和 COCO 使用同一个 nudity 检查点；IP/style/Object 不额外训练或评测 COCO。这里不使用旧 SD1.4 的 CIFAR-50→COCO 设置。
 

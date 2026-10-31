@@ -1,12 +1,14 @@
 # UCE 的 DiT 实验适配
 
-默认模型为 **SD3.5 Medium**，另支持 **FLUX.1-dev**。新增两个 Python 文件和五个 Shell 入口，全部位于 UCE 目录；未修改 `benchmark/`、上游 `trainscripts/` 或已有 SD1.4 代码，没有新增测试文件。
+默认模型为 **SD3.5 Medium**，另支持 **FLUX.1-dev**。方法适配由 UCE 目录中的两个 Python 文件和五个 Shell 入口组成；公共执行层及 Object 配置同步更新，上游 `trainscripts/` 和已有 SD1.4 代码保持原样，没有新增测试文件。
 
 FLUX 分支依据本仓库 `trainscripts/uce_flux_edit.py`。**SD3.5 是将这一文本投影编辑方案迁移到 SD3 架构的本地实现，并非作者提供的 SD3.5 官方实现。** 两者均采用 UCE 联合闭式求解，不引入梯度训练。当前验证的是计算及接口可运行，真实擦除效果需要正式模型实验确认。
 
 ## 可行实验与实际配置
 
 运行时直接读取 `benchmark/configs/dit_cases.json`、`dit_target_anchor.json`、`dit_sampling.json`、`dit_evaluation.json`，不复制一套实验目标。
+
+2026-10-31 Object 更新：保留 church 单目标与五目标联合擦除，联合目标改为 church、golf ball、parachute、cassette player、banana。评测十类和 anchor 对应关系见[公共类别表](../../benchmark/exp_plan/dit_experiment_plan.md#43-objectimagenet-10)，编辑器继续按 `dit_target_anchor.json` 逐目标读取 guide。此次同步修改公共 `dit_cases.json`、`dataset/imagenet10.csv`、`object_classifier.IMAGENET10` 及 Object 启动脚本注释；闭式求解代码未改。新 Object 配置会生成新的评测计划，需要重新 prepare（`--phase all` 自动包含此步骤）；旧五目标检查点需使用新的 `--run-root` 重新编辑，历史记录保持原样。
 
 | 实验组 | case | 擦除目标 | 数据量和评测 | 两种模型的接入情况 |
 |---|---|---|---|---|
@@ -17,7 +19,7 @@ FLUX 分支依据本仓库 `trainscripts/uce_flux_edit.py`。**SD3.5 是将这�
 | style | `style_monet` | Monet | 同上，270 张 | 已实现 |
 | style | `style_picasso` | Picasso | 同上，270 张 | 已实现 |
 | Object | `object_church` | church | ImageNet-10，每类 50 张，共 500 张；ResNet-50 V2 Top-1/3 | 已实现 |
-| Object | `object_multi5` | church、golf ball、parachute、cassette player、gas pump | 同上，500 张 | 已实现，五概念联合求解 |
+| Object | `object_multi5` | church、golf ball、parachute、cassette player、banana | 同上，500 张 | 已实现，五概念联合求解 |
 
 每个模型共 **8 次擦除、9 项评测任务、5,661 张方法图**。原模型参考图按完整采样协议共享。COCO 只随 nudity case 进行一次，不使用旧 SD1.4 的 CIFAR-50→COCO 设置。
 
@@ -114,7 +116,7 @@ P(C) = W C + b
 | `README.md`、`BENCHMARK_ADAPTATION.md` | 添加本说明的链接 |
 | `DIT_BENCHMARK_ADAPTATION.md` | 本文档 |
 
-没有新增 class；入口统一处理参数，少量函数组织配置、运行流程和核心公式。上游算法文件与公共 benchmark 保持原样。
+没有新增 class；入口统一处理参数，少量函数组织配置、运行流程和核心公式。上游算法文件保持原样，公共执行层与类别映射的后续修改见前述更新记录。
 
 ## 保存路径
 
@@ -139,7 +141,7 @@ benchmark/original/<model>/<task>/
 
 `task` 为 `i2p`、`mscoco`、`instance`、`style`、`object`；IP 对应 `instance`。同一方法、同一 case 成功评测后替换该行，不同 case 分别保留。`--method` 可设置不同版本名；修改编辑参数时使用新的 `--run-root`，避免覆盖已有检查点。
 
-目录名称可读，指纹仅写 JSON。CLI 可覆盖 `--output-dir`、`--original-dir`、`--cache-dir`；结果路径仍由公共 benchmark 决定，本次未向其中添加工程代码或文档。
+目录名称可读，指纹仅写 JSON。CLI 可覆盖 `--output-dir`、`--original-dir`、`--cache-dir`；结果路径仍由公共 benchmark 决定。
 
 ## 验证结果与实际限制
 
