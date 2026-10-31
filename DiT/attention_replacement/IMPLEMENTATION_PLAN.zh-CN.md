@@ -110,8 +110,8 @@ DiT/attention_replacement/
 | `batch_size` | 初次调试为 1；张量接口保留 batch 维 |
 | 模型精度 | 沿用 benchmark，默认 BF16 |
 | 均值累计与距离运算 | FP32 |
-| 离线原始特征、在线特征保存精度 | 保留模型输出 dtype |
-| 在线完整 trace | 默认开启，记录所选 layer / step；后续可显式关闭以单独测量部署开销 |
+| 离线张量保存 | 只保存 FP32 均值，不保存逐 seed 特征和最终图像 |
+| 在线 trace | 默认保存距离、掩码和修改量标量，不保存 `I_user`、`I_new`；可关闭 |
 
 默认概念对从 `benchmark/configs/dit_target_anchor.json` 读取，例如仓库现值为 `nudity -> dressed`。可以在方法配置中显式指定 `nudity -> clothed`；两者形成不同缓存，不自动将同义词视为同一 anchor。用户 prompt 原样输入，不加入 target 或 anchor 文本。
 
@@ -128,15 +128,15 @@ DiT/attention_replacement/
 
 离线 hooks 只读，不执行替换。每个采样步仅保存选中 sites 的条件分支图像侧 `AV`，继续使用原始输出完成正常采样。
 
-每个 seed 保存：target / anchor 的最终图像、原始 prompt、初始 seed、所选 sites / steps 的完整激活分片、实际 timestep/sigma 序列。即使只采集前 30% 的激活，也完成整条生成轨迹，以便检查短 prompt 实际生成了什么。
+每个 seed 运行完整去噪轨迹，仅在内存中收集所选 sites / steps 的 AV 并累计；不保存该 seed 的激活或最终图像。元数据统一记录 prompt、完整 seed 列表、site 和实际 timestep/sigma。离线使用 latent 输出，不执行最终 VAE 解码。
 
 同一个 anchor 字符串在相同模型和采样配置下可以复用已有离线收集结果，不为多个 target 重复生成相同 anchor 数据。
 
 ### 6.3 均值计算
 
-原始特征先按原 dtype 保存；均值采用 FP32、按 seed 流式累计。每份原型只对自己的 `(concept, role, step, site, position)` 求平均，不跨 seed 之外的维度平均。保存 FP32 均值及实际累计样本数。
+原始特征即时转换为 CPU FP32，按 seed 在内存中累计。每份原型只对自己的 `(concept, step, site, position)` 求平均，不跨 seed 之外的维度平均。完成一个概念后只保存 FP32 均值及实际累计样本数，并释放累计缓冲。
 
-默认所有完成的 seed 均参与均值，不引入目标检测器自动过滤样本。离线最终图像供人工和后续分析使用，不能在没有记录的情况下删 seed 或改变原型。
+全部配置 seeds 均参与均值，不引入目标检测器自动过滤样本。完成的概念可以复用；中断时未完成的概念重新运行全部 seeds。
 
 ### 6.4 缓存身份与复用
 
@@ -213,16 +213,15 @@ FLUX 单流块的文本行数从当前 block 输入读取，不写死为 256 或
 ### 9.1 目录草案
 
 ```text
-cache/<model>/<collection_id>/
-├── metadata.json
-├── sites.json
-├── trajectories/<concept_id>/<target_or_anchor>/<seed>/
-│   ├── metadata.json
-│   ├── final.png
-│   └── step_<k>/site_<s>.safetensors
-└── means/<concept_id>/<target_or_anchor>/step_<k>/site_<s>.safetensors
+cache/<model>/<采样配置-层范围-时间范围-seed数-起始时间>/
+├── run.json
+├── collection.json
+└── prompts/<概念原文的可读名称>/
+    ├── run.json
+    ├── means.json
+    └── means/step_<k>/<site>.safetensors
 
-results/<model>/<run_id>/
+results/<model>/<task>/<case>/<模式-阈值-层范围-时间范围-起始时间>/
 ├── run.json
 ├── images/<sample_id>.png
 ├── traces/<sample_id>/
@@ -237,14 +236,12 @@ results/<model>/<run_id>/
 
 使用 `safetensors` 保存张量，JSON/CSV 保存索引、配置和标量；避免把大张量写入 JSON。内部可使用稳定 site 编号，但必须在 `sites.json` 中映射到完整模型路径。
 
-### 9.2 在线默认完整 trace
+### 9.2 在线默认距离与掩码 trace
 
 每个选中 `(sample,step,site)` 保存：
 
 | 字段 | 形状／精度 | 含义 |
 | --- | --- | --- |
-| `I_user_pre` | `(H,W,d)`，模型输出 dtype | 当前受干预轨迹中，本 site 替换前的输出 |
-| `I_new` | `(H,W,d)`，模型输出 dtype | 实际送入后续输出投影的特征 |
 | `d_tar/<concept>` | `(H,W)`，FP32 | 对 target 均值的平方 L2 距离 |
 | `d_anc/<concept>` | `(H,W)`，FP32 | 对 anchor 均值的平方 L2 距离 |
 | `margin/<concept>` | `(H,W)`，FP32 | `d_anc - d_tar` |
@@ -252,29 +249,29 @@ results/<model>/<run_id>/
 | `mask_union` | `(H,W)`，bool | 最终需要替换的位置 |
 | `winner` | `(H,W)`，整数 | 实际使用哪个概念的 anchor；未命中为 `-1` |
 
-这里 `D_tar/D_anc` 已按用户补充解释为降维后的距离图，不再默认为 `(H,W,d)` 的有符号通道差分。完整 `I_user_pre` 和离线均值可以重建通道差分；若后续需要直接导出，再增加显式诊断选项。
+这里 `D_tar/D_anc` 是降维后的距离图。在线只持久化这些图、掩码和标量，不保存 `(H,W,d)` 的 `I_user`、`I_new`，也不提供保存完整激活的开关。
 
-同一 site 的 `I_user_pre` 只保存一次，不为每个概念重复保存。anchor 均值通过离线缓存引用，不复制进每个在线 trace。
+anchor 均值通过离线缓存引用，不复制进每个在线 trace。实际修改量在线计算为 `mean_squared_change` 标量，不依赖持久化完整激活。
 
 ### 9.3 标量与热图
 
-逐层、逐步记录 mask 面积比例、每个概念的命中数、重叠比例、margin/距离的分位数、修改量范数、原始与替换后特征范数，以及该层的计算和张量保存耗时。
+分析逐层、逐步记录各概念/并集 mask 面积比例、平均距离、平均 margin 和实际修改量；元数据记录本次计算和张量保存的批量耗时。
 
 分析入口仅读取已有 trace，导出空间 mask / margin 热图、时间—层热图和 CSV。所有分析可在 CPU 上运行。插值放大的可视化图片不替代原始 token 网格。
 
-当前 `I_user_pre` 不能标成“未干预原模型输出”，因为它已受到更早层和更早步干预的影响。若要比较原模型轨迹，使用相同 prompt 和 seed 另跑一次 observe-only 对照，并分开保存。
+替换模式的距离来自已受更早干预影响的轨迹。比较原模型轨迹时，使用相同 prompt 和 seed 另跑 observe 对照，只保存距离和掩码。
 
 ### 9.4 内存和日志开销
 
-离线原始特征量随 `2*N*steps*sites*H*W*d` 增长，均值量随 `2*steps*sites*H*W*d` 增长。启动预览根据实际模型维度估算保存量。
+离线磁盘占用只随概念数、steps、sites、H、W、d 增长，不随 N 增长。CPU 内存只累计当前一个概念的 FP32 特征和。在线磁盘占用随距离/掩码图数量增长，采样前按实际网格估算剩余 trace 用量。
 
-完整特征按 step/site 顺序转移到 CPU 并分片写盘，不在 GPU 中累积所有 seed 或在线轨迹。默认使用简单顺序写入，先完成正确性；GPU 只保留当前计算所需的原型和输出。
+GPU 只保留当前计算所需的原型和输出；离线均值与在线距离/掩码按 step/site 分片写盘。
 
-完整 trace 的耗时纳入本次运行总耗时，并单独记录 I/O 时间。关闭 trace 的效率测量要显式标记，不能与完整 trace 运行混为同一耗时结果。
+距离/掩码 trace 的耗时纳入总耗时，并单独记录 I/O 时间；关闭 trace 的效率测量单独标记。
 
 ## 10. 命令行与 benchmark 规划
 
-以下为拟定接口，文件尚未实现，当前不可执行。
+实际接口已实现，完整命令及可读目录规则见 README.md。所有目录名使用配置、概念、时间或可读序号；哈希只保留在元数据校验字段中。
 
 ```bash
 # 预览：概念对、seed、实际 layer/step 范围、输出位置与缓存量。
@@ -284,7 +281,7 @@ python DiT/attention_replacement/run.py collect --targets nudity --anchor clothe
 python DiT/attention_replacement/run.py collect --targets nudity --anchor clothed \
   --offline-seed-count 16 --step-fraction 0.30 --offline
 
-# 指定 user prompt 做诊断，默认使用 anchor 均值硬替换并保存完整 trace。
+# 指定 user prompt 做诊断，使用 anchor 均值硬替换并保存距离/掩码。
 python DiT/attention_replacement/run.py sample --cache <collection_id> \
   --prompt "<user prompt>" --seed 0 --tau 0 --offline
 
@@ -319,7 +316,7 @@ benchmark 插件拟提供 `DiT.attention_replacement.method:create(config)`，�
 
 ### 第二步：完成离线产物
 
-实现短 prompt、多 seed 收集、逐位置 FP32 均值、完整原始张量与元数据保存、缓存加载。用小规模原始特征重新计算均值，与保存均值核对。
+实现短 prompt、多 seed 收集、逐位置 FP32 均值与元数据保存、缓存加载。用内存中的小规模参考特征核对均值，不保存逐 seed 原始张量。
 
 验收：target/anchor 同 seed 初始噪声一致；每份均值计数等于 N；不会把不同层、时间或分支求在一起；时间表与空间形状能准确还原。
 
@@ -331,7 +328,7 @@ benchmark 插件拟提供 `DiT.attention_replacement.method:create(config)`，�
 - 两个均值完全相同时，margin 为零；严格 `>` 下 `tau=0` 不触发。
 - 距离按通道求和，结果为 `(B,H,W)`；未命中位置和未选中分支保持原值。
 - 窗口以实际 step 编号选择；窗口结束后直接恢复原生计算。
-- 重新载入保存的均值、mask 和 `I_user_pre`，可以复算距离和实际 `I_new`。
+- 在内存中核对距离和实际替换输出；磁盘只保存均值、距离、mask 和修改量标量。
 
 真实权重先运行单概念、单 user prompt、单 seed，并保留正常采样总步数。确认没有在线附加 target/anchor transformer 前向。
 

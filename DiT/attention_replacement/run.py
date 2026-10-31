@@ -14,7 +14,7 @@ if __package__ in {None, ""}:
 
 from DiT.attention_replacement.method import (
     AttentionReplacement, DEFAULTS, DIRECTORY, SUPPORTED_MODELS,
-    prototype_directory, read_prototypes, resolve_settings,
+    cache_identity, read_prototypes, resolve_settings,
 )
 from benchmark.common import digest, merge, read_json, write_csv, write_json
 
@@ -23,17 +23,14 @@ def check_trace_space(config, collection, records):
     """Estimate the remaining trace volume once, before loading the sampling model."""
     import errno
     import shutil
-    import torch
 
     settings = config["adapter"]["attention_replacement"]
     if not settings["trace"]:
         return
     sites = [s for s in collection["sites"] if s["layer"] >= settings["layer_start"] and
              (settings["layer_end"] is None or s["layer"] < settings["layer_end"])]
-    itemsize = torch.empty((), dtype=getattr(torch, config["sampling"]["dtype"])).element_size()
     concepts = len(settings["pairs"])
-    per_step = sum(s["grid"][0] * s["grid"][1] * (13 * concepts + 5 +
-                   (2 * s["channels"] * itemsize if settings["trace_activations"] else 0)) + 1028 for s in sites)
+    per_step = sum(s["grid"][0] * s["grid"][1] * (13 * concepts + 5) + 1028 for s in sites)
     count = sum(not Path(record["image"]).is_file() for record in records)
     needed = count * (settings["step_end"] - settings["step_start"]) * per_step
     destination = Path(settings["trace_root"] or config["image_output_dir"])
@@ -41,12 +38,12 @@ def check_trace_space(config, collection, records):
     while not filesystem.exists():
         filesystem = filesystem.parent
     free = shutil.disk_usage(filesystem).free
-    print(f"[trace storage] {'full activations + maps' if settings['trace_activations'] else 'distance/mask maps'}; "
+    print(f"[trace storage] distance/mask maps; "
           f"{count} remaining images; estimated {needed / 2**30:.2f} GiB; "
           f"free {free / 2**30:.2f} GiB on {filesystem}", flush=True)
     if needed > free:
         raise OSError(errno.ENOSPC, f"Trace output needs about {needed / 2**30:.2f} GiB at {destination}. "
-                      "Use --no-trace-activations, --trace-root on a larger disk, or --no-trace.")
+                      "Use --trace-root on a larger disk, or --no-trace.")
 
 
 def analyze(directory, heatmaps):
@@ -145,8 +142,6 @@ def main(argv=None):
     own.add_argument("--result-root", type=Path, default=DIRECTORY / "results", help="Method image/diagnostic root")
     own.add_argument("--intervention", choices=("replace", "observe"))
     own.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None)
-    own.add_argument("--trace-activations", action=argparse.BooleanOptionalAction, default=None,
-                     help="Also save full I_user/I_new; default saves distance/mask maps only")
     own.add_argument("--trace-root", type=Path, help="Write online traces on a separate disk")
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
     own.add_argument("--seed", type=int, default=42, help="sample: initial noise seed")
@@ -202,7 +197,7 @@ def main(argv=None):
         config = get_config(args, manifest)
         settings = resolve_settings(config, overrides)
         previous = {**copy.deepcopy(DEFAULTS), **manifest["config"]["adapter"]["attention_replacement"]}
-        diagnostics = {"trace", "trace_activations", "trace_root"}
+        diagnostics = {"trace", "trace_activations", "trace_root", "cache_root", "prototype_dir"}
         same_settings = {k: v for k, v in settings.items() if k not in diagnostics} == {
             k: v for k, v in previous.items() if k not in diagnostics}
         same_run = all(config.get(k) == manifest["config"].get(k) for k in
@@ -211,7 +206,9 @@ def main(argv=None):
             raise ValueError("Resume must preserve the model, sampling protocol and erasure parameters; "
                              "only trace and runtime options may change.")
         config["adapter"]["attention_replacement"] = settings
-        _, collection, _ = read_prototypes(config, settings, verify=False)
+        _, collection, means = read_prototypes(config, settings, verify=False)
+        if {p: info["digest"] for p, info in means.items()} != config["adapter"]["prototype_digests"]:
+            raise ValueError("Resume requires the same prototype means as the saved run")
         if args.dry_run:
             check_trace_space(config, collection, manifest["records"])
             print(f"[resume preview] {args.manifest}; existing images will be reused")
@@ -288,8 +285,8 @@ def main(argv=None):
         groups = {}
         for config in configs:
             settings = config["adapter"]["attention_replacement"]
-            directory, _ = prototype_directory(config, settings)
-            group = groups.setdefault(str(directory), {"config": config, "prompts": []})
+            key = (settings["prototype_dir"] or settings["cache_root"], digest(cache_identity(config, settings)))
+            group = groups.setdefault(key, {"config": config, "prompts": []})
             group["prompts"].extend(p[key] for p in settings["pairs"] for key in ("target", "anchor"))
         for group in groups.values():
             group["config"]["adapter"]["attention_replacement"]["collect"] = True
@@ -301,6 +298,7 @@ def main(argv=None):
             print(f"[prototype collection] {adapter.cache_dir}")
         return 0
 
+    started_at = timestamp()
     for config in configs:
         settings = config["adapter"]["attention_replacement"]
         directory, metadata, means = read_prototypes(config, settings,
@@ -308,8 +306,11 @@ def main(argv=None):
         settings["prototype_dir"] = str(directory)
         settings["offline_seeds"] = metadata["identity"]["capture"]["offline_seeds"]
         config["adapter"]["prototype_digests"] = {p: info["digest"] for p, info in means.items()}
-        # Keep metrics and image identities distinct for different algorithms/prototypes.
-        config["method"] = args.method or f"AttentionReplacement-{settings['intervention']}-{digest(config['adapter'])[:10]}"
+        threshold = "per-concept" if settings["tau_by_concept"] else f"{settings['tau']:g}"
+        config["method"] = args.method or (
+            f"AttentionReplacement-{settings['intervention']}-tau-{threshold}-"
+            f"layers-{settings['layer_start']}-{settings['layer_end'] or 'all'}-"
+            f"steps-{settings['step_start']}-{settings['step_end']}-{started_at}")
         if opts.action == "sample":
             directory = (opts.run_dir.expanduser().resolve() if opts.run_dir else
                          unique_directory(opts.result_root / "diagnostics", timestamp()))

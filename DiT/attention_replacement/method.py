@@ -11,8 +11,9 @@ import time
 import torch
 from safetensors.torch import load_file, save_file
 
-from benchmark.common import ROOT, digest, file_digest, read_json, write_json
+from benchmark.common import ROOT, digest, file_digest, read_json, slug, write_json
 from benchmark.dit_adapter import DiTAdapter
+from benchmark.layout import registered_directory, sampling_label
 from benchmark.sampling_profile import initial_noise
 
 DIRECTORY = Path(__file__).resolve().parent
@@ -20,7 +21,7 @@ SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
 DEFAULTS = dict(layer_start=0, layer_end=None, step_start=0, step_end=None,
                 step_fraction=0.3, tau=0.0, tau_by_concept={},
                 offline_seeds=list(range(10000, 10016)), intervention="replace", trace=True,
-                trace_activations=False, trace_root=None,
+                trace_root=None,
                 cache_root=str(DIRECTORY / "cache"), prototype_dir=None)
 
 
@@ -28,6 +29,7 @@ def resolve_settings(config, overrides=None):
     """Runner entry: resolve concept pairs and validate method parameters once."""
     settings = {**copy.deepcopy(DEFAULTS),
                 **config["adapter"].get("attention_replacement", {}), **(overrides or {})}
+    settings.pop("trace_activations", None)  # Old manifests may contain this retired option.
     anchors = read_json(ROOT / "configs/dit_target_anchor.json")
     # object_multi5 includes gas pump, absent from the shared mapping.
     anchors["gas pump"] = "machine"
@@ -91,11 +93,30 @@ def cache_identity(config, settings):
                         ("layer_start", "layer_end", "step_start", "step_end", "offline_seeds")}}
 
 
-def prototype_directory(config, settings):
+def prototype_directory(config, settings, *, create=False):
     identity = cache_identity(config, settings)
-    path = (Path(settings["prototype_dir"]) if settings["prototype_dir"] else
-            Path(settings["cache_root"]) / config["model_name"] / digest(identity)[:16])
-    return path, identity
+    if settings["prototype_dir"]:
+        return Path(settings["prototype_dir"]), identity
+    root = Path(settings["cache_root"]) / config["model_name"]
+    for metadata in sorted(root.glob("*/collection.json"), reverse=True):
+        if read_json(metadata)["identity"] == identity:
+            return metadata.parent, identity
+    if create:
+        label = (f"{sampling_label(config['sampling'])}-layers-{settings['layer_start']}-"
+                 f"{settings['layer_end'] or 'all'}-steps-{settings['step_start']}-"
+                 f"{settings['step_end']}-seeds-{len(settings['offline_seeds'])}")
+        return registered_directory(root, label, identity), identity
+    raise FileNotFoundError(f"No matching prototype collection in {root}; run collect first")
+
+
+def prompt_directory(collection, prompt, *, create=False):
+    root = Path(collection) / "prompts"
+    for metadata in root.glob("*/means.json"):
+        if read_json(metadata)["prompt"] == prompt:
+            return metadata.parent
+    if create:
+        return registered_directory(root, slug(prompt), {"prompt": prompt}, stable=True)
+    raise FileNotFoundError(f"No completed prototype for {prompt!r} in {root}; run collect first")
 
 
 def read_prototypes(config, settings, *, verify=True):
@@ -114,7 +135,7 @@ def read_prototypes(config, settings, *, verify=True):
         raise ValueError(f"Prototype collection does not match sampling/window: {directory}")
     means = {}
     for prompt in dict.fromkeys(p[key] for p in settings["pairs"] for key in ("target", "anchor")):
-        folder = directory / "prompts" / digest(prompt)[:16]
+        folder = prompt_directory(directory, prompt)
         manifest = read_json(folder / "means.json")
         valid = manifest["prompt"] == prompt and manifest["seeds"] == old["offline_seeds"]
         if verify:
@@ -151,8 +172,7 @@ def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True)
                        f"margin_{i}": margin, f"mask_{i}": mask})
     result = replacement if intervene else x
     change = (result.float() - xf).square().sum(-1).mean(dim=(-2, -1))
-    traces.update(I_user=x, I_new=result, mask_union=winner >= 0, winner=winner,
-                  mean_squared_change=change)
+    traces.update(mask_union=winner >= 0, winner=winner, mean_squared_change=change)
     return result, traces
 
 
@@ -163,7 +183,7 @@ class AttentionReplacement(DiTAdapter):
         self.settings = {**copy.deepcopy(DEFAULTS), **copy.deepcopy(config["adapter"]["attention_replacement"])}
         self.collecting = self.settings.get("collect", False)
         if self.collecting:
-            self.cache_dir, identity = prototype_directory(config, self.settings)
+            self.cache_dir, identity = prototype_directory(config, self.settings, create=True)
             self.collection = {"identity": identity}
             if (self.cache_dir / "collection.json").exists():
                 self.collection = read_json(self.cache_dir / "collection.json")
@@ -178,6 +198,7 @@ class AttentionReplacement(DiTAdapter):
         self.active = False
         self.handles = []
         self.sites = []
+        self.sums = {}
         transformer = self.pipe.transformer
         blocks = [(i, f"transformer_blocks.{i}", block, False)
                   for i, block in enumerate(transformer.transformer_blocks)]
@@ -234,7 +255,12 @@ class AttentionReplacement(DiTAdapter):
         x = tensor[rows, tokens, channels].reshape(batch, *self.grid, site["channels"])
         filename = f"step_{self.step:04d}/{site['id']}.safetensors"
         if self.collecting:
-            payload = {"I": x[0]}
+            # Accumulate one concept in CPU memory; never write individual seeds.
+            value = x[0].detach().to(device="cpu", dtype=torch.float32, copy=True)
+            if filename in self.sums:
+                self.sums[filename].add_(value)
+            else:
+                self.sums[filename] = value
         else:
             prototypes = {prompt: load_file(str(Path(info["directory"]) / "means" / filename))["mean"].to(x.device)
                           for prompt, info in self.means.items()}
@@ -242,15 +268,12 @@ class AttentionReplacement(DiTAdapter):
                 self.settings["tau"], self.settings["tau_by_concept"],
                 self.settings["intervention"] == "replace")
         self.hook_seconds += time.perf_counter() - started
-        if self.collecting or self.settings["trace"]:
+        if not self.collecting and self.settings["trace"]:
             started = time.perf_counter()
             for i, directory in enumerate(self.trace_dirs):
                 destination = directory / filename
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                values = payload if self.collecting else {
-                    key: value[i] for key, value in payload.items()
-                    if self.settings["trace_activations"] or key not in {"I_user", "I_new"}}
-                # clone removes storage aliases (observe mode has I_new == I_user).
+                values = {key: value[i] for key, value in payload.items()}
                 save_file({key: value.detach().cpu().contiguous().clone() for key, value in values.items()},
                           str(destination))
             self.io_seconds += time.perf_counter() - started
@@ -294,6 +317,8 @@ class AttentionReplacement(DiTAdapter):
                 kwargs["negative_prompt"] = [opts["negative_prompt"]] * len(records)
         else:
             kwargs["negative_prompt"] = [opts.get("negative_prompt") or ""] * len(records)
+        if self.collecting:
+            kwargs["output_type"] = "latent"  # Collection needs AV means, not decoded images.
         started = time.perf_counter()
         self.active = True
         try:
@@ -302,6 +327,10 @@ class AttentionReplacement(DiTAdapter):
         finally:
             self.active = False
         elapsed = time.perf_counter() - started
+        if self.collecting:
+            self.collection["schedule"] = self.schedule
+            write_json(self.cache_dir / "collection.json", self.collection)
+            return images
         for record, directory in zip(records, self.trace_dirs):
             write_json(directory / "metadata.json", {
                 "record": record, "settings": self.settings, "sites": self.sites, "schedule": self.schedule,
@@ -312,15 +341,12 @@ class AttentionReplacement(DiTAdapter):
                 "batch_size": len(records), "batch_wall_seconds": elapsed,
                 "batch_hook_host_seconds": self.hook_seconds, "batch_trace_io_seconds": self.io_seconds,
                 "timing_note": "Host wall times; trace I/O includes CPU transfer. Batch times are shared."})
-        if self.collecting:
-            self.collection["schedule"] = self.schedule
-            write_json(self.cache_dir / "collection.json", self.collection)
         return images
 
     def collect(self, prompts):
-        """Independent native trajectories; stream FP32 means over seeds per site/step."""
+        """Run independent trajectories, accumulate FP32 sums, save only final means."""
         for prompt in dict.fromkeys(prompts):
-            folder = self.cache_dir / "prompts" / digest(prompt)[:16]
+            folder = prompt_directory(self.cache_dir, prompt, create=True)
             completed = folder / "means.json"
             if completed.exists():
                 manifest = read_json(completed)
@@ -328,31 +354,23 @@ class AttentionReplacement(DiTAdapter):
                        for name, checksum in manifest["files"].items()):
                     print(f"[reuse prototype] {prompt!r}: {folder}", flush=True)
                     continue
+            self.sums = {}
             for seed in self.settings["offline_seeds"]:
-                trajectory = folder / f"seed_{seed}"
-                if (trajectory / "complete.json").exists():
-                    continue
-                self.trace_dirs = [trajectory]
                 record = {"sample_id": f"seed_{seed}", "prompt": prompt, "seed": seed}
-                images = self.generate([record], self.config["sampling"])
-                images[0].save(trajectory / "final.png")
-                write_json(trajectory / "complete.json", {"prompt": prompt, "seed": seed})
+                self.generate([record], self.config["sampling"])
                 print(f"[collect] {prompt!r} seed={seed}", flush=True)
             files = {}
-            for step in range(self.settings["step_start"], self.settings["step_end"]):
-                for site in self.sites:
-                    name = f"step_{step:04d}/{site['id']}.safetensors"
-                    total = torch.zeros((*self.grid, site["channels"]), dtype=torch.float32)
-                    for seed in self.settings["offline_seeds"]:
-                        total += load_file(str(folder / f"seed_{seed}" / name))["I"].float()
-                    destination = folder / "means" / name
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    save_file({"mean": total / len(self.settings["offline_seeds"])}, str(destination))
-                    files["means/" + name] = file_digest(destination)
+            for name, total in self.sums.items():
+                destination = folder / "means" / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                save_file({"mean": total / len(self.settings["offline_seeds"])}, str(destination))
+                files["means/" + name] = file_digest(destination)
+            self.sums.clear()
             write_json(completed, {"prompt": prompt, "seeds": self.settings["offline_seeds"], "files": files})
             print(f"[prototype ready] {prompt!r}: {folder}", flush=True)
 
     def close(self):
+        self.sums.clear()
         for handle in self.handles:
             handle.remove()
         self.handles.clear()
