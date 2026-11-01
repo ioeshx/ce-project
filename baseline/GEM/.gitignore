@@ -4,3 +4,4 @@ models/
 outputs/
 wandb/
 .venv/
+runs/

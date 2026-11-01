@@ -1,4 +1,5 @@
 import numpy as np
+from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import calculate_shift
 
 from gem.wrappers.base_pipeline_wrapper import BasePipelineWrapper
 from gem.wrappers.parameter_subset_selector import ParameterSubsetSelector
@@ -6,12 +7,23 @@ from gem.wrappers.parameter_subset_selector import ParameterSubsetSelector
 
 class StableDiffusion3PipelineWrapper(BasePipelineWrapper):
 
+    def calculate_image_seq_len(self, height, width):
+        patch = self.transformer.config.patch_size
+        return (height // self.vae_scale_factor // patch) * (width // self.vae_scale_factor // patch)
+
     def set_timesteps(self, image_seq_len, num_timesteps):
         sigmas = np.linspace(1.0, 1 / num_timesteps, num_timesteps)
-        self.scheduler.set_timesteps(num_timesteps, sigmas=sigmas)
+        options = {}
+        if self.scheduler.config.get("use_dynamic_shifting", False):
+            options["mu"] = calculate_shift(
+                image_seq_len, self.scheduler.config.get("base_image_seq_len", 256),
+                self.scheduler.config.get("max_image_seq_len", 4096),
+                self.scheduler.config.get("base_shift", 0.5), self.scheduler.config.get("max_shift", 1.16))
+        self.scheduler.set_timesteps(num_timesteps, sigmas=sigmas, **options)
         self.pipe._num_timesteps = len(self.scheduler.timesteps)
 
-    def predict_noise(self, timestep_idx, latents, embeds, num_images_per_prompt=1, image_size=512, generator=None):
+    def predict_noise(self, timestep_idx, latents, embeds, num_images_per_prompt=1, image_size=None, generator=None):
+        image_size = image_size or self.pipe_config.image_size
         height, width = image_size, image_size
         prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds = embeds
 
@@ -31,9 +43,9 @@ class StableDiffusion3PipelineWrapper(BasePipelineWrapper):
 
         noise_pred = self.transformer(
             hidden_states=latents,
-            timestep=self.scheduler.timesteps[timestep_idx].unsqueeze(0).to(self.device),
-            encoder_hidden_states=prompt_embeds,
-            pooled_projections=pooled_prompt_embeds,
+            timestep=self.scheduler.timesteps[timestep_idx].reshape(-1).to(self.device),
+            encoder_hidden_states=prompt_embeds.expand(batch_size, -1, -1),
+            pooled_projections=pooled_prompt_embeds.expand(batch_size, -1),
             return_dict=False
         )[0]
 
@@ -48,7 +60,12 @@ class StableDiffusion3PipelineWrapper(BasePipelineWrapper):
         2: pooled_prompt_embeds = (CLIP_1 + CLIP_2)
         3: negative_pooled_prompt_embeds
         """
-        return self.pipe.encode_prompt(prompt=prompt, prompt_2=prompt, prompt_3=prompt, do_classifier_free_guidance=do_classifier_free_guidance)
+        encoded = self.pipe.encode_prompt(
+            prompt=prompt, prompt_2=prompt, prompt_3=prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance or getattr(self, "rollout_cfg", False),
+            device=getattr(self, "text_device", self.device),
+            max_sequence_length=getattr(self, "max_sequence_length", 256))
+        return tuple(value.to(self.device) if value is not None else None for value in encoded)
 
     def encode_image_to_latents(self, image, generator=None):
         latents = self.vae.encode(image.to(next(self.parameters()).dtype).to(self.device)).latent_dist.sample(generator=generator)

@@ -1,5 +1,7 @@
 # 💎 GEM: Geometric Erasure by Contrastive Velocity Matching in Rectified Flows (ICML 2026)
 
+Local SD3.5 Medium / FLUX.1-dev benchmark integration: [DIT_BENCHMARK_ADAPTATION.md](DIT_BENCHMARK_ADAPTATION.md).
+
 <p align="left-aligned">
   <a href="https://arxiv.org/abs/2606.00140"><img src="https://img.shields.io/badge/Paper-arXiv-005393?style=for-the-badge&logo=arxiv&logoColor=white" alt="Paper on arXiv"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-4ec9ff?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="MIT License"></a>

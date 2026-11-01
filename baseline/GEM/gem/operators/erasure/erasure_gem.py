@@ -138,11 +138,13 @@ class GEM(ErasureOperator):
 
         # Main training loop
         global_step = 0
+        self.target_counts = dict.fromkeys(config.targets, 0)
         for global_step in progress_bar:
             wrapper.train()
 
             # Sample an anchor and a retention concept (if any)
             target_anchor_idx = balanced_anchor_indices[global_step]
+            self.target_counts[config.targets[target_anchor_idx]] += 1
 
             # Apply prompt augmentation (if provided)
             if prompt_augmentation is None:
@@ -208,7 +210,8 @@ class GEM(ErasureOperator):
 
                 # Set timesteps for training (use inference timesteps if flag is enabled)
                 num_timesteps = internal_gem_num_inference_steps if config.use_inference_timesteps else wrapper.scheduler.config.num_train_timesteps
-                wrapper.set_timesteps(stacked_latents.shape[1], num_timesteps)
+                wrapper.set_timesteps(wrapper.calculate_image_seq_len(
+                    wrapper.pipe_config.image_size, wrapper.pipe_config.image_size), num_timesteps)
 
                 # Create timestep indices for parallel processing (keep on CPU for scheduler indexing)
                 base_idx = config.partial_denoising_ignore_until_timestep + batch_start
@@ -243,7 +246,8 @@ class GEM(ErasureOperator):
 
                 # Reset timesteps (skip if already using inference timesteps)
                 if not config.use_inference_timesteps:
-                    wrapper.set_timesteps(stacked_latents.shape[1], internal_gem_num_inference_steps)
+                    wrapper.set_timesteps(wrapper.calculate_image_seq_len(
+                        wrapper.pipe_config.image_size, wrapper.pipe_config.image_size), internal_gem_num_inference_steps)
 
                 loss = target_loss
                 loss = (config.gamma * loss) / n_latents

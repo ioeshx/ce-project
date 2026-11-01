@@ -12,7 +12,8 @@ def memory_cleanup(deep=False):
     else:
         gc.collect()
         torch.cuda.empty_cache()
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
 
 
 def clear_unused_cuda_tensors(verbose=True):

@@ -45,8 +45,9 @@ class FluxPipelineWrapper(BasePipelineWrapper):
         self.scheduler.set_timesteps(num_timesteps, sigmas=sigmas, mu=mu)
         self.pipe._num_timesteps = len(self.scheduler.timesteps)
 
-    def predict_noise(self, timestep_idx, latents, embeds, num_images_per_prompt=1, image_size=512, generator=None,
+    def predict_noise(self, timestep_idx, latents, embeds, num_images_per_prompt=1, image_size=None, generator=None,
                       num_denoising_steps=200, guidance_scale=1.0):
+        image_size = image_size or self.pipe_config.image_size
         height, width = image_size, image_size
         prompt_embeds, pooled_prompt_embeds, text_ids = embeds
 
@@ -76,8 +77,8 @@ class FluxPipelineWrapper(BasePipelineWrapper):
             hidden_states=latents,
             timestep=timestep.to(self.device),
             guidance=guidance,
-            pooled_projections=pooled_prompt_embeds.to(latents.dtype),
-            encoder_hidden_states=prompt_embeds.to(latents.dtype),
+            pooled_projections=pooled_prompt_embeds.expand(batch_size, -1).to(latents.dtype),
+            encoder_hidden_states=prompt_embeds.expand(batch_size, -1, -1).to(latents.dtype),
             txt_ids=text_ids,
             img_ids=latent_image_ids,
             return_dict=False,
@@ -93,7 +94,10 @@ class FluxPipelineWrapper(BasePipelineWrapper):
         2: text_ids = ?
         """
         assert not do_classifier_free_guidance
-        return self.pipe.encode_prompt(prompt=prompt, prompt_2=prompt)
+        encoded = self.pipe.encode_prompt(
+            prompt=prompt, prompt_2=prompt, device=getattr(self, "text_device", self.device),
+            max_sequence_length=getattr(self, "max_sequence_length", 512))
+        return tuple(value.to(self.device) for value in encoded)
 
     def encode_image_to_latents(self, image, generator=None):
         batch_size, _, height, width = image.shape
