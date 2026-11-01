@@ -10,10 +10,12 @@
 d_tar = (I_user.float() - target_mean).square().sum(-1)
 d_anc = (I_user.float() - anchor_mean).square().sum(-1)
 mask = d_anc - d_tar > tau
+if u is not None:
+    mask &= d_tar <= u
 I_new = torch.where(mask[..., None], anchor_mean.to(I_user.dtype), I_user)
 ```
 
-距离不归一化，也不除以通道数；没有半径条件。多概念都比较同一个替换前 `I_user`，取掩码并集。不同 anchor 在同一位置命中时，使用 `d_anc-d_tar` 最大者；相同分数取配置中靠前者。`winner=-1` 表示未命中。
+距离不归一化，也不除以通道数。可选上限 `--u` 限制到 target 的平方 L2 距离：`d_tar > u` 时该 target 的 mask 为 0；等于上限时仍按 margin 判定。默认 `u=None`，不限制距离，沿用原有判定。多概念都比较同一个替换前 `I_user`，先分别应用上限，再取掩码并集。不同 anchor 在同一位置命中时，使用 `d_anc-d_tar` 最大者；相同分数取配置中靠前者。`winner=-1` 表示未命中。
 
 默认 `sd35_medium`，同时支持 `flux1_dev`；全部 blocks/可用 attention 分支、前 `ceil(0.3*T)` 个采样步、16 个离线 seeds（10000–10015）、`tau=0`。离线只保存 FP32 均值，在线默认保存距离和掩码，不保存 `I_user`、`I_new`。层和步都是从 0 开始的左闭右开范围。SD3.5 默认 40 步，干预 `[0,12)`；FLUX 默认 28 步，干预 `[0,9)`。
 
@@ -61,9 +63,9 @@ python DiT/attention_replacement/run.py benchmark --cases ip \
 
 ## 调参、独立采样和分阶段评测
 
-方法参数：`--layer-start/end`、`--step-start/end` 或 `--step-fraction`、`--offline-seeds` 或 `--offline-seed-count/start`、`--tau`、`--tau-by-concept '{"Pikachu":10}'`。`--step-end` 与 `--step-fraction` 二选一；比例相对于全部采样步。采样设置使用 benchmark 原有的 `--steps`、`--height`、`--width`、`--guidance-scale`、`--dtype` 等参数。
+方法参数：`--layer-start/end`、`--step-start/end` 或 `--step-fraction`、`--offline-seeds` 或 `--offline-seed-count/start`、`--tau`、`--tau-by-concept '{"Pikachu":10}'`、`--u`。`u` 是所有概念共用的非负有限上限，单位为平方 L2 距离，不是欧式距离的开方值。`--step-end` 与 `--step-fraction` 二选一；比例相对于全部采样步。采样设置使用 benchmark 原有的 `--steps`、`--height`、`--width`、`--guidance-scale`、`--dtype` 等参数。
 
-调整 `tau` 可复用同一缓存；模型、总采样步数、分辨率、guidance 等轨迹参数变化时需要重新收集。`--prototype-dir` 可显式指定已有 collection，并从中使用更小的层/时间窗口；此时实际离线 seed 列表以该缓存为准。`collect` 的显式 collection 则必须匹配原有完整窗口与 seed 列表。
+调整 `tau` 或 `u` 可复用同一缓存；模型、总采样步数、分辨率、guidance 等轨迹参数变化时需要重新收集。`--prototype-dir` 可显式指定已有 collection，并从中使用更小的层/时间窗口；此时实际离线 seed 列表以该缓存为准。`collect` 的显式 collection 则必须匹配原有完整窗口与 seed 列表。
 
 ```bash
 # 指定离线 concept 对；之后两条命令保持 --pairs 相同
@@ -91,7 +93,7 @@ python DiT/attention_replacement/run.py evaluate --manifest /path/to/manifest.js
 
 benchmark 默认采样 `--mode both`，自动填充并复用原模型对照图。仅生成方法图可用 `--mode image`，评测时仍需原图。`--tasks mscoco` 可只运行保留任务。缩小 benchmark 建议用 `--max-records`；`--limit-prompts` 按原数据顺序截断，可能截掉部分评估概念。评测权重和具体指标说明见 `benchmark/DIT.md`。
 
-方法配置也可通过 benchmark 的 `--method-config` 提供，字段为 `adapter.attention_replacement`，CLI 方法参数优先。默认方法目录名由干预模式、阈值、层/时间范围和本次起始时间组成，例如 `AttentionReplacement-replace-tau-0-layers-0-all-steps-0-12-20261031-140000`。重新启动普通 benchmark 会分配新的实验名称；要继续同一次实验，使用 `benchmark --manifest ...`。`--method` 可显式提供可读名称。
+方法配置也可通过 benchmark 的 `--method-config` 提供，字段为 `adapter.attention_replacement`，CLI 方法参数优先。默认方法目录名包含干预模式、margin 阈值、距离上限、层/时间范围和本次起始时间，例如 `AttentionReplacement-replace-tau-0-u-off-layers-0-all-steps-0-12-20261101-140000`；`u-off` 表示未启用距离上限。重新启动普通 benchmark 会分配新的实验名称；要继续同一次实验，使用 `benchmark --manifest ...`。改变 `u` 应开始新实验，不混入已完成的采样结果。`--method` 可显式提供可读名称。
 
 所有新建目录均使用可读名称；哈希仅作为 JSON 中的内容校验字段，不参与路径命名。离线缓存按完整配置元数据匹配并复用；不同配置即使名称前缀相同，也会使用不同时间或 `run-2` 等序号区分。相同 prompt 的缓存共享，清洗后同名但原文不同的 prompt 通过元数据与可读序号区分。
 

@@ -19,7 +19,7 @@ from benchmark.sampling_profile import initial_noise
 DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
 DEFAULTS = dict(layer_start=0, layer_end=None, step_start=0, step_end=None,
-                step_fraction=0.3, tau=0.0, tau_by_concept={},
+                step_fraction=0.3, tau=0.0, tau_by_concept={}, u=None,
                 offline_seeds=list(range(10000, 10016)), intervention="replace", trace=True,
                 trace_root=None,
                 cache_root=str(DIRECTORY / "cache"), prototype_dir=None)
@@ -57,6 +57,8 @@ def resolve_settings(config, overrides=None):
         problems.append("provide nonempty target/anchor pairs")
     if not all(math.isfinite(v) for v in [settings["tau"], *settings["tau_by_concept"].values()]):
         problems.append("tau values must be finite")
+    if settings["u"] is not None and (not math.isfinite(settings["u"]) or settings["u"] < 0):
+        problems.append("u must be finite and nonnegative, or null to disable the distance limit")
     if settings["intervention"] not in {"replace", "observe"}:
         problems.append("intervention must be replace or observe")
     if config["sampling"].get("true_cfg_scale", 1.0) != 1.0:
@@ -74,7 +76,7 @@ def resolve_settings(config, overrides=None):
 
 
 def cache_identity(config, settings):
-    """Only trajectory/collection settings belong in the offline identity, not tau."""
+    """Only trajectory/collection settings belong in the offline identity, not tau or u."""
     from huggingface_hub import try_to_load_from_cache
 
     opts = config["sampling"]
@@ -147,11 +149,11 @@ def read_prototypes(config, settings, *, verify=True):
     return directory, metadata, means
 
 
-def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True):
+def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True, *, u=None):
     """All concepts inspect the same x. Strict comparisons give stable first-pair ties.
 
     x: [B,H,W,D]; prototypes: prompt -> [H,W,D], FP32 on x.device.
-    No normalization, channel averaging, radius gate, or soft replacement.
+    Squared distances are unnormalized; u optionally limits the target distance.
     """
     xf = x.float()
     best = torch.full(x.shape[:-1], -torch.inf, device=x.device)
@@ -164,6 +166,8 @@ def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True)
         d_anc = (xf - anchor).square().sum(dim=-1)
         margin = d_anc - d_tar
         mask = margin > tau_by_concept.get(pair["target"], tau)
+        if u is not None:
+            mask &= d_tar <= u
         wins = mask & (margin > best)
         replacement = torch.where(wins[..., None], anchor.to(x.dtype), replacement)
         best = torch.where(wins, margin, best)
@@ -266,7 +270,7 @@ class AttentionReplacement(DiTAdapter):
                           for prompt, info in self.means.items()}
             result, payload = replace_attention(x, prototypes, self.settings["pairs"],
                 self.settings["tau"], self.settings["tau_by_concept"],
-                self.settings["intervention"] == "replace")
+                self.settings["intervention"] == "replace", u=self.settings["u"])
         self.hook_seconds += time.perf_counter() - started
         if not self.collecting and self.settings["trace"]:
             started = time.perf_counter()

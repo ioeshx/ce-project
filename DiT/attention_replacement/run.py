@@ -132,6 +132,7 @@ def main(argv=None):
     window.add_argument("--step-fraction", type=float)
     own.add_argument("--tau", type=float)
     own.add_argument("--tau-by-concept", type=json.loads, help='JSON, e.g. {"nudity": 10}')
+    own.add_argument("--u", type=float, help="Maximum squared target distance; D_tar > u cannot trigger replacement")
     own.add_argument("--anchor-overrides", type=json.loads, help='JSON, e.g. {"nudity": "clothed"}')
     own.add_argument("--pairs", type=json.loads, help='JSON list: [{"target":"nudity","anchor":"clothed"}]')
     own.add_argument("--offline-seeds", help="Comma-separated prototype seeds; separate from benchmark --seeds")
@@ -307,8 +308,9 @@ def main(argv=None):
         settings["offline_seeds"] = metadata["identity"]["capture"]["offline_seeds"]
         config["adapter"]["prototype_digests"] = {p: info["digest"] for p, info in means.items()}
         threshold = "per-concept" if settings["tau_by_concept"] else f"{settings['tau']:g}"
+        distance_limit = "off" if settings["u"] is None else f"{settings['u']:g}"
         config["method"] = args.method or (
-            f"AttentionReplacement-{settings['intervention']}-tau-{threshold}-"
+            f"AttentionReplacement-{settings['intervention']}-tau-{threshold}-u-{distance_limit}-"
             f"layers-{settings['layer_start']}-{settings['layer_end'] or 'all'}-"
             f"steps-{settings['step_start']}-{settings['step_end']}-{started_at}")
         if opts.action == "sample":

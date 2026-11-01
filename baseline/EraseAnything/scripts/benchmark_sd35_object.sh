@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+export HF_ENDPOINT="https://hf-mirror.com"
 # SD3.5 Object: church; church + golf ball + parachute + cassette player + banana.
 set -euo pipefail
 ERASE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

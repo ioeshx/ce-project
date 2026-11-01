@@ -10,13 +10,13 @@
 
 1. 特征为 **attention 运算完成后、输出投影之前的图像侧 `AV`**，不是 value 投影 `V`、attention map 或整个 block 输出。
 2. target 与 anchor 分别构建均值，按相同的层、采样步和空间位置比较。
-3. 使用平方 L2 距离和严格的 `d_anc - d_tar > tau`。
+3. 使用平方 L2 距离和严格的 `d_anc - d_tar > tau`；配置 `u` 时还要求 `d_tar <= u`。
 4. 替换源为离线 anchor 均值，执行完整 token 向量的硬替换。
-5. 层范围、采样时间窗口、离线 seed 数与 `tau` 均可配置，后续人工选择实验值。
+5. 层范围、采样时间窗口、离线 seed 数、`tau` 与可选距离上限 `u` 均可配置。
 6. 多概念分别计算掩码，再取并集；重叠位置的 anchor 选择规则见第 7 节。
-7. 保存离线特征与在线特征、距离、掩码，支持后续逐位置分析。
+7. 离线只保存均值和元数据，在线保存距离、掩码和修改量标量，不保存完整激活。
 
-首版不增加 `d_tar < r` 条件，不增加软替换系数、投影擦除、学习式检测器或自动超参数搜索。未来需要距离上限时，可在已有距离图上增加条件，并形成独立的方法配置。
+支持可选的 `d_tar <= u` 条件，默认 `u=None` 表示不限制 target 距离；不增加软替换系数、投影擦除、学习式检测器或自动超参数搜索。
 
 ## 2. 仓库接口与接入方式
 
@@ -60,14 +60,15 @@ d_{anc}(p)=\sum_{j=1}^{d_s}(x_{p,j}-\mu^{anc}_{p,j})^2.
 \]
 
 \[
-S(p)=d_{anc}(p)-d_{tar}(p),\qquad M(p)=\mathbf1[S(p)>\tau].
+S(p)=d_{anc}(p)-d_{tar}(p),\qquad
+M(p)=\mathbf1[S(p)>\tau]\,\mathbf1[d_{tar}(p)\le u].
 \]
 
 \[
 I_{new}(p)=(1-M(p))I_{user}(p)+M(p)\mu^{anc}(p).
 \]
 
-具体约定：
+具体约定（未配置上限时，公式中的 `u` 视作正无穷；配置中保存为 `null`）：
 
 - 距离是原始特征空间的**平方距离之和**，不除以通道数，不做 L2 归一化、余弦相似度或方差标准化。
 - `d_tar`、`d_anc`、`S`、`M` 的单样本形状为 `(H_s,W_s)`；`I_user`、均值和 `I_new` 为 `(H_s,W_s,d_s)`。批量运行增加最前面的 `B` 维。
@@ -105,6 +106,7 @@ DiT/attention_replacement/
 | `attention_branches` | 所选 blocks 中支持的图像 attention 分支；逐项列入 site 清单 |
 | `step_fraction` | `0.30`；也可显式指定 `step_start` / `step_end`，两种方式互斥 |
 | `tau` | `0.0`；支持全局值和概念级覆盖 |
+| `u` | 默认 `None`，不启用上限；启用时是所有概念共用的非负有限平方 L2 距离上限 |
 | `replacement` | `anchor_mean`，硬替换 |
 | `overlap_policy` | `max_margin`，具体规则见第 7 节 |
 | `batch_size` | 初次调试为 1；张量接口保留 batch 维 |
@@ -142,7 +144,7 @@ DiT/attention_replacement/
 
 缓存元数据至少包含：模型来源和 revision、运行依赖版本、attention 接口版本、模型 dtype、分辨率、完整 scheduler 配置及实际时间表、guidance / negative prompt、文本长度、概念原文、seed 列表、site 清单、token 网格与所选收集范围。
 
-- `tau` 不改变离线原型，调整它时复用原型。
+- `tau` 和 `u` 不改变离线原型，调整时复用原型。
 - 在线 layer / step 窗口是已收集范围的子集时可直接复用。
 - 增加未收集的层或步，需要补收集对应数据。
 - 改变模型、分辨率、采样总步数或其他会改变轨迹的配置，需要对应的新缓存；首版不插值旧时间表或缩放旧空间原型。
@@ -160,6 +162,7 @@ I_pre = 当前条件分支图像侧 AV
     d_anc = sum_channels((float32(I_pre) - mean_anc) ** 2)
     margin = d_anc - d_tar
     M_pair = margin > tau_pair
+    如果配置了 u：M_pair = M_pair AND (d_tar <= u)
 
 M_union = 所有 M_pair 的逻辑 OR
 确定每个命中位置使用的 anchor
