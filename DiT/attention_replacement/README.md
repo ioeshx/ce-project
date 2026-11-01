@@ -143,6 +143,10 @@ python DiT/attention_replacement/run.py analyze \
 
 # 已有 statistics.npz 时重新绘图，省去重新读取全部 trace 的成本。
 python DiT/attention_replacement/analyze.py --plots-only --workers 3
+
+# 补全 step [0,20) 实验的全部 sample_examples，复用已有 PNG 与汇总统计。
+# --step-end 根据已保存配置精确筛选，因此不处理 step_end=40 的实验。
+python DiT/attention_replacement/analyze.py --examples-only --step-end 20 --workers 6
 ```
 
 默认输出在 `DiT/attention_replacement/analysis/`，保留 model/task/case/method/run 的实验层级，入口为 `analysis/index.html`。各概念、各 attention 分支分别统计。有 `record.concept` 标签且包含目标概念样本的实验，额外输出 `target_prompt` 与 `other_prompts` 分组；这些是 prompt 标签分组，不是生成图像的检测标签。
@@ -158,10 +162,12 @@ python DiT/attention_replacement/analyze.py --plots-only --workers 3
 - `layer_timestep_summary.png`：横轴为采样 step/原生 timestep，纵轴为 layer，颜色为对应空间均值。
 - `distance_and_mask_trends.png`：距离与掩码覆盖率随 layer/step 的变化。
 - `distance_distributions.png`、`threshold_sweep.png`：距离/差值分布，以及 `P(d_anchor-d_target > tau)` 随阈值的变化。距离为平方欧氏距离；决定门控的是差值，而非单独一个距离。
-- `sample_examples/`：每个实验额外保存少量生成图像及未平均的原始空间图；`--heatmaps` 只控制这些单图示例数量，不限制三种平均统计。
+- `sample_examples/`：默认覆盖全部样本，不同 seed 分别保留，每个 `sample_<sample_id>.png` 展示生成图像及一个已记录 step/attention site 的原始 `d_target`、`d_anchor`、margin 和二值 mask；多概念实验逐行展示全部概念对。step/site 根据完整样本序号轮换，图中标明实际取值，距离图保留 token 坐标。`index.html` 支持按完整 prompt、样本名、概念、seed 搜索，`samples.csv` 记录 PNG 与原始 trace 的对应关系，`manifest.json` 记录覆盖数和缺失数。`--heatmaps N` 可限制数量，`--heatmaps 0` 跳过单图诊断；该选项不限制三种平均统计。已有旧版 `example_XX.png` 保留，新索引使用按 sample 命名的完整结果。
 - `statistics.npz`、`means.csv`、`threshold_sweep.csv`、`margin_quantiles.csv`：可复用数值结果；`manifest.json` 记录样本、观测数、缺失量、mask 与 margin 的一致性检查。
 
 空间均值和已保存 mask 的频率使用全部已观测文件的所有像素。分布、分位数和阈值扫描从每个文件均匀抽取最多 8 个位置，再做有界随机抽样；全体 prompt 的曲线按各分组实际像素量加权。平均 mask 是触发频率，不是对平均 margin 重新取阈值。跨图像的空间均值用于检查位置偏置，单张图像的语义定位使用 `sample_examples`。
+
+`--examples-only` 需要已存在的实验分析 `manifest.json`，只补充单图 PNG、样本索引和实验页面，不读取全部 trace 或重新绘制汇总图。可重复执行以补齐中断任务；统一浏览入口为 `analysis/sample_examples_index.html`，每批执行的覆盖数与耗时保存为 `analysis/sample_examples_runs.json`。
 
 现有替换模式 trace 已包含前序干预的影响。阈值扫描只是在这些已保存轨迹上重新比较差值，不能替代修改 tau 后重新采样与评测图像效果。
 

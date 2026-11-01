@@ -46,10 +46,11 @@ def check_trace_space(config, collection, records):
                       "Use --trace-root on a larger disk, or --no-trace.")
 
 
-def analyze(directory, heatmaps, output=None, workers=3):
+def analyze(directory, heatmaps=None, output=None, workers=3, examples_only=False, step_end=None):
     """Analyze every saved trace run below directory, without sampling new images."""
     from DiT.attention_replacement.analyze import analyze_results
-    return analyze_results(directory, output, workers, heatmaps)
+    return analyze_results(directory, output, workers, heatmaps,
+                           examples_only=examples_only, step_end=step_end)
 
 
 def main(argv=None):
@@ -81,7 +82,8 @@ def main(argv=None):
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
     own.add_argument("--seed", type=int, default=42, help="sample: initial noise seed")
     own.add_argument("--run-dir", type=Path, help="analyze: trace root; sample: output directory")
-    own.add_argument("--heatmaps", type=int, default=8, help="analyze: unaveraged sample examples per experiment")
+    own.add_argument("--heatmaps", type=int, help="analyze: sample limit per experiment; default: all samples; 0: skip")
+    own.add_argument("--examples-only", action="store_true", help="analyze: supplement all sample diagnostics using existing analysis")
     own.add_argument("--analysis-dir", type=Path, default=DIRECTORY / "analysis",
                      help="analyze: output root, organized by experiment")
     own.add_argument("--analysis-workers", type=int, default=3, help="analyze: CPU worker processes")
@@ -89,10 +91,11 @@ def main(argv=None):
     if opts.action == "analyze":
         if opts.run_dir is None or remaining:
             own.error("analyze requires --run-dir and accepts only method options")
-        if opts.analysis_workers < 1 or opts.heatmaps < 0:
+        if opts.analysis_workers < 1 or (opts.heatmaps is not None and opts.heatmaps < 0):
             own.error("analysis-workers must be positive and heatmaps must be nonnegative")
         analyze(opts.run_dir.expanduser().resolve(), opts.heatmaps,
-                opts.analysis_dir.expanduser().resolve(), opts.analysis_workers)
+                opts.analysis_dir.expanduser().resolve(), opts.analysis_workers,
+                opts.examples_only, opts.step_end)
         return 0
 
     from benchmark.cli import get_config, parser

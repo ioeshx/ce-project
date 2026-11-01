@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import textwrap
 import time
 
 import numpy as np
@@ -50,14 +51,15 @@ def write_csv(path, rows):
         writer.writerows(rows)
 
 
-def discover_runs(directory):
+def discover_runs(directory, step_end=None):
     """Discover metadata parents, never recurse through millions of tensor files."""
     directory = Path(directory).resolve()
     runs = []
     for base, dirs, files in os.walk(directory):
         if "metadata.json" in files:
             metadata = read_json(Path(base) / "metadata.json")
-            if metadata.get("prototype_means"):
+            if metadata.get("prototype_means") and (step_end is None or
+                    metadata["settings"]["step_end"] == step_end):
                 runs.append(Path(base).parent)
             dirs[:] = []
         else:
@@ -445,40 +447,32 @@ def render_group(output, manifest, group):
     data.close()
 
 
-def sample_figures(run, output, limit=8):
-    """A few unaveraged maps for checking individual images, rather than only position frequencies."""
-    if limit <= 0:
-        return
+def sample_figure(path, sample, meta, step, site, tensors):
+    """One image and every concept pair at one recorded step/attention site."""
     plt = pyplot()
     from PIL import Image
-    samples = sorted(p for p in run.iterdir() if (p / "metadata.json").is_file())
-    folder = output / "sample_examples"
-    folder.mkdir(exist_ok=True)
-    for i, index in enumerate(np.unique(np.linspace(0, len(samples) - 1, min(limit, len(samples)), dtype=int))):
-        sample = samples[index]
-        meta = read_json(sample / "metadata.json")
-        steps = list(range(meta["settings"]["step_start"], meta["settings"]["step_end"]))
-        step = steps[(i * max(1, len(steps) // max(limit, 1))) % len(steps)]
-        sites = meta["sites"]
-        site = sites[(i * max(1, len(sites) // max(limit, 1))) % len(sites)]
-        path = sample / f"step_{step:04d}" / (site["id"] + ".safetensors")
-        if not path.exists():
-            continue
-        tensors = load_tensors(path.read_bytes())
-        c = i % len(meta["settings"]["pairs"])
-        pair = meta["settings"]["pairs"][c]
-        fig, axes = plt.subplots(1, 5, figsize=(17, 4), layout="constrained")
-        image_path = Path(meta["record"]["image"])
-        if image_path.exists():
-            with Image.open(image_path) as image:
-                axes[0].imshow(image.convert("RGB"))
-            axes[0].set(xlabel="Image x (pixels)", ylabel="Image y (pixels)", title="Generated image")
-        else:
-            axes[0].text(.5, .5, "Image not found", ha="center")
+    pairs = meta["settings"]["pairs"]
+    prompt = "\n".join(textwrap.wrap(meta["record"]["prompt"], width=150))
+    fig = plt.figure(figsize=(17, 3.3 * len(pairs) + 1 + .18 * len(prompt.splitlines())),
+                     layout="constrained")
+    axes = fig.add_gridspec(len(pairs), 5)
+    image_ax = fig.add_subplot(axes[:, 0])
+    image_path = Path(meta["record"]["image"])
+    if image_path.exists():
+        with Image.open(image_path) as image:
+            image_ax.imshow(image.convert("RGB"))
+        image_ax.set(xlabel="Image x (pixels)", ylabel="Image y (pixels)", title="Generated image")
+    else:
+        image_ax.text(.5, .5, "Image not found", ha="center")
+    for c, pair in enumerate(pairs):
         distance_min = min(float(tensors[f"d_tar_{c}"].min()), float(tensors[f"d_anc_{c}"].min()))
         distance_max = max(float(tensors[f"d_tar_{c}"].max()), float(tensors[f"d_anc_{c}"].max()))
-        raw_labels = ("d_target", "d_anchor", "d_anchor - d_target", "Binary mask M")
-        for ax, key, name in zip(axes[1:], (f"d_tar_{c}", f"d_anc_{c}", f"margin_{c}", f"mask_{c}"), raw_labels):
+        tau = meta["settings"]["tau_by_concept"].get(pair["target"], meta["settings"]["tau"])
+        raw_labels = (f"d_target: {pair['target']}", f"d_anchor: {pair['anchor']}",
+                      "d_anchor - d_target", f"Binary mask M (tau={tau:g})")
+        for col, (key, name) in enumerate(zip(
+                (f"d_tar_{c}", f"d_anc_{c}", f"margin_{c}", f"mask_{c}"), raw_labels), 1):
+            ax = fig.add_subplot(axes[c, col])
             values = tensors[key]
             options = {"vmin": 0, "vmax": 1} if key.startswith("mask") else {}
             if key.startswith("margin"):
@@ -488,12 +482,89 @@ def sample_figures(run, output, limit=8):
                 options = {"vmin": distance_min, "vmax": max(distance_max, distance_min + 1e-9)}
             image = ax.imshow(values, interpolation="nearest", cmap="RdBu_r" if key.startswith("margin") else
                               "magma" if key.startswith("mask") else "viridis", **options)
-            ax.set(xlabel="Token column w", ylabel="Token row h", title=name.replace("Mean ", ""))
+            ax.set(xlabel="Token column w", ylabel="Token row h", title=name)
             fig.colorbar(image, ax=ax, shrink=.7)
-        fig.suptitle(f"{sample.name} | {pair['target']} | Step {step}, {site['id']}\n"
-                     + meta["record"]["prompt"][:160])
-        fig.savefig(folder / f"example_{i:02d}.png")
-        plt.close(fig)
+    native_time = meta["schedule"]["timesteps"][step]
+    fig.suptitle(f"{sample.name} | seed={meta['record']['seed']} | Step {step}, t={native_time:g}, {site['id']}\n"
+                 + prompt)
+    fig.savefig(path)
+    plt.close(fig)
+
+
+def write_sample_index(folder, rows, summary):
+    write_csv(folder / "samples.csv", rows)
+    write_json(folder / "manifest.json", summary)
+    body = ["<h1>All sample diagnostics</h1>",
+            f"<p>{summary['visualized_samples']} / {summary['selected_samples']} samples visualized; "
+            f"{summary['unique_prompts']} unique prompts. Each PNG shows one recorded step/site, "
+            "with one row per concept pair. Spatial axes: token column w / token row h.</p>",
+            '<p><a href="../index.html">Experiment report</a> | <a href="samples.csv">Full sample inventory</a></p>',
+            '<input id="search" placeholder="Filter by prompt, sample, concept or seed" '
+            'style="width:90%;padding:.6em;margin-bottom:1em">',
+            '<table><thead><tr><th>Sample / seed</th><th>Full prompt</th><th>Step / attention site</th>'
+            '<th>Diagnostic figure</th></tr></thead><tbody>']
+    for row in rows:
+        link = (f'<a href="{html.escape(row["figure"], quote=True)}">Open PNG</a>'
+                if row["figure"] else "Missing trace")
+        body.append(f'<tr><td>{html.escape(row["sample"])}<br>seed={row["seed"]}<br>'
+                    f'{html.escape(row["prompt_concept"])}</td><td>{html.escape(row["prompt"])}</td>'
+                    f'<td>{row["step"]}<br>{html.escape(row["site"])}</td><td>{link}</td></tr>')
+    body.append("</tbody></table><script>document.getElementById('search').addEventListener('input', "
+                "function(){const q=this.value.toLowerCase();document.querySelectorAll('tbody tr').forEach("
+                "r=>r.hidden=!r.textContent.toLowerCase().includes(q));});</script>")
+    (folder / "index.html").write_text("<!doctype html><meta charset='utf-8'><title>All sample diagnostics</title>"
+        "<style>body{font-family:sans-serif;margin:2em}table{border-collapse:collapse;width:100%}"
+        "td,th{border:1px solid #ddd;padding:.6em;text-align:left;vertical-align:top}"
+        "td:nth-child(2){width:55%;white-space:pre-wrap}a{color:#1766aa}</style>" + "\n".join(body),
+        encoding="utf-8")
+
+
+def sample_figures(run, output, limit=None):
+    """Cover every sample by default; reuse existing PNGs to resume a supplement run."""
+    if limit == 0:
+        return None
+    samples = sorted(p for p in run.iterdir() if (p / "metadata.json").is_file())
+    folder = output / "sample_examples"
+    folder.mkdir(parents=True, exist_ok=True)
+    size = len(samples) if limit is None else min(limit, len(samples))
+    indices = np.unique(np.linspace(0, len(samples) - 1, size, dtype=int)) if size else []
+    rows = []
+    generated = reused = missing = 0
+    started = time.monotonic()
+    for i, index in enumerate(indices):
+        sample = samples[index]
+        meta = read_json(sample / "metadata.json")
+        steps = list(range(meta["settings"]["step_start"], meta["settings"]["step_end"]))
+        # Stable selection from the full sample index, including when --heatmaps changes.
+        step = steps[index % len(steps)]
+        sites = meta["sites"]
+        site = sites[index % len(sites)]
+        path = sample / f"step_{step:04d}" / (site["id"] + ".safetensors")
+        figure = folder / f"sample_{sample.name}.png"
+        if not path.exists():
+            missing += 1
+        elif figure.is_file() and figure.stat().st_size:
+            reused += 1
+        else:
+            sample_figure(figure, sample, meta, step, site, load_tensors(path.read_bytes()))
+            generated += 1
+        rows.append({"sample": sample.name, "seed": meta["record"]["seed"],
+                     "prompt_concept": meta["record"].get("concept", ""),
+                     "prompt": meta["record"]["prompt"], "step": step,
+                     "timestep": meta["schedule"]["timesteps"][step], "site": site["id"],
+                     "concept_pairs": json.dumps(meta["settings"]["pairs"], ensure_ascii=False),
+                     "trace": str(path), "figure": figure.name if path.exists() else ""})
+        if (i + 1) % 50 == 0 or i + 1 == len(indices):
+            print(f"[examples {run.parent.parent.parent.name}] {i + 1}/{len(indices)}; "
+                  f"new={generated}, reused={reused}, missing={missing}; "
+                  f"{time.monotonic() - started:.0f}s", flush=True)
+    summary = {"source_run": str(run), "available_samples": len(samples), "selected_samples": len(rows),
+               "unique_prompts": len({row["prompt"] for row in rows}),
+               "visualized_samples": generated + reused, "generated": generated, "reused": reused,
+               "missing_traces": missing, "elapsed_seconds": time.monotonic() - started,
+               "selection": "One step and attention site per sample, cycled by full sample index; all concept pairs"}
+    write_sample_index(folder, rows, summary)
+    return summary
 
 
 def write_run_index(output, manifest):
@@ -520,27 +591,40 @@ def write_run_index(output, manifest):
     examples = sorted((output / "sample_examples").glob("*.png"))
     if examples:
         body.append("<h2>Individual images and unaveraged maps</h2>")
-        for path in examples:
+        example_manifest = output / "sample_examples" / "manifest.json"
+        if example_manifest.is_file():
+            summary = read_json(example_manifest)
+            body.append(f'<p><a href="sample_examples/index.html">Browse all '
+                        f'{summary["visualized_samples"]} samples / {summary["unique_prompts"]} unique prompts</a> '
+                        '| <a href="sample_examples/samples.csv">Full prompt inventory</a></p>')
+            examples = sorted((output / "sample_examples").glob("sample_*.png"))
+        for path in examples[:8]:
             url = path.relative_to(output).as_posix()
-            body.append(f'<a href="{url}"><img src="{url}" style="max-width:1200px;width:100%"></a>')
+            body.append(f'<a href="{url}"><img src="{url}" loading="lazy" '
+                        'style="max-width:1200px;width:100%"></a>')
     (output / "index.html").write_text("<!doctype html><meta charset='utf-8'><title>Trace analysis</title>"
         "<style>body{font-family:sans-serif;margin:2em;max-width:1500px}a{color:#1766aa}</style>"
         + "\n".join(body), encoding="utf-8")
 
 
 def analyze_run(arguments):
-    run, output, heatmaps, plots_only = arguments
+    run, output, heatmaps, plots_only, examples_only = arguments
     run, output = Path(run), Path(output)
     print(f"[experiment] {run} -> {output}", flush=True)
-    manifest = read_json(output / "manifest.json") if plots_only else collect_statistics(run, output)
-    for group in manifest["groups"]:
-        print(f"[plots] {group['target']} / {group['branch']}: {output}", flush=True)
-        render_group(output, manifest, group)
-    sample_figures(run, output, heatmaps)
+    manifest = read_json(output / "manifest.json") if plots_only or examples_only else collect_statistics(run, output)
+    if not examples_only:
+        for group in manifest["groups"]:
+            print(f"[plots] {group['target']} / {group['branch']}: {output}", flush=True)
+            render_group(output, manifest, group)
+    examples = sample_figures(run, output, heatmaps)
+    if examples is not None:
+        manifest["sample_examples"] = examples
+        write_json(output / "manifest.json", manifest)
     write_run_index(output, manifest)
     print(f"[complete] {output / 'index.html'}", flush=True)
     return {"source": str(run), "output": str(output), "samples": manifest["samples"],
-            "files": manifest["validation"]["files_read"], "validation": manifest["validation"]}
+            "files": manifest["validation"]["files_read"], "validation": manifest["validation"],
+            "sample_examples": examples}
 
 
 def write_overview(output, reports):
@@ -568,14 +652,33 @@ def write_overview(output, reports):
     write_json(output / "validation_summary.json", totals)
 
 
-def analyze_results(directory, output=None, workers=3, heatmaps=8, plots_only=False):
+def write_examples_overview(output, reports):
+    links = []
+    for report in reports:
+        summary = report["sample_examples"]
+        if summary is None:
+            continue
+        relative = Path(report["output"]).relative_to(output)
+        url = (relative / "sample_examples" / "index.html").as_posix()
+        links.append(f'<li><a href="{html.escape(url, quote=True)}">{html.escape(relative.as_posix())}</a>'
+                     f' — {summary["visualized_samples"]} samples / {summary["unique_prompts"]} unique prompts</li>')
+    (output / "sample_examples_index.html").write_text(
+        "<!doctype html><meta charset='utf-8'><title>All sample diagnostics by experiment</title>"
+        "<style>body{font-family:sans-serif;margin:2em}li{margin-bottom:1em}</style>"
+        "<h1>All sample diagnostics by experiment</h1>"
+        '<p><a href="sample_examples_runs.json">Batch coverage and timing</a></p><ul>'
+        + "\n".join(links) + "</ul>", encoding="utf-8")
+
+
+def analyze_results(directory, output=None, workers=3, heatmaps=None, plots_only=False,
+                    examples_only=False, step_end=None):
     directory = Path(directory).resolve()
     output = Path(output or DIRECTORY / "analysis").resolve()
     output.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("MPLCONFIGDIR", str(output / ".matplotlib"))
-    runs = discover_runs(directory)
+    runs = discover_runs(directory, step_end=step_end)
     if not runs:
-        raise ValueError(f"No saved attention traces found in {directory}")
+        raise ValueError(f"No saved attention traces found in {directory} (step_end={step_end})")
     jobs = []
     for run in runs:
         # Preserve the model/task/case/method identity when a results tree is supplied.
@@ -584,7 +687,10 @@ def analyze_results(directory, output=None, workers=3, heatmaps=8, plots_only=Fa
         except ValueError:
             relative = run.relative_to(directory) if run != directory else Path(run.name)
         relative = Path(*(part for part in relative.parts if part != "traces"))
-        jobs.append((str(run), str(output / relative), heatmaps, plots_only))
+        destination = output / relative
+        if examples_only and not (destination / "manifest.json").is_file():
+            raise ValueError(f"--examples-only requires an existing analysis: {destination / 'manifest.json'}")
+        jobs.append((str(run), str(destination), heatmaps, plots_only, examples_only))
     started = time.monotonic()
     print(f"[analysis] {len(jobs)} experiments; output={output}; workers={workers}", flush=True)
     if workers == 1:
@@ -592,8 +698,13 @@ def analyze_results(directory, output=None, workers=3, heatmaps=8, plots_only=Fa
     else:
         with ProcessPoolExecutor(max_workers=workers) as pool:
             reports = list(pool.map(analyze_run, jobs))
-    write_json(output / "analysis_runs.json", {"elapsed_seconds": time.monotonic() - started,
-                                               "experiments": reports})
+    filename = "sample_examples_runs.json" if examples_only else "analysis_runs.json"
+    write_json(output / filename, {"elapsed_seconds": time.monotonic() - started,
+                                  "step_end_filter": step_end, "experiments": reports})
+    if examples_only:
+        write_examples_overview(output, reports)
+        print(f"[examples finished] {time.monotonic() - started:.1f}s; {output / filename}", flush=True)
+        return reports
     write_overview(output, reports)
     links = []
     for report in reports:
@@ -617,12 +728,16 @@ def main():
     parser.add_argument("--results-dir", type=Path, default=DIRECTORY / "results")
     parser.add_argument("--output-dir", type=Path, default=DIRECTORY / "analysis")
     parser.add_argument("--workers", type=int, default=3)
-    parser.add_argument("--heatmaps", type=int, default=8, help="Unaveraged sample examples per experiment")
-    parser.add_argument("--plots-only", action="store_true", help="Replot previously saved statistics.npz")
+    parser.add_argument("--heatmaps", type=int, help="Limit sample examples per experiment; default: all samples; 0: skip")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--plots-only", action="store_true", help="Replot previously saved statistics.npz")
+    mode.add_argument("--examples-only", action="store_true", help="Supplement sample examples using existing analysis; resume existing PNGs")
+    parser.add_argument("--step-end", type=int, help="Only runs whose saved step_end equals this value (exclusive endpoint)")
     args = parser.parse_args()
-    if args.workers < 1 or args.heatmaps < 0:
+    if args.workers < 1 or (args.heatmaps is not None and args.heatmaps < 0):
         parser.error("workers must be positive and heatmaps must be nonnegative")
-    analyze_results(args.results_dir, args.output_dir, args.workers, args.heatmaps, args.plots_only)
+    analyze_results(args.results_dir, args.output_dir, args.workers, args.heatmaps, args.plots_only,
+                    args.examples_only, args.step_end)
 
 
 if __name__ == "__main__":

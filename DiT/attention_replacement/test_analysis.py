@@ -3,12 +3,14 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from safetensors.numpy import save_file
 
 from DiT.attention_replacement.analyze import (
     collect_statistics, discover_runs, reduce_maps, render_group, Reservoir, write_overview,
+    analyze_results, sample_figure, sample_figures,
 )
 
 
@@ -122,6 +124,67 @@ class AnalysisTests(unittest.TestCase):
             row = next(r for r in rows if r["branch"] == "attn" and r["prompt_group"] == "all")
             self.assertEqual(float(row["d_target"]), 7.5)
             self.assertEqual(json.loads((output / "validation_summary.json").read_text())["files_read"], 12)
+
+    def test_examples_cover_all_seeds_and_pairs_and_resume(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run = fixture(root)
+            for sample in sorted(run.iterdir()):
+                path = sample / "metadata.json"
+                metadata = json.loads(path.read_text())
+                metadata["record"]["prompt"] = "a <Pikachu> & friend"
+                metadata["settings"]["pairs"].append({"target": "Snoopy", "anchor": "Cartoon Character"})
+                path.write_text(json.dumps(metadata))
+                from safetensors.numpy import load_file
+                for tensor_path in sample.glob("step_*/*.safetensors"):
+                    tensors = load_file(tensor_path)
+                    tensors.update({f"{name}_1": tensors[f"{name}_0"]
+                                    for name in ("d_tar", "d_anc", "margin", "mask")})
+                    save_file(tensors, tensor_path)
+            output = root / "analysis"
+            with patch("DiT.attention_replacement.analyze.sample_figure", wraps=sample_figure) as render:
+                summary = sample_figures(run, output)
+                self.assertEqual(render.call_count, 2)
+                self.assertTrue(all(len(call.args[2]["settings"]["pairs"]) == 2
+                                    for call in render.call_args_list))
+            self.assertEqual(summary["visualized_samples"], 2)
+            self.assertEqual(summary["unique_prompts"], 1)
+            self.assertEqual(summary["missing_traces"], 0)
+            import csv
+            folder = output / "sample_examples"
+            with (folder / "samples.csv").open() as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual([row["seed"] for row in rows], ["0", "1"])
+            self.assertTrue(all((folder / row["figure"]).is_file() for row in rows))
+            self.assertIn("a &lt;Pikachu&gt; &amp; friend", (folder / "index.html").read_text())
+            with patch("DiT.attention_replacement.analyze.sample_figure", side_effect=AssertionError("must reuse")):
+                resumed = sample_figures(run, output)
+            self.assertEqual(resumed["reused"], 2)
+            self.assertEqual(resumed["generated"], 0)
+
+    def test_examples_only_filters_runs_and_preserves_aggregate_statistics(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run = fixture(root / "short")
+            long_run = fixture(root / "long")
+            for path in long_run.glob("*/metadata.json"):
+                metadata = json.loads(path.read_text())
+                metadata["settings"]["step_end"] = 40
+                path.write_text(json.dumps(metadata))
+            self.assertEqual(discover_runs(root, step_end=2), [run])
+            output = root / "analysis"
+            destination = output / run.name
+            collect_statistics(run, destination, reservoir_size=32)
+            statistics = destination / "concept_00_Pikachu/attn/statistics.npz"
+            before = statistics.read_bytes(), statistics.stat().st_mtime_ns
+            (output / "analysis_runs.json").write_text("existing batch summary")
+            with patch("DiT.attention_replacement.analyze.render_group", side_effect=AssertionError("must not replot")):
+                reports = analyze_results(run, output, workers=1, examples_only=True, step_end=2)
+            self.assertEqual(reports[0]["sample_examples"]["visualized_samples"], 2)
+            self.assertEqual(before, (statistics.read_bytes(), statistics.stat().st_mtime_ns))
+            self.assertEqual((output / "analysis_runs.json").read_text(), "existing batch summary")
+            self.assertTrue((output / "sample_examples_runs.json").is_file())
+            self.assertIn('run/sample_examples/index.html', (output / "sample_examples_index.html").read_text())
 
 
 if __name__ == "__main__":
