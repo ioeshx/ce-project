@@ -133,11 +133,37 @@ python DiT/attention_replacement/run.py benchmark --manifest /path/to/manifest.j
 若原型移动到新目录，可以加 `--prototype-dir /path/to/collection`；恢复时会核对原型摘要，模型、采样协议、擦除参数和均值内容须保持一致。原型已删除时需先 collect 重建；不要把缺失的缓存路径当成可用原型。
 
 ```bash
+# 读取 results 下的全部实验，仅使用 CPU，不加载生成模型。
+python DiT/attention_replacement/analyze.py --workers 3
+
+# 也可从原入口指定某个实验或整个 results 树。
 python DiT/attention_replacement/run.py analyze \
-  --run-dir /path/to/diagnostic-run-or-traces --heatmaps 8
+  --run-dir /path/to/diagnostic-run-or-traces \
+  --analysis-dir DiT/attention_replacement/analysis --analysis-workers 3 --heatmaps 8
+
+# 已有 statistics.npz 时重新绘图，省去重新读取全部 trace 的成本。
+python DiT/attention_replacement/analyze.py --plots-only --workers 3
 ```
 
-分析只读取已保存张量，在 CPU 输出 `analysis/summary.csv`、各 attention 分支的时间—层覆盖率图，以及前若干个原生 token 网格的 mask/margin 图；`--heatmaps` 控制空间图片数量。
+默认输出在 `DiT/attention_replacement/analysis/`，保留 model/task/case/method/run 的实验层级，入口为 `analysis/index.html`。各概念、各 attention 分支分别统计。有 `record.concept` 标签且包含目标概念样本的实验，额外输出 `target_prompt` 与 `other_prompts` 分组；这些是 prompt 标签分组，不是生成图像的检测标签。
+
+设某张空间图为 `X[sample, layer, step, h, w]`。三种统计均保留 `(h,w)`：固定 layer，平均样本和 step；固定 step，平均样本和 layer；平均全部样本、layer 和 step。缺失 trace 按实际观测数加权，并记录缺失量，不用零填充。
+
+各分组的输出包括：
+
+- `by_layer_*.png`：每行一个 layer，平均所有已记录 timestep 与样本。
+- `by_timestep_*.png`：每行一个采样 step，平均所有 layer 与样本；标注真实原生 timestep。
+- `global_01.png`：平均所有样本、layer 与已记录 timestep。
+- 上述空间图依次显示 `d_target`、`d_anchor`、`d_anchor-d_target`、掩码频率；多概念实验再显示 `winner` 实际选中该概念的频率。横轴为 token column w，纵轴为 token row h；同概念、同分支的距离图共享色标，掩码色标固定为 `[0,1]`。
+- `layer_timestep_summary.png`：横轴为采样 step/原生 timestep，纵轴为 layer，颜色为对应空间均值。
+- `distance_and_mask_trends.png`：距离与掩码覆盖率随 layer/step 的变化。
+- `distance_distributions.png`、`threshold_sweep.png`：距离/差值分布，以及 `P(d_anchor-d_target > tau)` 随阈值的变化。距离为平方欧氏距离；决定门控的是差值，而非单独一个距离。
+- `sample_examples/`：每个实验额外保存少量生成图像及未平均的原始空间图；`--heatmaps` 只控制这些单图示例数量，不限制三种平均统计。
+- `statistics.npz`、`means.csv`、`threshold_sweep.csv`、`margin_quantiles.csv`：可复用数值结果；`manifest.json` 记录样本、观测数、缺失量、mask 与 margin 的一致性检查。
+
+空间均值和已保存 mask 的频率使用全部已观测文件的所有像素。分布、分位数和阈值扫描从每个文件均匀抽取最多 8 个位置，再做有界随机抽样；全体 prompt 的曲线按各分组实际像素量加权。平均 mask 是触发频率，不是对平均 margin 重新取阈值。跨图像的空间均值用于检查位置偏置，单张图像的语义定位使用 `sample_examples`。
+
+现有替换模式 trace 已包含前序干预的影响。阈值扫描只是在这些已保存轨迹上重新比较差值，不能替代修改 tau 后重新采样与评测图像效果。
 
 ## 本次验证范围
 

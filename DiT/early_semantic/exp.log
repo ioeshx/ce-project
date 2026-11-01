@@ -1,0 +1,648 @@
+sd35_medium: 16 pairs x 10 prompts = 160 samples; 12 anchor + 28 target steps
+Results: /home/shx/code/ce-project/DiT/early_semantic/results/30
+[1/160] nudity / prompt 01
+[2/160] nudity / prompt 02
+[3/160] nudity / prompt 03
+[4/160] nudity / prompt 04
+[5/160] nudity / prompt 05
+[6/160] nudity / prompt 06
+[7/160] nudity / prompt 07
+[8/160] nudity / prompt 08
+[9/160] nudity / prompt 09
+[10/160] nudity / prompt 10
+[11/160] Snoopy / prompt 01
+[12/160] Snoopy / prompt 02
+[13/160] Snoopy / prompt 03
+[14/160] Snoopy / prompt 04
+[15/160] Snoopy / prompt 05
+[16/160] Snoopy / prompt 06
+[17/160] Snoopy / prompt 07
+[18/160] Snoopy / prompt 08
+[19/160] Snoopy / prompt 09
+[20/160] Snoopy / prompt 10
+[21/160] Pikachu / prompt 01
+[22/160] Pikachu / prompt 02
+[23/160] Pikachu / prompt 03
+[24/160] Pikachu / prompt 04
+[25/160] Pikachu / prompt 05
+[26/160] Pikachu / prompt 06
+[27/160] Pikachu / prompt 07
+[28/160] Pikachu / prompt 08
+[29/160] Pikachu / prompt 09
+[30/160] Pikachu / prompt 10
+[31/160] Van Gogh / prompt 01
+[32/160] Van Gogh / prompt 02
+[33/160] Van Gogh / prompt 03
+[34/160] Van Gogh / prompt 04
+[35/160] Van Gogh / prompt 05
+[36/160] Van Gogh / prompt 06
+[37/160] Van Gogh / prompt 07
+[38/160] Van Gogh / prompt 08
+[39/160] Van Gogh / prompt 09
+[40/160] Van Gogh / prompt 10
+[41/160] Monet / prompt 01
+[42/160] Monet / prompt 02
+[43/160] Monet / prompt 03
+[44/160] Monet / prompt 04
+[45/160] Monet / prompt 05
+[46/160] Monet / prompt 06
+[47/160] Monet / prompt 07
+[48/160] Monet / prompt 08
+[49/160] Monet / prompt 09
+[50/160] Monet / prompt 10
+[51/160] Picasso / prompt 01
+[52/160] Picasso / prompt 02
+[53/160] Picasso / prompt 03
+[54/160] Picasso / prompt 04
+[55/160] Picasso / prompt 05
+[56/160] Picasso / prompt 06
+[57/160] Picasso / prompt 07
+[58/160] Picasso / prompt 08
+[59/160] Picasso / prompt 09
+[60/160] Picasso / prompt 10
+[61/160] church / prompt 01
+[62/160] church / prompt 02
+[63/160] church / prompt 03
+[64/160] church / prompt 04
+[65/160] church / prompt 05
+[66/160] church / prompt 06
+[67/160] church / prompt 07
+[68/160] church / prompt 08
+[69/160] church / prompt 09
+[70/160] church / prompt 10
+[71/160] golf ball / prompt 01
+[72/160] golf ball / prompt 02
+[73/160] golf ball / prompt 03
+[74/160] golf ball / prompt 04
+[75/160] golf ball / prompt 05
+[76/160] golf ball / prompt 06
+[77/160] golf ball / prompt 07
+[78/160] golf ball / prompt 08
+[79/160] golf ball / prompt 09
+[80/160] golf ball / prompt 10
+[81/160] English springer / prompt 01
+[82/160] English springer / prompt 02
+[83/160] English springer / prompt 03
+[84/160] English springer / prompt 04
+[85/160] English springer / prompt 05
+[86/160] English springer / prompt 06
+[87/160] English springer / prompt 07
+[88/160] English springer / prompt 08
+[89/160] English springer / prompt 09
+[90/160] English springer / prompt 10
+[91/160] goose / prompt 01
+[92/160] goose / prompt 02
+[93/160] goose / prompt 03
+[94/160] goose / prompt 04
+[95/160] goose / prompt 05
+[96/160] goose / prompt 06
+[97/160] goose / prompt 07
+[98/160] goose / prompt 08
+[99/160] goose / prompt 09
+[100/160] goose / prompt 10
+[101/160] chain saw / prompt 01
+[102/160] chain saw / prompt 02
+[103/160] chain saw / prompt 03
+[104/160] chain saw / prompt 04
+[105/160] chain saw / prompt 05
+[106/160] chain saw / prompt 06
+[107/160] chain saw / prompt 07
+[108/160] chain saw / prompt 08
+[109/160] chain saw / prompt 09
+[110/160] chain saw / prompt 10
+[111/160] cassette player / prompt 01
+[112/160] cassette player / prompt 02
+[113/160] cassette player / prompt 03
+[114/160] cassette player / prompt 04
+[115/160] cassette player / prompt 05
+[116/160] cassette player / prompt 06
+[117/160] cassette player / prompt 07
+[118/160] cassette player / prompt 08
+[119/160] cassette player / prompt 09
+[120/160] cassette player / prompt 10
+[121/160] French horn / prompt 01
+[122/160] French horn / prompt 02
+[123/160] French horn / prompt 03
+[124/160] French horn / prompt 04
+[125/160] French horn / prompt 05
+[126/160] French horn / prompt 06
+[127/160] French horn / prompt 07
+[128/160] French horn / prompt 08
+[129/160] French horn / prompt 09
+[130/160] French horn / prompt 10
+[131/160] garbage truck / prompt 01
+[132/160] garbage truck / prompt 02
+[133/160] garbage truck / prompt 03
+[134/160] garbage truck / prompt 04
+[135/160] garbage truck / prompt 05
+[136/160] garbage truck / prompt 06
+[137/160] garbage truck / prompt 07
+[138/160] garbage truck / prompt 08
+[139/160] garbage truck / prompt 09
+[140/160] garbage truck / prompt 10
+[141/160] banana / prompt 01
+[142/160] banana / prompt 02
+[143/160] banana / prompt 03
+[144/160] banana / prompt 04
+[145/160] banana / prompt 05
+[146/160] banana / prompt 06
+[147/160] banana / prompt 07
+[148/160] banana / prompt 08
+[149/160] banana / prompt 09
+[150/160] banana / prompt 10
+[151/160] parachute / prompt 01
+[152/160] parachute / prompt 02
+[153/160] parachute / prompt 03
+[154/160] parachute / prompt 04
+[155/160] parachute / prompt 05
+[156/160] parachute / prompt 06
+[157/160] parachute / prompt 07
+[158/160] parachute / prompt 08
+[159/160] parachute / prompt 09
+[160/160] parachute / prompt 10
+sd35_medium: 16 pairs x 10 prompts = 160 samples; 16 anchor + 24 target steps
+Results: /home/shx/code/ce-project/DiT/early_semantic/results/40
+[1/160] nudity / prompt 01
+[2/160] nudity / prompt 02
+[3/160] nudity / prompt 03
+[4/160] nudity / prompt 04
+[5/160] nudity / prompt 05
+[6/160] nudity / prompt 06
+[7/160] nudity / prompt 07
+[8/160] nudity / prompt 08
+[9/160] nudity / prompt 09
+[10/160] nudity / prompt 10
+[11/160] Snoopy / prompt 01
+[12/160] Snoopy / prompt 02
+[13/160] Snoopy / prompt 03
+[14/160] Snoopy / prompt 04
+[15/160] Snoopy / prompt 05
+[16/160] Snoopy / prompt 06
+[17/160] Snoopy / prompt 07
+[18/160] Snoopy / prompt 08
+[19/160] Snoopy / prompt 09
+[20/160] Snoopy / prompt 10
+[21/160] Pikachu / prompt 01
+[22/160] Pikachu / prompt 02
+[23/160] Pikachu / prompt 03
+[24/160] Pikachu / prompt 04
+[25/160] Pikachu / prompt 05
+[26/160] Pikachu / prompt 06
+[27/160] Pikachu / prompt 07
+[28/160] Pikachu / prompt 08
+[29/160] Pikachu / prompt 09
+[30/160] Pikachu / prompt 10
+[31/160] Van Gogh / prompt 01
+[32/160] Van Gogh / prompt 02
+[33/160] Van Gogh / prompt 03
+[34/160] Van Gogh / prompt 04
+[35/160] Van Gogh / prompt 05
+[36/160] Van Gogh / prompt 06
+[37/160] Van Gogh / prompt 07
+[38/160] Van Gogh / prompt 08
+[39/160] Van Gogh / prompt 09
+[40/160] Van Gogh / prompt 10
+[41/160] Monet / prompt 01
+[42/160] Monet / prompt 02
+[43/160] Monet / prompt 03
+[44/160] Monet / prompt 04
+[45/160] Monet / prompt 05
+[46/160] Monet / prompt 06
+[47/160] Monet / prompt 07
+[48/160] Monet / prompt 08
+[49/160] Monet / prompt 09
+[50/160] Monet / prompt 10
+[51/160] Picasso / prompt 01
+[52/160] Picasso / prompt 02
+[53/160] Picasso / prompt 03
+[54/160] Picasso / prompt 04
+[55/160] Picasso / prompt 05
+[56/160] Picasso / prompt 06
+[57/160] Picasso / prompt 07
+[58/160] Picasso / prompt 08
+[59/160] Picasso / prompt 09
+[60/160] Picasso / prompt 10
+[61/160] church / prompt 01
+[62/160] church / prompt 02
+[63/160] church / prompt 03
+[64/160] church / prompt 04
+[65/160] church / prompt 05
+[66/160] church / prompt 06
+[67/160] church / prompt 07
+[68/160] church / prompt 08
+[69/160] church / prompt 09
+[70/160] church / prompt 10
+[71/160] golf ball / prompt 01
+[72/160] golf ball / prompt 02
+[73/160] golf ball / prompt 03
+[74/160] golf ball / prompt 04
+[75/160] golf ball / prompt 05
+[76/160] golf ball / prompt 06
+[77/160] golf ball / prompt 07
+[78/160] golf ball / prompt 08
+[79/160] golf ball / prompt 09
+[80/160] golf ball / prompt 10
+[81/160] English springer / prompt 01
+[82/160] English springer / prompt 02
+[83/160] English springer / prompt 03
+[84/160] English springer / prompt 04
+[85/160] English springer / prompt 05
+[86/160] English springer / prompt 06
+[87/160] English springer / prompt 07
+[88/160] English springer / prompt 08
+[89/160] English springer / prompt 09
+[90/160] English springer / prompt 10
+[91/160] goose / prompt 01
+[92/160] goose / prompt 02
+[93/160] goose / prompt 03
+[94/160] goose / prompt 04
+[95/160] goose / prompt 05
+[96/160] goose / prompt 06
+[97/160] goose / prompt 07
+[98/160] goose / prompt 08
+[99/160] goose / prompt 09
+[100/160] goose / prompt 10
+[101/160] chain saw / prompt 01
+[102/160] chain saw / prompt 02
+[103/160] chain saw / prompt 03
+[104/160] chain saw / prompt 04
+[105/160] chain saw / prompt 05
+[106/160] chain saw / prompt 06
+[107/160] chain saw / prompt 07
+[108/160] chain saw / prompt 08
+[109/160] chain saw / prompt 09
+[110/160] chain saw / prompt 10
+[111/160] cassette player / prompt 01
+[112/160] cassette player / prompt 02
+[113/160] cassette player / prompt 03
+[114/160] cassette player / prompt 04
+[115/160] cassette player / prompt 05
+[116/160] cassette player / prompt 06
+[117/160] cassette player / prompt 07
+[118/160] cassette player / prompt 08
+[119/160] cassette player / prompt 09
+[120/160] cassette player / prompt 10
+[121/160] French horn / prompt 01
+[122/160] French horn / prompt 02
+[123/160] French horn / prompt 03
+[124/160] French horn / prompt 04
+[125/160] French horn / prompt 05
+[126/160] French horn / prompt 06
+[127/160] French horn / prompt 07
+[128/160] French horn / prompt 08
+[129/160] French horn / prompt 09
+[130/160] French horn / prompt 10
+[131/160] garbage truck / prompt 01
+[132/160] garbage truck / prompt 02
+[133/160] garbage truck / prompt 03
+[134/160] garbage truck / prompt 04
+[135/160] garbage truck / prompt 05
+[136/160] garbage truck / prompt 06
+[137/160] garbage truck / prompt 07
+[138/160] garbage truck / prompt 08
+[139/160] garbage truck / prompt 09
+[140/160] garbage truck / prompt 10
+[141/160] banana / prompt 01
+[142/160] banana / prompt 02
+[143/160] banana / prompt 03
+[144/160] banana / prompt 04
+[145/160] banana / prompt 05
+[146/160] banana / prompt 06
+[147/160] banana / prompt 07
+[148/160] banana / prompt 08
+[149/160] banana / prompt 09
+[150/160] banana / prompt 10
+[151/160] parachute / prompt 01
+[152/160] parachute / prompt 02
+[153/160] parachute / prompt 03
+[154/160] parachute / prompt 04
+[155/160] parachute / prompt 05
+[156/160] parachute / prompt 06
+[157/160] parachute / prompt 07
+[158/160] parachute / prompt 08
+[159/160] parachute / prompt 09
+[160/160] parachute / prompt 10
+sd35_medium: 16 pairs x 10 prompts = 160 samples; 20 anchor + 20 target steps
+Results: /home/shx/code/ce-project/DiT/early_semantic/results/50
+[1/160] nudity / prompt 01
+[2/160] nudity / prompt 02
+[3/160] nudity / prompt 03
+[4/160] nudity / prompt 04
+[5/160] nudity / prompt 05
+[6/160] nudity / prompt 06
+[7/160] nudity / prompt 07
+[8/160] nudity / prompt 08
+[9/160] nudity / prompt 09
+[10/160] nudity / prompt 10
+[11/160] Snoopy / prompt 01
+[12/160] Snoopy / prompt 02
+[13/160] Snoopy / prompt 03
+[14/160] Snoopy / prompt 04
+[15/160] Snoopy / prompt 05
+[16/160] Snoopy / prompt 06
+[17/160] Snoopy / prompt 07
+[18/160] Snoopy / prompt 08
+[19/160] Snoopy / prompt 09
+[20/160] Snoopy / prompt 10
+[21/160] Pikachu / prompt 01
+[22/160] Pikachu / prompt 02
+[23/160] Pikachu / prompt 03
+[24/160] Pikachu / prompt 04
+[25/160] Pikachu / prompt 05
+[26/160] Pikachu / prompt 06
+[27/160] Pikachu / prompt 07
+[28/160] Pikachu / prompt 08
+[29/160] Pikachu / prompt 09
+[30/160] Pikachu / prompt 10
+[31/160] Van Gogh / prompt 01
+[32/160] Van Gogh / prompt 02
+[33/160] Van Gogh / prompt 03
+[34/160] Van Gogh / prompt 04
+[35/160] Van Gogh / prompt 05
+[36/160] Van Gogh / prompt 06
+[37/160] Van Gogh / prompt 07
+[38/160] Van Gogh / prompt 08
+[39/160] Van Gogh / prompt 09
+[40/160] Van Gogh / prompt 10
+[41/160] Monet / prompt 01
+[42/160] Monet / prompt 02
+[43/160] Monet / prompt 03
+[44/160] Monet / prompt 04
+[45/160] Monet / prompt 05
+[46/160] Monet / prompt 06
+[47/160] Monet / prompt 07
+[48/160] Monet / prompt 08
+[49/160] Monet / prompt 09
+[50/160] Monet / prompt 10
+[51/160] Picasso / prompt 01
+[52/160] Picasso / prompt 02
+[53/160] Picasso / prompt 03
+[54/160] Picasso / prompt 04
+[55/160] Picasso / prompt 05
+[56/160] Picasso / prompt 06
+[57/160] Picasso / prompt 07
+[58/160] Picasso / prompt 08
+[59/160] Picasso / prompt 09
+[60/160] Picasso / prompt 10
+[61/160] church / prompt 01
+[62/160] church / prompt 02
+[63/160] church / prompt 03
+[64/160] church / prompt 04
+[65/160] church / prompt 05
+[66/160] church / prompt 06
+[67/160] church / prompt 07
+[68/160] church / prompt 08
+[69/160] church / prompt 09
+[70/160] church / prompt 10
+[71/160] golf ball / prompt 01
+[72/160] golf ball / prompt 02
+[73/160] golf ball / prompt 03
+[74/160] golf ball / prompt 04
+[75/160] golf ball / prompt 05
+[76/160] golf ball / prompt 06
+[77/160] golf ball / prompt 07
+[78/160] golf ball / prompt 08
+[79/160] golf ball / prompt 09
+[80/160] golf ball / prompt 10
+[81/160] English springer / prompt 01
+[82/160] English springer / prompt 02
+[83/160] English springer / prompt 03
+[84/160] English springer / prompt 04
+[85/160] English springer / prompt 05
+[86/160] English springer / prompt 06
+[87/160] English springer / prompt 07
+[88/160] English springer / prompt 08
+[89/160] English springer / prompt 09
+[90/160] English springer / prompt 10
+[91/160] goose / prompt 01
+[92/160] goose / prompt 02
+[93/160] goose / prompt 03
+[94/160] goose / prompt 04
+[95/160] goose / prompt 05
+[96/160] goose / prompt 06
+[97/160] goose / prompt 07
+[98/160] goose / prompt 08
+[99/160] goose / prompt 09
+[100/160] goose / prompt 10
+[101/160] chain saw / prompt 01
+[102/160] chain saw / prompt 02
+[103/160] chain saw / prompt 03
+[104/160] chain saw / prompt 04
+[105/160] chain saw / prompt 05
+[106/160] chain saw / prompt 06
+[107/160] chain saw / prompt 07
+[108/160] chain saw / prompt 08
+[109/160] chain saw / prompt 09
+[110/160] chain saw / prompt 10
+[111/160] cassette player / prompt 01
+[112/160] cassette player / prompt 02
+[113/160] cassette player / prompt 03
+[114/160] cassette player / prompt 04
+[115/160] cassette player / prompt 05
+[116/160] cassette player / prompt 06
+[117/160] cassette player / prompt 07
+[118/160] cassette player / prompt 08
+[119/160] cassette player / prompt 09
+[120/160] cassette player / prompt 10
+[121/160] French horn / prompt 01
+[122/160] French horn / prompt 02
+[123/160] French horn / prompt 03
+[124/160] French horn / prompt 04
+[125/160] French horn / prompt 05
+[126/160] French horn / prompt 06
+[127/160] French horn / prompt 07
+[128/160] French horn / prompt 08
+[129/160] French horn / prompt 09
+[130/160] French horn / prompt 10
+[131/160] garbage truck / prompt 01
+[132/160] garbage truck / prompt 02
+[133/160] garbage truck / prompt 03
+[134/160] garbage truck / prompt 04
+[135/160] garbage truck / prompt 05
+[136/160] garbage truck / prompt 06
+[137/160] garbage truck / prompt 07
+[138/160] garbage truck / prompt 08
+[139/160] garbage truck / prompt 09
+[140/160] garbage truck / prompt 10
+[141/160] banana / prompt 01
+[142/160] banana / prompt 02
+[143/160] banana / prompt 03
+[144/160] banana / prompt 04
+[145/160] banana / prompt 05
+[146/160] banana / prompt 06
+[147/160] banana / prompt 07
+[148/160] banana / prompt 08
+[149/160] banana / prompt 09
+[150/160] banana / prompt 10
+[151/160] parachute / prompt 01
+[152/160] parachute / prompt 02
+[153/160] parachute / prompt 03
+[154/160] parachute / prompt 04
+[155/160] parachute / prompt 05
+[156/160] parachute / prompt 06
+[157/160] parachute / prompt 07
+[158/160] parachute / prompt 08
+[159/160] parachute / prompt 09
+[160/160] parachute / prompt 10
+sd35_medium: 16 pairs x 10 prompts = 160 samples; 28 anchor + 12 target steps
+Results: /home/shx/code/ce-project/DiT/early_semantic/results/70
+[1/160] nudity / prompt 01
+[2/160] nudity / prompt 02
+[3/160] nudity / prompt 03
+[4/160] nudity / prompt 04
+[5/160] nudity / prompt 05
+[6/160] nudity / prompt 06
+[7/160] nudity / prompt 07
+[8/160] nudity / prompt 08
+[9/160] nudity / prompt 09
+[10/160] nudity / prompt 10
+[11/160] Snoopy / prompt 01
+[12/160] Snoopy / prompt 02
+[13/160] Snoopy / prompt 03
+[14/160] Snoopy / prompt 04
+[15/160] Snoopy / prompt 05
+[16/160] Snoopy / prompt 06
+[17/160] Snoopy / prompt 07
+[18/160] Snoopy / prompt 08
+[19/160] Snoopy / prompt 09
+[20/160] Snoopy / prompt 10
+[21/160] Pikachu / prompt 01
+[22/160] Pikachu / prompt 02
+[23/160] Pikachu / prompt 03
+[24/160] Pikachu / prompt 04
+[25/160] Pikachu / prompt 05
+[26/160] Pikachu / prompt 06
+[27/160] Pikachu / prompt 07
+[28/160] Pikachu / prompt 08
+[29/160] Pikachu / prompt 09
+[30/160] Pikachu / prompt 10
+[31/160] Van Gogh / prompt 01
+[32/160] Van Gogh / prompt 02
+[33/160] Van Gogh / prompt 03
+[34/160] Van Gogh / prompt 04
+[35/160] Van Gogh / prompt 05
+[36/160] Van Gogh / prompt 06
+[37/160] Van Gogh / prompt 07
+[38/160] Van Gogh / prompt 08
+[39/160] Van Gogh / prompt 09
+[40/160] Van Gogh / prompt 10
+[41/160] Monet / prompt 01
+[42/160] Monet / prompt 02
+[43/160] Monet / prompt 03
+[44/160] Monet / prompt 04
+[45/160] Monet / prompt 05
+[46/160] Monet / prompt 06
+[47/160] Monet / prompt 07
+[48/160] Monet / prompt 08
+[49/160] Monet / prompt 09
+[50/160] Monet / prompt 10
+[51/160] Picasso / prompt 01
+[52/160] Picasso / prompt 02
+[53/160] Picasso / prompt 03
+[54/160] Picasso / prompt 04
+[55/160] Picasso / prompt 05
+[56/160] Picasso / prompt 06
+[57/160] Picasso / prompt 07
+[58/160] Picasso / prompt 08
+[59/160] Picasso / prompt 09
+[60/160] Picasso / prompt 10
+[61/160] church / prompt 01
+[62/160] church / prompt 02
+[63/160] church / prompt 03
+[64/160] church / prompt 04
+[65/160] church / prompt 05
+[66/160] church / prompt 06
+[67/160] church / prompt 07
+[68/160] church / prompt 08
+[69/160] church / prompt 09
+[70/160] church / prompt 10
+[71/160] golf ball / prompt 01
+[72/160] golf ball / prompt 02
+[73/160] golf ball / prompt 03
+[74/160] golf ball / prompt 04
+[75/160] golf ball / prompt 05
+[76/160] golf ball / prompt 06
+[77/160] golf ball / prompt 07
+[78/160] golf ball / prompt 08
+[79/160] golf ball / prompt 09
+[80/160] golf ball / prompt 10
+[81/160] English springer / prompt 01
+[82/160] English springer / prompt 02
+[83/160] English springer / prompt 03
+[84/160] English springer / prompt 04
+[85/160] English springer / prompt 05
+[86/160] English springer / prompt 06
+[87/160] English springer / prompt 07
+[88/160] English springer / prompt 08
+[89/160] English springer / prompt 09
+[90/160] English springer / prompt 10
+[91/160] goose / prompt 01
+[92/160] goose / prompt 02
+[93/160] goose / prompt 03
+[94/160] goose / prompt 04
+[95/160] goose / prompt 05
+[96/160] goose / prompt 06
+[97/160] goose / prompt 07
+[98/160] goose / prompt 08
+[99/160] goose / prompt 09
+[100/160] goose / prompt 10
+[101/160] chain saw / prompt 01
+[102/160] chain saw / prompt 02
+[103/160] chain saw / prompt 03
+[104/160] chain saw / prompt 04
+[105/160] chain saw / prompt 05
+[106/160] chain saw / prompt 06
+[107/160] chain saw / prompt 07
+[108/160] chain saw / prompt 08
+[109/160] chain saw / prompt 09
+[110/160] chain saw / prompt 10
+[111/160] cassette player / prompt 01
+[112/160] cassette player / prompt 02
+[113/160] cassette player / prompt 03
+[114/160] cassette player / prompt 04
+[115/160] cassette player / prompt 05
+[116/160] cassette player / prompt 06
+[117/160] cassette player / prompt 07
+[118/160] cassette player / prompt 08
+[119/160] cassette player / prompt 09
+[120/160] cassette player / prompt 10
+[121/160] French horn / prompt 01
+[122/160] French horn / prompt 02
+[123/160] French horn / prompt 03
+[124/160] French horn / prompt 04
+[125/160] French horn / prompt 05
+[126/160] French horn / prompt 06
+[127/160] French horn / prompt 07
+[128/160] French horn / prompt 08
+[129/160] French horn / prompt 09
+[130/160] French horn / prompt 10
+[131/160] garbage truck / prompt 01
+[132/160] garbage truck / prompt 02
+[133/160] garbage truck / prompt 03
+[134/160] garbage truck / prompt 04
+[135/160] garbage truck / prompt 05
+[136/160] garbage truck / prompt 06
+[137/160] garbage truck / prompt 07
+[138/160] garbage truck / prompt 08
+[139/160] garbage truck / prompt 09
+[140/160] garbage truck / prompt 10
+[141/160] banana / prompt 01
+[142/160] banana / prompt 02
+[143/160] banana / prompt 03
+[144/160] banana / prompt 04
+[145/160] banana / prompt 05
+[146/160] banana / prompt 06
+[147/160] banana / prompt 07
+[148/160] banana / prompt 08
+[149/160] banana / prompt 09
+[150/160] banana / prompt 10
+[151/160] parachute / prompt 01
+[152/160] parachute / prompt 02
+[153/160] parachute / prompt 03
+[154/160] parachute / prompt 04
+[155/160] parachute / prompt 05
+[156/160] parachute / prompt 06
+[157/160] parachute / prompt 07
+[158/160] parachute / prompt 08
+[159/160] parachute / prompt 09
+[160/160] parachute / prompt 10

@@ -16,7 +16,7 @@ from DiT.attention_replacement.method import (
     AttentionReplacement, DEFAULTS, DIRECTORY, SUPPORTED_MODELS,
     cache_identity, read_prototypes, resolve_settings,
 )
-from benchmark.common import digest, merge, read_json, write_csv, write_json
+from benchmark.common import digest, merge, read_json, write_json
 
 
 def check_trace_space(config, collection, records):
@@ -46,76 +46,10 @@ def check_trace_space(config, collection, records):
                       "Use --trace-root on a larger disk, or --no-trace.")
 
 
-def analyze(directory, heatmaps):
-    """CPU-only summaries and native-grid spatial maps from the saved online tensors."""
-    import numpy as np
-    from safetensors.torch import load_file
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    output = directory / "analysis"
-    output.mkdir(parents=True, exist_ok=True)
-    rows, plotted = [], 0
-    for metadata_path in sorted(directory.rglob("metadata.json")):
-        metadata = read_json(metadata_path)
-        if "prototype_means" not in metadata or not metadata["prototype_means"]:
-            continue
-        sample = metadata_path.parent
-        sites = {s["id"]: s for s in metadata["sites"]}
-        for path in sorted(sample.glob("step_*/*.safetensors")):
-            values = load_file(str(path))
-            step = int(path.parent.name.split("_")[1])
-            site = sites[path.stem]
-            change = (values["mean_squared_change"].item() if "mean_squared_change" in values else
-                      (values["I_new"].float() - values["I_user"].float()).square().sum(-1).mean().item())
-            for i, pair in enumerate(metadata["settings"]["pairs"]):
-                rows.append({"sample": str(sample.relative_to(directory)), "step": step,
-                    "timestep": metadata["schedule"]["timesteps"][step],
-                    "layer": site["layer"], "branch": site["branch"], "target": pair["target"],
-                    "anchor": pair["anchor"], "coverage": values[f"mask_{i}"].float().mean().item(),
-                    "union_coverage": values["mask_union"].float().mean().item(),
-                    "mean_d_tar": values[f"d_tar_{i}"].mean().item(),
-                    "mean_d_anc": values[f"d_anc_{i}"].mean().item(),
-                    "mean_margin": values[f"margin_{i}"].mean().item(),
-                    "mean_squared_change": change})
-                if plotted < heatmaps:
-                    fig, axes = plt.subplots(1, 2, figsize=(8, 3))
-                    axes[0].imshow(values[f"mask_{i}"].numpy(), vmin=0, vmax=1, interpolation="nearest")
-                    axes[0].set_title("mask")
-                    image = axes[1].imshow(values[f"margin_{i}"].numpy(), cmap="coolwarm", interpolation="nearest")
-                    axes[1].set_title("d_anchor - d_target")
-                    fig.colorbar(image, ax=axes[1])
-                    fig.suptitle(f"{pair['target']} | step {step}, {site['id']}")
-                    fig.tight_layout()
-                    fig.savefig(output / f"spatial_{plotted:04d}.png", dpi=150)
-                    plt.close(fig)
-                    plotted += 1
-    write_csv(output / "summary.csv", rows)
-    # Average only scalar coverage across samples, keeping distinct attention branches.
-    for branch in dict.fromkeys(row["branch"] for row in rows):
-        selected = [row for row in rows if row["branch"] == branch]
-        steps = sorted({row["step"] for row in selected})
-        layers = sorted({row["layer"] for row in selected})
-        sums = np.zeros((len(layers), len(steps)))
-        counts = np.zeros_like(sums)
-        # One union entry per sample/site/step, rather than counting concepts twice.
-        unique = {(r["sample"], r["layer"], r["step"]): r for r in selected}
-        for row in unique.values():
-            location = layers.index(row["layer"]), steps.index(row["step"])
-            sums[location] += row["union_coverage"]
-            counts[location] += 1
-        fig, ax = plt.subplots(figsize=(8, 5))
-        image = ax.imshow(np.divide(sums, counts, out=np.full_like(sums, np.nan), where=counts > 0),
-                          vmin=0, vmax=1, aspect="auto", interpolation="nearest")
-        ax.set_xticks(range(len(steps)), steps)
-        ax.set_yticks(range(len(layers)), layers)
-        ax.set(xlabel="step index", ylabel="block index", title=f"Union mask coverage ({branch})")
-        fig.colorbar(image, ax=ax)
-        fig.tight_layout()
-        fig.savefig(output / f"coverage_{branch}.png", dpi=150)
-        plt.close(fig)
-    print(f"[analysis] {len(rows)} rows: {output}")
+def analyze(directory, heatmaps, output=None, workers=3):
+    """Analyze every saved trace run below directory, without sampling new images."""
+    from DiT.attention_replacement.analyze import analyze_results
+    return analyze_results(directory, output, workers, heatmaps)
 
 
 def main(argv=None):
@@ -147,12 +81,18 @@ def main(argv=None):
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
     own.add_argument("--seed", type=int, default=42, help="sample: initial noise seed")
     own.add_argument("--run-dir", type=Path, help="analyze: trace root; sample: output directory")
-    own.add_argument("--heatmaps", type=int, default=8, help="analyze: number of spatial map figures")
+    own.add_argument("--heatmaps", type=int, default=8, help="analyze: unaveraged sample examples per experiment")
+    own.add_argument("--analysis-dir", type=Path, default=DIRECTORY / "analysis",
+                     help="analyze: output root, organized by experiment")
+    own.add_argument("--analysis-workers", type=int, default=3, help="analyze: CPU worker processes")
     opts, remaining = own.parse_known_args(argv)
     if opts.action == "analyze":
         if opts.run_dir is None or remaining:
             own.error("analyze requires --run-dir and accepts only method options")
-        analyze(opts.run_dir.expanduser().resolve(), opts.heatmaps)
+        if opts.analysis_workers < 1 or opts.heatmaps < 0:
+            own.error("analysis-workers must be positive and heatmaps must be nonnegative")
+        analyze(opts.run_dir.expanduser().resolve(), opts.heatmaps,
+                opts.analysis_dir.expanduser().resolve(), opts.analysis_workers)
         return 0
 
     from benchmark.cli import get_config, parser
