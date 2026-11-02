@@ -315,4 +315,10 @@ python -m unittest discover -s benchmark/tests -v
 
 DiT默认I2P改为sexual子集931条，仅NudeNet（八类、阈值0.6），Q16通过`--with-q16`恢复全量协议。新增IP两组、style三组与Object两组；IP/style计算CS/FID和Qwen3-VL-2B单标签分类，Object计算固定ResNet-50 V2完整千类Top-1/Top-3。
 
+VLM 使用受约束的贪心解码，只能返回当前任务的三个候选标签或 `NONE` 的单标签 JSON，
+防止模型输出 Minnie 等候选集外名称而中断评测。不会将非法响应手动改成任何合法类别。
+解码协议版本为 `dit-single-label-constrained-v2`，写入评估证据及预测缓存身份；
+旧版自由生成的 VLM 缓存和指标保留，按新协议重算时不混用。生成图片及 CLIP/FID 缓存可继续复用。
+预测缓存目前在整个图集完成后保存；中断前仅打印进度、尚未落盘的 VLM 结果需要重算。
+
 `bash benchmark/script/dit.sh --model flux1_dev --cases all --dry-run`可查看完整命令。新结果位于`results/<model>/<task>/<case_id>/<method>/`，指标和耗时CSV以method＋case_id保留最新行；原模型图跨case共享。旧SD1.4与旧DiT结果不改写。详细命令、方法映射、显式anchor和权重准备见[DIT.md](DIT.md)。

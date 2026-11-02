@@ -133,6 +133,25 @@ def case_configs(args, case_id, case):
 
 def train(checkpoint, settings, *, offline=False):
     """Use the author's GEM operator and PEFT adaptation; export a native DiT LoRA."""
+    checkpoint = Path(checkpoint)
+    weights = checkpoint / "pytorch_lora_weights.safetensors"
+    metadata = checkpoint / "metadata.json"
+    if metadata.is_file() and weights.is_file():
+        info = read_json(metadata)
+        if info["settings"] != settings or info["weights_sha256"] != file_digest(weights):
+            raise ValueError(f"Checkpoint differs from this request; use another --run-root: {checkpoint}")
+        print(f"[reuse training] {checkpoint}", flush=True)
+        return
+    if checkpoint.exists():
+        # A model-loading failure can leave only the logger's empty file.
+        # That directory is not a completed checkpoint and can be retried.
+        entries = list(checkpoint.iterdir())
+        if any(not path.is_file() or path.name != "train.log" or path.stat().st_size
+               for path in entries):
+            raise ValueError(f"Incomplete GEM checkpoint (weights and metadata.json are both required); "
+                             f"preserving existing files. Use another --run-root: {checkpoint}")
+        print(f"[restart uninitialized training] {checkpoint}", flush=True)
+
     from dataclasses import asdict, replace
     from importlib.metadata import version
     import torch
@@ -144,16 +163,8 @@ def train(checkpoint, settings, *, offline=False):
     from gem.utils.seed import seed_everything
     from gem.wrappers.factory import PipelineFactory
 
-    checkpoint = Path(checkpoint)
-    weights = checkpoint / "pytorch_lora_weights.safetensors"
-    if checkpoint.exists():
-        info = read_json(checkpoint / "metadata.json")
-        if info["settings"] != settings or info["weights_sha256"] != file_digest(weights):
-            raise ValueError(f"Checkpoint differs from this request; use another --run-root: {checkpoint}")
-        print(f"[reuse training] {checkpoint}", flush=True)
-        return
     seed_everything(settings["training_seed"])
-    checkpoint.mkdir(parents=True)
+    checkpoint.mkdir(parents=True, exist_ok=True)
     setup_logger("GEM-benchmark", str(checkpoint / "train.log"))
     flux = settings["model_name"] == "flux1_dev"
     cls = FluxPipeline if flux else StableDiffusion3Pipeline
