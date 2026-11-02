@@ -5,11 +5,12 @@ Each function returns (positive_prompts, negative_prompts) where the only
 difference between a positive and its corresponding negative prompt is the
 presence of the target concept.
 """
+from pathlib import Path
 
 
 def get_imagenet_classes(num=50):
     imagenet_classes = []
-    f = open('imagenet_classes.txt', 'r')
+    f = open(Path(__file__).resolve().parents[1] / 'imagenet_classes.txt', 'r')
     for line in f.readlines():
         imagenet_classes.append(line.strip())
     f.close()

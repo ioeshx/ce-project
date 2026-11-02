@@ -1,6 +1,6 @@
 # CASteer: Cross-Attention Steering for Controllable Concept Erasure
 
-Local SD3.5 Medium / FLUX.1-dev compatibility assessment (migration skipped): [DIT_BENCHMARK_ADAPTATION.md](DIT_BENCHMARK_ADAPTATION.md).
+Local SD3.5 Medium / FLUX.1-dev benchmark port, including joint-attention steering and four experiment groups: [DIT_BENCHMARK_ADAPTATION.md](DIT_BENCHMARK_ADAPTATION.md).
 
 [![arXiv](https://img.shields.io/badge/arXiv-2503.09630-red)](https://arxiv.org/abs/2503.09630)
 <!-- [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) -->

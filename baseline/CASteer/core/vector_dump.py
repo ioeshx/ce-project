@@ -17,7 +17,8 @@ class CrossAttentionOutputStatsCollector(VectorControl):
     def __init__(self,
                  *,
                  token_aggregation_mode: TokenAggregationMode,
-                 normalize: bool = False):
+                 normalize: bool = False,
+                 classifier_free_guidance: bool | None = None):
         super().__init__()
 
         self._cnt = defaultdict(lambda: defaultdict(list))
@@ -25,6 +26,7 @@ class CrossAttentionOutputStatsCollector(VectorControl):
 
         self._token_aggregation_mode = token_aggregation_mode
         self._normalize = normalize
+        self.classifier_free_guidance = classifier_free_guidance
 
     def _update_statistics(self, vector: torch.Tensor, diffusion_step, place_in_unet, block_index):
         # vector shape: [num_heads, num_samples, hidden_size]
@@ -41,10 +43,12 @@ class CrossAttentionOutputStatsCollector(VectorControl):
     # [batch_size, sequence_length, num_heads, head_dim]
     def forward(self, vector: torch.Tensor, diffusion_step, place_in_unet, block_index):
         batch_size = vector.shape[0]
-        if batch_size > 1:
+        cfg = batch_size > 1 if self.classifier_free_guidance is None else self.classifier_free_guidance
+        if cfg:
             # Collect stats only for the prompt part of classifier-free guidance
             batch_slice = slice(batch_size // 2, None)
-            warnings.warn('Collecting stats only for the prompt part of classifier-free guidance')
+            if self.classifier_free_guidance is None:
+                warnings.warn('Collecting stats only for the prompt part of classifier-free guidance')
         else:
             batch_slice = slice(None, None)
 

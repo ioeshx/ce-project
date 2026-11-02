@@ -84,12 +84,15 @@ class CrossAttentionOutputSteering(VectorControl):
         num_layers: int = None,
         intermediate_clipping: bool = True,
         use_first_diffusion_step: bool = False,
+        classifier_free_guidance: bool | None = None,
+        precompute_matrix: bool = True,
     ):
         super().__init__(num_layers=num_layers)
         self.device = device
         self.intermediate_clipping = intermediate_clipping
         self.strength = strength
         self.use_first_diffusion_step = use_first_diffusion_step
+        self.classifier_free_guidance = classifier_free_guidance
 
         if self.strength < 0:
             raise ValueError('Negative values of strength are not supported')
@@ -112,8 +115,10 @@ class CrossAttentionOutputSteering(VectorControl):
                         steering_vector = steering_vector.to(self.device).unsqueeze(-1)
 
                         # Precompute projection matrix P = I - beta * v * v^+ (Eq. 5)
-                        res = self.strength * (steering_vector @ torch.linalg.pinv(steering_vector))
-                        P = torch.eye(res.shape[1], dtype=res.dtype, device=self.device).unsqueeze(0) - res
+                        P = None
+                        if precompute_matrix:
+                            res = self.strength * (steering_vector @ torch.linalg.pinv(steering_vector))
+                            P = torch.eye(res.shape[1], dtype=res.dtype, device=self.device).unsqueeze(0) - res
 
                         casteer_concept_transforms[num_steer][place_in_unet].append((steering_vector.squeeze(-1), P))
             self.casteer_vectors.append(casteer_concept_transforms)
@@ -147,9 +152,10 @@ class CrossAttentionOutputSteering(VectorControl):
         hidden_dim = vector.shape[3]
         (b, _) = steering_tensors
 
-        b_norm = b / torch.linalg.norm(b, dim=-1, keepdim=True)
+        b_norm = b / torch.linalg.norm(b, dim=-1, keepdim=True).clamp_min(EPS)
+        b_norm = b_norm.to(device=vector.device, dtype=torch.float32)
 
-        vector_reshaped = vector.to(self.device).reshape(-1, num_heads, hidden_dim).transpose(0, 1)
+        vector_reshaped = vector.float().reshape(-1, num_heads, hidden_dim).transpose(0, 1)
         b_norm_reshaped = b_norm.unsqueeze(-1)
 
         # Compute dot products between vector components and steering vector
@@ -163,15 +169,17 @@ class CrossAttentionOutputSteering(VectorControl):
 
         steering_delta = -self.strength * projection_scores.to(vector.device) * b_norm.to(vector.device)
 
-        return vector + steering_delta
+        return (vector.float() + steering_delta).to(vector.dtype)
 
     # [batch_size, sequence_length, num_heads, head_dim]
     def forward(self, vector: torch.Tensor, diffusion_step: int, place_in_unet: str, block_index: int):
         batch_size = vector.shape[0]
-        if batch_size > 1:
+        cfg = batch_size > 1 if self.classifier_free_guidance is None else self.classifier_free_guidance
+        if cfg:
             # Steer only the prompt part of classifier-free guidance
             batch_slice = slice(batch_size // 2, None)
-            warnings.warn('Steering only the prompt part of classifier-free guidance (assumed the batch_idx=0 is not conditioned on the prompt)')
+            if self.classifier_free_guidance is None:
+                warnings.warn('Steering only the prompt part of classifier-free guidance (assumed the batch_idx=0 is not conditioned on the prompt)')
         else:
             batch_slice = slice(None, None)
 
@@ -186,4 +194,4 @@ class CrossAttentionOutputSteering(VectorControl):
                     vector[batch_slice, ...],
                     *casteer_vectors[num_steer][place_in_unet][block_index]
                 )
-        return vector.half()
+        return vector

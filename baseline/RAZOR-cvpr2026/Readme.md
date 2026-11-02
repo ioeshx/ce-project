@@ -1,6 +1,6 @@
 # RAZOR: Ratio-Aware Layer Editing for Targeted Unlearning
 
-Local SD3.5 Medium / FLUX.1-dev compatibility assessment (migration skipped): [DIT_BENCHMARK_ADAPTATION.md](DIT_BENCHMARK_ADAPTATION.md).
+Local SD3.5 Medium / FLUX.1-dev benchmark port, including text-encoder editing fixes and four experiment groups: [DIT_BENCHMARK_ADAPTATION.md](DIT_BENCHMARK_ADAPTATION.md).
 
 This README consolidates all details discussed across previous chats into one comprehensive, reproducible document for RAZOR's implementation across **CLIP**, **Stable Diffusion**, and **Vision-Language Models (LLaVA)**. It includes conceptual summaries, method descriptions, datasets, metrics, implementation notes, and reproducibility guidance.
 
