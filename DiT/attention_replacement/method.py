@@ -1,4 +1,4 @@
-"""Attention Replacement: native DiT sampling, offline AV means, online hard replacement."""
+"""Attention Replacement: native DiT sampling, offline AV means, masked interventions."""
 from __future__ import annotations
 
 import copy
@@ -20,8 +20,8 @@ DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
 DEFAULTS = dict(layer_start=0, layer_end=None, step_start=0, step_end=None,
                 step_fraction=0.3, tau=0.0, tau_by_concept={}, u=None,
-                offline_seeds=list(range(10000, 10016)), intervention="replace", trace=True,
-                trace_root=None,
+                offline_seeds=list(range(10000, 10016)), intervention="replace",
+                strength=0.1, trace=True, trace_root=None,
                 cache_root=str(DIRECTORY / "cache"), prototype_dir=None)
 
 
@@ -59,8 +59,12 @@ def resolve_settings(config, overrides=None):
         problems.append("tau values must be finite")
     if settings["u"] is not None and (not math.isfinite(settings["u"]) or settings["u"] < 0):
         problems.append("u must be finite and nonnegative, or null to disable the distance limit")
-    if settings["intervention"] not in {"replace", "observe"}:
-        problems.append("intervention must be replace or observe")
+    if settings["intervention"] not in {"replace", "add", "blend", "observe"}:
+        problems.append("intervention must be replace, add, blend or observe")
+    if not math.isfinite(settings["strength"]) or settings["strength"] < 0:
+        problems.append("strength must be finite and nonnegative")
+    if settings["intervention"] == "blend" and settings["strength"] > 1:
+        problems.append("blend requires strength in [0, 1]")
     if config["sampling"].get("true_cfg_scale", 1.0) != 1.0:
         problems.append("FLUX true CFG is unsupported; use true_cfg_scale=1")
     if config["sampling"].get("skip_guidance_layers"):
@@ -76,7 +80,7 @@ def resolve_settings(config, overrides=None):
 
 
 def cache_identity(config, settings):
-    """Only trajectory/collection settings belong in the offline identity, not tau or u."""
+    """Only trajectory/collection settings belong in the offline identity, not online edits."""
     from huggingface_hub import try_to_load_from_cache
 
     opts = config["sampling"]
@@ -149,11 +153,13 @@ def read_prototypes(config, settings, *, verify=True):
     return directory, metadata, means
 
 
-def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True, *, u=None):
+def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True, *, u=None,
+                      intervention="replace", strength=0.1):
     """All concepts inspect the same x. Strict comparisons give stable first-pair ties.
 
     x: [B,H,W,D]; prototypes: prompt -> [H,W,D], FP32 on x.device.
     Squared distances are unnormalized; u optionally limits the target distance.
+    Add/blend use the original x for every pair; masked-out values stay unchanged.
     """
     xf = x.float()
     best = torch.full(x.shape[:-1], -torch.inf, device=x.device)
@@ -169,12 +175,18 @@ def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True,
         if u is not None:
             mask &= d_tar <= u
         wins = mask & (margin > best)
-        replacement = torch.where(wins[..., None], anchor.to(x.dtype), replacement)
+        if intervention == "add":
+            edited = (xf + strength * anchor).to(x.dtype)
+        elif intervention == "blend":
+            edited = ((1 - strength) * xf + strength * anchor).to(x.dtype)
+        else:
+            edited = anchor.to(x.dtype)
+        replacement = torch.where(wins[..., None], edited, replacement)
         best = torch.where(wins, margin, best)
         winner = torch.where(wins, i, winner)
         traces.update({f"d_tar_{i}": d_tar, f"d_anc_{i}": d_anc,
                        f"margin_{i}": margin, f"mask_{i}": mask})
-    result = replacement if intervene else x
+    result = replacement if intervene and intervention != "observe" else x
     change = (result.float() - xf).square().sum(-1).mean(dim=(-2, -1))
     traces.update(mask_union=winner >= 0, winner=winner, mean_squared_change=change)
     return result, traces
@@ -270,7 +282,8 @@ class AttentionReplacement(DiTAdapter):
                           for prompt, info in self.means.items()}
             result, payload = replace_attention(x, prototypes, self.settings["pairs"],
                 self.settings["tau"], self.settings["tau_by_concept"],
-                self.settings["intervention"] == "replace", u=self.settings["u"])
+                u=self.settings["u"], intervention=self.settings["intervention"],
+                strength=self.settings["strength"])
         self.hook_seconds += time.perf_counter() - started
         if not self.collecting and self.settings["trace"]:
             started = time.perf_counter()
@@ -281,7 +294,7 @@ class AttentionReplacement(DiTAdapter):
                 save_file({key: value.detach().cpu().contiguous().clone() for key, value in values.items()},
                           str(destination))
             self.io_seconds += time.perf_counter() - started
-        if not self.collecting and self.settings["intervention"] == "replace":
+        if not self.collecting and self.settings["intervention"] != "observe":
             changed = tensor.clone()
             changed[rows, tokens, channels] = result.reshape(batch, -1, site["channels"])
             return (changed, *args[1:])

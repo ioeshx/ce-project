@@ -17,6 +17,17 @@ I_new = torch.where(mask[..., None], anchor_mean.to(I_user.dtype), I_user)
 
 距离不归一化，也不除以通道数。可选上限 `--u` 限制到 target 的平方 L2 距离：`d_tar > u` 时该 target 的 mask 为 0；等于上限时仍按 margin 判定。默认 `u=None`，不限制距离，沿用原有判定。多概念都比较同一个替换前 `I_user`，先分别应用上限，再取掩码并集。不同 anchor 在同一位置命中时，使用 `d_anc-d_tar` 最大者；相同分数取配置中靠前者。`winner=-1` 表示未命中。
 
+`--intervention` 选择掩码命中后的操作，`--strength` 是系数 $s$，默认 `0.1`。令 $a$ 为当前位置胜出概念的 anchor 均值：
+
+| 模式 | 命中位置的新值 | 系数范围 |
+| --- | --- | --- |
+| `replace`（默认） | $a$ | 不使用系数 |
+| `add` | $x+s a$ | 有限且非负 |
+| `blend` | $(1-s)x+s a$ | $0\le s\le1$ |
+| `observe` | $x$，只记录距离与掩码 | 不使用系数 |
+
+**所有模式在掩码外均保留原值。** `add` 和 `blend` 先以 FP32 计算，再转回原生精度；`strength=0` 不修改激活，`blend --strength 1` 等同直接替换。多概念重叠时仍只使用最大 margin 对应的 anchor，不累加不同概念的修改。三种编辑模式使用同一套离线均值缓存，无需为模式或系数重新 collect；后续层和步的距离会随干预后的轨迹变化。
+
 默认 `sd35_medium`，同时支持 `flux1_dev`；全部 blocks/可用 attention 分支、前 `ceil(0.3*T)` 个采样步、16 个离线 seeds（10000–10015）、`tau=0`。离线只保存 FP32 均值，在线默认保存距离和掩码，不保存 `I_user`、`I_new`。层和步都是从 0 开始的左闭右开范围。SD3.5 默认 40 步，干预 `[0,12)`；FLUX 默认 28 步，干预 `[0,9)`。
 
 SD3 只观察/修改 CFG 的正向分支，包含主 attention 和存在的 `attn2`。FLUX 双流层在图像输出投影前替换；单流层只替换 `proj_out` 输入中图像 token 的 attention 通道，保留文本行与 MLP 通道。FLUX block 编号先双流、后单流。沿用原生采样器，不增加在线 target/anchor 模型前向。首版使用 FLUX 内嵌 guidance，`true_cfg_scale=1`。
@@ -34,6 +45,32 @@ python DiT/attention_replacement/run.py collect --cases all --model sd35_medium
 
 # 原模型对照 + 方法采样 + benchmark 指标
 python DiT/attention_replacement/run.py benchmark --cases all --model sd35_medium
+```
+
+三种编辑模式可直接使用现有 `run.sh`，在仓库根目录执行；脚本先收集或复用离线均值，再运行所选 benchmark：
+
+```bash
+# 原有直接替换
+INTERVENTION=replace bash DiT/attention_replacement/run.sh
+
+# 加上 0.1 倍 anchor
+INTERVENTION=add STRENGTH=0.1 bash DiT/attention_replacement/run.sh
+
+# 以 0.1 的系数混合
+INTERVENTION=blend STRENGTH=0.1 bash DiT/attention_replacement/run.sh
+
+# I2P + 保留实验，仅在前 50% 的采样步干预
+CASES=i2p STEP_FRACTION=0.5 INTERVENTION=blend STRENGTH=0.1 \
+  bash DiT/attention_replacement/run.sh
+```
+
+脚本保留原有默认设置：`MODEL=sd35_medium`、`CASES=all`、`STEP_FRACTION=1`；编辑模式默认为 `replace`。可通过环境变量覆盖，其他命令行参数会原样传给 collect 和 benchmark，例如 `bash DiT/attention_replacement/run.sh --offline --device cuda:0`。若所需窗口已有匹配缓存，可直接运行在线命令：
+
+```bash
+python DiT/attention_replacement/run.py benchmark --model sd35_medium --cases all \
+  --step-fraction 0.5 --intervention add --strength 0.1
+python DiT/attention_replacement/run.py benchmark --model sd35_medium --cases all \
+  --step-fraction 0.5 --intervention blend --strength 0.1
 ```
 
 | `--cases` | case | 评估任务 |
@@ -63,7 +100,7 @@ python DiT/attention_replacement/run.py benchmark --cases ip \
 
 ## 调参、独立采样和分阶段评测
 
-方法参数：`--layer-start/end`、`--step-start/end` 或 `--step-fraction`、`--offline-seeds` 或 `--offline-seed-count/start`、`--tau`、`--tau-by-concept '{"Pikachu":10}'`、`--u`。`u` 是所有概念共用的非负有限上限，单位为平方 L2 距离，不是欧式距离的开方值。`--step-end` 与 `--step-fraction` 二选一；比例相对于全部采样步。采样设置使用 benchmark 原有的 `--steps`、`--height`、`--width`、`--guidance-scale`、`--dtype` 等参数。
+方法参数：`--layer-start/end`、`--step-start/end` 或 `--step-fraction`、`--offline-seeds` 或 `--offline-seed-count/start`、`--tau`、`--tau-by-concept '{"Pikachu":10}'`、`--u`、`--intervention`、`--strength`。`u` 是所有概念共用的非负有限上限，单位为平方 L2 距离，不是欧式距离的开方值。`--step-end` 与 `--step-fraction` 二选一；比例相对于全部采样步。采样设置使用 benchmark 原有的 `--steps`、`--height`、`--width`、`--guidance-scale`、`--dtype` 等参数。
 
 调整 `tau` 或 `u` 可复用同一缓存；模型、总采样步数、分辨率、guidance 等轨迹参数变化时需要重新收集。`--prototype-dir` 可显式指定已有 collection，并从中使用更小的层/时间窗口；此时实际离线 seed 列表以该缓存为准。`collect` 的显式 collection 则必须匹配原有完整窗口与 seed 列表。
 
@@ -93,7 +130,7 @@ python DiT/attention_replacement/run.py evaluate --manifest /path/to/manifest.js
 
 benchmark 默认采样 `--mode both`，自动填充并复用原模型对照图。仅生成方法图可用 `--mode image`，评测时仍需原图。`--tasks mscoco` 可只运行保留任务。缩小 benchmark 建议用 `--max-records`；`--limit-prompts` 按原数据顺序截断，可能截掉部分评估概念。评测权重和具体指标说明见 `benchmark/DIT.md`。
 
-方法配置也可通过 benchmark 的 `--method-config` 提供，字段为 `adapter.attention_replacement`，CLI 方法参数优先。默认方法目录名包含干预模式、margin 阈值、距离上限、层/时间范围和本次起始时间，例如 `AttentionReplacement-replace-tau-0-u-off-layers-0-all-steps-0-12-20261101-140000`；`u-off` 表示未启用距离上限。重新启动普通 benchmark 会分配新的实验名称；要继续同一次实验，使用 `benchmark --manifest ...`。改变 `u` 应开始新实验，不混入已完成的采样结果。`--method` 可显式提供可读名称。
+方法配置也可通过 benchmark 的 `--method-config` 提供，字段为 `adapter.attention_replacement`，CLI 方法参数优先。默认方法目录名包含干预模式、margin 阈值、距离上限、层/时间范围和本次起始时间，例如 `AttentionReplacement-replace-tau-0-u-off-layers-0-all-steps-0-12-20261101-140000`；`u-off` 表示未启用距离上限。`add` / `blend` 的名称还包含系数，例如 `AttentionReplacement-blend-strength-0.1-tau-0-u-off-...`。重新启动普通 benchmark 会分配新的实验名称；要继续同一次实验，使用 `benchmark --manifest ...`。改变 `u`、干预模式或系数应开始新实验，不混入已完成的采样结果。`--method` 可显式提供可读名称。
 
 所有新建目录均使用可读名称；哈希仅作为 JSON 中的内容校验字段，不参与路径命名。离线缓存按完整配置元数据匹配并复用；不同配置即使名称前缀相同，也会使用不同时间或 `run-2` 等序号区分。相同 prompt 的缓存共享，清洗后同名但原文不同的 prompt 通过元数据与可读序号区分。
 
@@ -121,6 +158,8 @@ benchmark 方法图在 `DiT/attention_replacement/results/<model>/<task>/<case>/
 - `winner`：`[H,W]` 概念索引，用于还原不同 anchor 的重叠选择。
 - `mean_squared_change`：该 site/step 的实际修改量标量，供分析使用。
 - `metadata.json`：prompt、seed、概念对、参数、site 路径、实际 timestep/sigma、原型摘要、模型调用次数及批量耗时。
+
+`metadata.json` 中的 `settings.intervention` 和 `settings.strength` 记录实际编辑模式与系数；`mean_squared_change` 按实际编辑后的结果计算。新增模式不改变 trace 的距离、掩码字段，也不保存 `I_user`、`I_new`。
 
 在线不提供保存完整激活的开关。观察模式提供未干预轨迹的距离/掩码诊断；替换模式中的距离来自当前已受先前干预影响的轨迹。`--no-trace` 关闭在线距离/掩码保存，仍记录运行元数据。启动采样前会估算剩余图片的 trace 用量，并在空间不足时提示改用 `--trace-root` 或 `--no-trace`。hook 时间为 host 耗时，I/O 时间包含张量向 CPU 的传输。
 
@@ -172,5 +211,7 @@ python DiT/attention_replacement/analyze.py --examples-only --step-end 20 --work
 现有替换模式 trace 已包含前序干预的影响。阈值扫描只是在这些已保存轨迹上重新比较差值，不能替代修改 tau 后重新采样与评测图像效果。
 
 ## 本次验证范围
+
+新增 `add` / `blend` 已验证 FP32、FP16、BF16 公式、掩码外保留、重叠概念选择、距离上限、零系数和 blend=1 边界。在 CPU 小型随机 SD3/FLUX 原生 pipeline 上实际采样，确认 CFG 负向分支、FLUX 文本/MLP 通道及窗口外位置保持原有 hook 输入，保存的模式/系数与修改量正确；两种模式均完成四类 benchmark 的 8 个 case/9 项任务清单准备，确认可读名称、均值缓存复用及恢复参数限制。
 
 已在 CPU 的小型随机 SD3/FLUX 原生 pipeline 上验证：离线均值与内存参考值一致，磁盘只有均值张量和元数据；在线不保存完整激活，观察模式与原生采样逐像素一致；缓存复用、独立 trace 根目录及空间预检查正常。四类 benchmark 另用小型 SD3 模型完成 8 个 case/9 项任务、90 张方法图及对应原图，检查了可读目录、manifest 恢复、参数变更拒绝和距离/掩码分析。随机模型使用固定 prompt embeddings，验证工程流程；完整权重的概念擦除效果尚未评测。

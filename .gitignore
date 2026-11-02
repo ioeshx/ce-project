@@ -22,6 +22,7 @@ logs/
 *.ckpt
 *.pt
 *.pth
+*.log
 
 # 下载的论文
 /papers/downloads/

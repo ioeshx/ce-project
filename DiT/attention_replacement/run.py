@@ -76,7 +76,10 @@ def main(argv=None):
     own.add_argument("--prototype-dir", type=Path, help="Reuse an explicit compatible collection (also supports subsets)")
     own.add_argument("--prototype-root", type=Path, help="Offline cache root, distinct from benchmark --cache-dir")
     own.add_argument("--result-root", type=Path, default=DIRECTORY / "results", help="Method image/diagnostic root")
-    own.add_argument("--intervention", choices=("replace", "observe"))
+    own.add_argument("--intervention", choices=("replace", "add", "blend", "observe"),
+                     help="Masked AV edit; default: replace; observe only records diagnostics")
+    own.add_argument("--strength", type=float,
+                     help="Anchor coefficient for add/blend; default: 0.1; blend requires [0, 1]")
     own.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None)
     own.add_argument("--trace-root", type=Path, help="Write online traces on a separate disk")
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
@@ -211,6 +214,7 @@ def main(argv=None):
             print(f"[{config['model_name']}:{config['case_id']}:{config['task']}] {count} images; "
                   f"steps=[{settings['step_start']},{settings['step_end']}); "
                   f"layers=[{settings['layer_start']},{settings['layer_end'] or 'all'}); "
+                  f"intervention={settings['intervention']}; strength={settings['strength']:g}; "
                   f"N={len(settings['offline_seeds'])}; pairs={settings['pairs']}")
         return 0
 
@@ -252,8 +256,11 @@ def main(argv=None):
         config["adapter"]["prototype_digests"] = {p: info["digest"] for p, info in means.items()}
         threshold = "per-concept" if settings["tau_by_concept"] else f"{settings['tau']:g}"
         distance_limit = "off" if settings["u"] is None else f"{settings['u']:g}"
+        intervention_label = settings["intervention"]
+        if intervention_label in {"add", "blend"}:
+            intervention_label += f"-strength-{settings['strength']:g}"
         config["method"] = args.method or (
-            f"AttentionReplacement-{settings['intervention']}-tau-{threshold}-u-{distance_limit}-"
+            f"AttentionReplacement-{intervention_label}-tau-{threshold}-u-{distance_limit}-"
             f"layers-{settings['layer_start']}-{settings['layer_end'] or 'all'}-"
             f"steps-{settings['step_start']}-{settings['step_end']}-{started_at}")
         if opts.action == "sample":

@@ -1,18 +1,30 @@
 #!/usr/bin/env bash
+set -e
 
 attention_run_started_at=$(date +%s)
+attention_run_model=${MODEL:-sd35_medium}
+attention_run_cases=${CASES:-all}
+attention_run_step_fraction=${STEP_FRACTION:-1}
+attention_run_intervention=${INTERVENTION:-replace}
+attention_run_strength=${STRENGTH:-0.1}
 
 export HF_ENDPOINT="https://hf-mirror.com"
 
 python DiT/attention_replacement/run.py collect \
-  --model sd35_medium \
-  --cases all \
-  --step-fraction 1
+  --model "$attention_run_model" \
+  --cases "$attention_run_cases" \
+  --step-fraction "$attention_run_step_fraction" \
+  --intervention "$attention_run_intervention" \
+  --strength "$attention_run_strength" \
+  "$@"
 
 python DiT/attention_replacement/run.py benchmark \
-  --model sd35_medium \
-  --cases all \
-  --step-fraction 1
+  --model "$attention_run_model" \
+  --cases "$attention_run_cases" \
+  --step-fraction "$attention_run_step_fraction" \
+  --intervention "$attention_run_intervention" \
+  --strength "$attention_run_strength" \
+  "$@"
 
 attention_run_exit_code=$?
 attention_run_finished_at=$(date +%s)

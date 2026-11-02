@@ -1,3 +1,11 @@
+# add：使用 CUDA 0
+STEP_FRACTION=0.5 INTERVENTION=add STRENGTH=0.1 \
+  bash DiT/attention_replacement/run.sh --device cuda:0
+
+# blend：使用 CUDA 1
+STEP_FRACTION=0.5 INTERVENTION=blend STRENGTH=0.1 \
+  bash DiT/attention_replacement/run.sh --device cuda:1
+
 baseline/RAZOR-cvpr2026/scripts/benchmark_dit_all.sh --device cuda:0 > baseline/RAZOR-cvpr2026/dit_all.log 2>&1
 baseline/CASteer/scripts/benchmark_dit_all.sh --device cuda:1 > baseline/CASteer/dit_all.log 2>&1
 
