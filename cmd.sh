@@ -1,3 +1,6 @@
+baseline/RAZOR-cvpr2026/scripts/benchmark_dit_all.sh --device cuda:0 > baseline/RAZOR-cvpr2026/dit_all.log 2>&1
+baseline/CASteer/scripts/benchmark_dit_all.sh --device cuda:1 > baseline/CASteer/dit_all.log 2>&1
+
 HF_ENDPOINT="https://hf-mirror.com" baseline/EraseAnything/scripts/benchmark_sd35_all.sh \
   --cases i2p,object --device cuda:0 > benchmark/logs/eraseAnything_sd35_i2p_object.log 2>&1
 
