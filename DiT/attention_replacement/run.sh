@@ -7,6 +7,7 @@ attention_run_cases=${CASES:-all}
 attention_run_step_fraction=${STEP_FRACTION:-1}
 attention_run_intervention=${INTERVENTION:-replace}
 attention_run_strength=${STRENGTH:-0.1}
+attention_run_mask_mode=${MASK_MODE:-layerwise}
 
 export HF_ENDPOINT="https://hf-mirror.com"
 
@@ -16,6 +17,7 @@ python DiT/attention_replacement/run.py collect \
   --step-fraction "$attention_run_step_fraction" \
   --intervention "$attention_run_intervention" \
   --strength "$attention_run_strength" \
+  --mask-mode "$attention_run_mask_mode" \
   "$@"
 
 python DiT/attention_replacement/run.py benchmark \
@@ -24,6 +26,7 @@ python DiT/attention_replacement/run.py benchmark \
   --step-fraction "$attention_run_step_fraction" \
   --intervention "$attention_run_intervention" \
   --strength "$attention_run_strength" \
+  --mask-mode "$attention_run_mask_mode" \
   "$@"
 
 attention_run_exit_code=$?

@@ -136,7 +136,7 @@ def collect_statistics(run, output, reservoir_size=100_000):
     counts = np.zeros((2, len(pairs), len(sites), len(steps)), dtype=np.int64)
     reservoirs = {(c, branch, group): Reservoir(reservoir_size, 42 + c)
                   for c in range(len(pairs)) for branch in branches for group in ("target", "other")}
-    validation = {"mask_vs_margin_mismatches": 0, "winner_outside_mask": 0,
+    validation = {"mask_vs_margin_mismatches": 0, "mask_vs_vote_mismatches": 0, "winner_outside_mask": 0,
                   "union_vs_winner_mismatches": 0, "max_margin_distance_error": 0.0,
                   "missing_files": 0, "files_read": 0}
     inventory = []
@@ -179,7 +179,14 @@ def collect_statistics(run, output, reservoir_size=100_000):
                         sums[1, c, si, ti] += fields
                         counts[1, c, si, ti] += 1
                     tau = meta["settings"]["tau_by_concept"].get(pair["target"], meta["settings"]["tau"])
-                    validation["mask_vs_margin_mismatches"] += int(np.count_nonzero(mask != (margin > tau)))
+                    local_mask = tensors.get(f"probe_mask_{c}", mask)
+                    expected = margin > tau
+                    if meta["settings"].get("u") is not None:
+                        expected &= tar <= meta["settings"]["u"]
+                    validation["mask_vs_margin_mismatches"] += int(np.count_nonzero(local_mask != expected))
+                    if f"vote_fraction_{c}" in tensors:
+                        validation["mask_vs_vote_mismatches"] += int(np.count_nonzero(
+                            mask != (tensors[f"vote_fraction_{c}"] > .5)))
                     validation["winner_outside_mask"] += int(np.count_nonzero(selected & ~mask))
                     validation["max_margin_distance_error"] = max(validation["max_margin_distance_error"],
                         float(np.max(np.abs(margin - (anc - tar)))))
@@ -207,7 +214,8 @@ def collect_statistics(run, output, reservoir_size=100_000):
                 "statistics_seconds": time.monotonic() - started,
                 "distribution_sampling": "8 uniform pixels per file, then random-priority reservoir; "
                     "spatial means and saved-mask frequencies use all pixels in all observed files",
-                "threshold_scope": "Re-thresholding saved margins on the existing trajectory, not a new generation",
+                "threshold_scope": "Re-thresholding saved local margins on the existing trajectory; "
+                    "majority modes save first-pass margins, and this sweep does not recompute layer votes",
                 "cohort_scope": "target_prompt matches record.concept to the erased target; other_prompts "
                     "are other prompt labels, not image-level safety ground truth"}
     for c, pair in enumerate(pairs):
@@ -468,8 +476,11 @@ def sample_figure(path, sample, meta, step, site, tensors):
         distance_min = min(float(tensors[f"d_tar_{c}"].min()), float(tensors[f"d_anc_{c}"].min()))
         distance_max = max(float(tensors[f"d_tar_{c}"].max()), float(tensors[f"d_anc_{c}"].max()))
         tau = meta["settings"]["tau_by_concept"].get(pair["target"], meta["settings"]["tau"])
+        mask_label = ("Majority mask M_t (vote > 0.5)" if
+                      meta["settings"].get("mask_mode", "layerwise") != "layerwise" else
+                      f"Binary mask M (tau={tau:g})")
         raw_labels = (f"d_target: {pair['target']}", f"d_anchor: {pair['anchor']}",
-                      "d_anchor - d_target", f"Binary mask M (tau={tau:g})")
+                      "d_anchor - d_target", mask_label)
         for col, (key, name) in enumerate(zip(
                 (f"d_tar_{c}", f"d_anc_{c}", f"margin_{c}", f"mask_{c}"), raw_labels), 1):
             ax = fig.add_subplot(axes[c, col])
@@ -645,9 +656,9 @@ def write_overview(output, reports):
                                 zip(METRICS, data[f"{cohort}__global_maps"])})
                     rows.append(row)
     write_csv(output / "summary.csv", rows)
-    totals = {key: sum(report["validation"][key] for report in reports) for key in (
+    totals = {key: sum(report["validation"].get(key, 0) for report in reports) for key in (
         "files_read", "missing_files", "mask_vs_margin_mismatches", "winner_outside_mask",
-        "union_vs_winner_mismatches")}
+        "union_vs_winner_mismatches", "mask_vs_vote_mismatches")}
     totals.update(experiments=len(reports), sample_records=sum(report["samples"] for report in reports))
     write_json(output / "validation_summary.json", totals)
 

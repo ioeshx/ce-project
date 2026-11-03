@@ -18,10 +18,11 @@ from benchmark.sampling_profile import initial_noise
 
 DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
+MASK_MODES = ("layerwise", "majority_all", "majority_last")
 DEFAULTS = dict(layer_start=0, layer_end=None, step_start=0, step_end=None,
                 step_fraction=0.3, tau=0.0, tau_by_concept={}, u=None,
                 offline_seeds=list(range(10000, 10016)), intervention="replace",
-                strength=0.1, trace=True, trace_root=None,
+                strength=0.1, mask_mode="layerwise", trace=True, trace_root=None,
                 cache_root=str(DIRECTORY / "cache"), prototype_dir=None)
 
 
@@ -61,6 +62,8 @@ def resolve_settings(config, overrides=None):
         problems.append("u must be finite and nonnegative, or null to disable the distance limit")
     if settings["intervention"] not in {"replace", "add", "blend", "observe"}:
         problems.append("intervention must be replace, add, blend or observe")
+    if settings["mask_mode"] not in MASK_MODES:
+        problems.append(f"mask_mode must be one of {MASK_MODES}")
     if not math.isfinite(settings["strength"]) or settings["strength"] < 0:
         problems.append("strength must be finite and nonnegative")
     if settings["intervention"] == "blend" and settings["strength"] > 1:
@@ -154,26 +157,32 @@ def read_prototypes(config, settings, *, verify=True):
 
 
 def replace_attention(x, prototypes, pairs, tau, tau_by_concept, intervene=True, *, u=None,
-                      intervention="replace", strength=0.1):
+                      intervention="replace", strength=0.1, decisions=None):
     """All concepts inspect the same x. Strict comparisons give stable first-pair ties.
 
     x: [B,H,W,D]; prototypes: prompt -> [H,W,D], FP32 on x.device.
     Squared distances are unnormalized; u optionally limits the target distance.
     Add/blend use the original x for every pair; masked-out values stay unchanged.
+    decisions optionally supplies first-pass distances/margins and fixed majority
+    masks. The second pass edits its current x without reclassifying positions.
     """
     xf = x.float()
     best = torch.full(x.shape[:-1], -torch.inf, device=x.device)
     winner = torch.full(x.shape[:-1], -1, dtype=torch.int32, device=x.device)
     replacement = x.clone()
-    traces = {}
+    traces = {} if decisions is None else dict(decisions)
     for i, pair in enumerate(pairs):
         target, anchor = prototypes[pair["target"]], prototypes[pair["anchor"]]
-        d_tar = (xf - target).square().sum(dim=-1)
-        d_anc = (xf - anchor).square().sum(dim=-1)
-        margin = d_anc - d_tar
-        mask = margin > tau_by_concept.get(pair["target"], tau)
-        if u is not None:
-            mask &= d_tar <= u
+        if decisions is None:
+            d_tar = (xf - target).square().sum(dim=-1)
+            d_anc = (xf - anchor).square().sum(dim=-1)
+            margin = d_anc - d_tar
+            mask = margin > tau_by_concept.get(pair["target"], tau)
+            if u is not None:
+                mask &= d_tar <= u
+        else:
+            d_tar, d_anc, margin, mask = (decisions[f"{key}_{i}"]
+                                        for key in ("d_tar", "d_anc", "margin", "mask"))
         wins = mask & (margin > best)
         if intervention == "add":
             edited = (xf + strength * anchor).to(x.dtype)
@@ -215,6 +224,8 @@ class AttentionReplacement(DiTAdapter):
         self.handles = []
         self.sites = []
         self.sums = {}
+        self.probing = False
+        self.probe_traces = {}
         transformer = self.pipe.transformer
         blocks = [(i, f"transformer_blocks.{i}", block, False)
                   for i, block in enumerate(transformer.transformer_blocks)]
@@ -224,6 +235,7 @@ class AttentionReplacement(DiTAdapter):
         end = self.settings["layer_end"] or len(blocks)
         if not self.settings["layer_start"] < end <= len(blocks):
             raise ValueError(f"Layer window exceeds the loaded model's {len(blocks)} blocks")
+        self.last_layer = end - 1
         self.grid = (self.config["sampling"]["height"] // self.pipe.vae_scale_factor,
                      self.config["sampling"]["width"] // self.pipe.vae_scale_factor)
         patch = 2 if self.flux else transformer.config.patch_size
@@ -257,6 +269,35 @@ class AttentionReplacement(DiTAdapter):
                              "sigmas": self.pipe.scheduler.sigmas.cpu().tolist()}
             if "schedule" in self.collection and self.collection["schedule"] != self.schedule:
                 raise ValueError("Actual scheduler trajectory differs from the offline collection")
+        if (self.collecting or self.settings["mask_mode"] == "layerwise" or
+                not self.settings["step_start"] <= self.step < self.settings["step_end"]):
+            return
+
+        # Probe every layer at this same x_t, t. Calling forward directly skips
+        # this outer pre-hook, while all attention hooks still collect masks.
+        self.probe_traces = {}
+        self.probing = True
+        self.forward_calls += 1
+        module.forward(*args, **kwargs)
+        self.probing = False
+
+        started = time.perf_counter()
+        vote_device = self.probe_traces[self.sites[0]["id"]]["mask_0"].device
+        layer_masks = {}
+        for site in self.sites:
+            masks = torch.stack([self.probe_traces[site["id"]][f"mask_{i}"].to(vote_device)
+                                 for i in range(len(self.settings["pairs"]))])
+            # One vote per block: its attention branches share the block's vote.
+            if site["layer"] in layer_masks:
+                layer_masks[site["layer"]] |= masks
+            else:
+                layer_masks[site["layer"]] = masks
+        votes = torch.stack(list(layer_masks.values())).sum(dim=0)
+        self.vote_fraction = votes.float() / len(layer_masks)
+        self.timestep_masks = 2 * votes > len(layer_masks)  # A tie remains zero.
+        self.hook_seconds += time.perf_counter() - started
+        # The original pipeline call now performs the editing pass and advances
+        # its scheduler exactly once, using only this second pass's prediction.
 
     def _attention_hook(self, site, module, args):
         if not self.active or not self.settings["step_start"] <= self.step < self.settings["step_end"]:
@@ -280,10 +321,29 @@ class AttentionReplacement(DiTAdapter):
         else:
             prototypes = {prompt: load_file(str(Path(info["directory"]) / "means" / filename))["mean"].to(x.device)
                           for prompt, info in self.means.items()}
+            decisions = None
+            apply_here = True
+            if self.settings["mask_mode"] != "layerwise" and not self.probing:
+                decisions = {key: value.to(x.device)
+                             for key, value in self.probe_traces[site["id"]].items()}
+                for i in range(len(self.settings["pairs"])):
+                    decisions[f"probe_mask_{i}"] = decisions[f"mask_{i}"]
+                    decisions[f"mask_{i}"] = self.timestep_masks[i].to(x.device)
+                    decisions[f"vote_fraction_{i}"] = self.vote_fraction[i].to(x.device)
+                apply_here = (self.settings["mask_mode"] == "majority_all" or
+                              site["layer"] == self.last_layer)
             result, payload = replace_attention(x, prototypes, self.settings["pairs"],
                 self.settings["tau"], self.settings["tau_by_concept"],
+                intervene=not self.probing and apply_here,
                 u=self.settings["u"], intervention=self.settings["intervention"],
-                strength=self.settings["strength"])
+                strength=self.settings["strength"], decisions=decisions)
+            if self.probing:
+                self.probe_traces[site["id"]] = payload
+                self.hook_seconds += time.perf_counter() - started
+                return
+            if decisions is not None:
+                payload["applied_mask"] = (payload["mask_union"] & apply_here &
+                                           (self.settings["intervention"] != "observe"))
         self.hook_seconds += time.perf_counter() - started
         if not self.collecting and self.settings["trace"]:
             started = time.perf_counter()
@@ -294,7 +354,7 @@ class AttentionReplacement(DiTAdapter):
                 save_file({key: value.detach().cpu().contiguous().clone() for key, value in values.items()},
                           str(destination))
             self.io_seconds += time.perf_counter() - started
-        if not self.collecting and self.settings["intervention"] != "observe":
+        if not self.collecting and apply_here and self.settings["intervention"] != "observe":
             changed = tensor.clone()
             changed[rows, tokens, channels] = result.reshape(batch, -1, site["channels"])
             return (changed, *args[1:])
@@ -343,6 +403,8 @@ class AttentionReplacement(DiTAdapter):
                 images = pipe(**kwargs).images
         finally:
             self.active = False
+            self.probing = False
+            self.probe_traces.clear()
         elapsed = time.perf_counter() - started
         if self.collecting:
             self.collection["schedule"] = self.schedule
@@ -388,6 +450,7 @@ class AttentionReplacement(DiTAdapter):
 
     def close(self):
         self.sums.clear()
+        self.probe_traces.clear()
         for handle in self.handles:
             handle.remove()
         self.handles.clear()

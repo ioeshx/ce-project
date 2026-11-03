@@ -1,3 +1,7 @@
+MASK_MODE=majority_all bash DiT/attention_replacement/run.sh --device cuda:0 > DiT/attention_replacement/logs/majority_all.log
+
+MASK_MODE=majority_last bash DiT/attention_replacement/run.sh --device cuda:1 > DiT/attention_replacement/logs/majority_last.log
+
 # add：使用 CUDA 0
 STEP_FRACTION=0.5 INTERVENTION=add STRENGTH=0.1 \
   bash DiT/attention_replacement/run.sh --device cuda:0 > DiT/attention_replacement/logs/add.log

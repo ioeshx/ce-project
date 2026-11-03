@@ -32,6 +32,47 @@ I_new = torch.where(mask[..., None], anchor_mean.to(I_user.dtype), I_user)
 
 SD3 只观察/修改 CFG 的正向分支，包含主 attention 和存在的 `attn2`。FLUX 双流层在图像输出投影前替换；单流层只替换 `proj_out` 输入中图像 token 的 attention 通道，保留文本行与 MLP 通道。FLUX block 编号先双流、后单流。沿用原生采样器，不增加在线 target/anchor 模型前向。首版使用 FLUX 内嵌 guidance，`true_cfg_scale=1`。
 
+## 掩码计算方式
+
+`--mask-mode` 保留原方式，并新增两种跨层多数投票方式：
+
+| 参数值 | 掩码计算 | 应用位置 |
+| --- | --- | --- |
+| `layerwise`（默认） | 每到一个 attention 分支，按当前 AV 计算自己的掩码 | 当前分支，沿用原有单次前向 |
+| `majority_all` | 第一次前向只观察，汇总各层掩码形成当前步的 `M_t` | 第二次前向的所有选定层 |
+| `majority_last` | 与 `majority_all` 相同 | 第二次前向的最后一个选定层 |
+
+设当前层范围内有 `L` 个 blocks。对每个样本、每个概念、每个空间位置独立计算：
+
+```python
+# 第一次前向：不替换，沿用原有 tau / u 距离条件。
+layer_mask[layer] = 各 attention 分支掩码的逻辑 OR
+votes = sum(layer_mask.values())
+vote_fraction = votes.float() / L
+M_t = 2 * votes > L  # 严格超过一半；恰好一半时为 0。
+
+# 第二次前向：M_t 固定，各层使用自己的 anchor 均值。
+I_new = torch.where(M_t[..., None], anchor_mean_this_layer, I_current)
+```
+
+每个 block 只投一票，避免 SD3.5 带有 `attn2` 的层获得额外权重。投票范围沿用 `--layer-start/end`；`majority_last` 的末层为该范围最后一个 block，默认即模型最后一层，并处理该 block 的全部可用 attention 分支。多概念分别投票后取并集；重叠位置沿用最大 margin 选择 anchor，margin 使用第一次前向中当前分支的值，相同分数取配置中靠前的概念。
+
+两次前向使用相同的 latent、timestep 和条件。第二次使用其当时的 AV 执行 `replace` / `add` / `blend`，不重新判定掩码；采样器只根据第二次预测更新一次 latent。只有干预时间窗口内增加一次 DiT 前向，因此总调用数为 `T + K`，其中 `K` 是选定步数；`observe` 也执行两次前向并保存投票结果，但不修改激活。窗口外及离线 collect 仍每步只前向一次。
+
+```bash
+# 跨层投票后，在所有选定层应用 M_t。
+MASK_MODE=majority_all bash DiT/attention_replacement/run.sh
+
+# 跨层投票后，只在最后一个选定层应用 M_t。
+MASK_MODE=majority_last bash DiT/attention_replacement/run.sh
+
+# 复用已有离线缓存，直接运行；同样支持 --intervention add / blend。
+python DiT/attention_replacement/run.py benchmark --cases ip \
+  --mask-mode majority_all --intervention blend --strength 0.1
+```
+
+新模式复用相同配置的离线原型。结果方法名额外包含可读的 `mask-majority-all` / `mask-majority-last`，重复实验继续用起始时间区分；原方式的默认命名保持原样。manifest 恢复时必须保留原有掩码模式。
+
 ## 运行四类实验
 
 在仓库根目录执行，使用安装了 `benchmark/requirements.txt` 依赖的 Python 环境。
@@ -100,7 +141,7 @@ python DiT/attention_replacement/run.py benchmark --cases ip \
 
 ## 调参、独立采样和分阶段评测
 
-方法参数：`--layer-start/end`、`--step-start/end` 或 `--step-fraction`、`--offline-seeds` 或 `--offline-seed-count/start`、`--tau`、`--tau-by-concept '{"Pikachu":10}'`、`--u`、`--intervention`、`--strength`。`u` 是所有概念共用的非负有限上限，单位为平方 L2 距离，不是欧式距离的开方值。`--step-end` 与 `--step-fraction` 二选一；比例相对于全部采样步。采样设置使用 benchmark 原有的 `--steps`、`--height`、`--width`、`--guidance-scale`、`--dtype` 等参数。
+方法参数：`--layer-start/end`、`--step-start/end` 或 `--step-fraction`、`--offline-seeds` 或 `--offline-seed-count/start`、`--tau`、`--tau-by-concept '{"Pikachu":10}'`、`--u`、`--intervention`、`--strength`、`--mask-mode`。`u` 是所有概念共用的非负有限上限，单位为平方 L2 距离，不是欧式距离的开方值。`--step-end` 与 `--step-fraction` 二选一；比例相对于全部采样步。采样设置使用 benchmark 原有的 `--steps`、`--height`、`--width`、`--guidance-scale`、`--dtype` 等参数。
 
 调整 `tau` 或 `u` 可复用同一缓存；模型、总采样步数、分辨率、guidance 等轨迹参数变化时需要重新收集。`--prototype-dir` 可显式指定已有 collection，并从中使用更小的层/时间窗口；此时实际离线 seed 列表以该缓存为准。`collect` 的显式 collection 则必须匹配原有完整窗口与 seed 列表。
 
@@ -159,6 +200,8 @@ benchmark 方法图在 `DiT/attention_replacement/results/<model>/<task>/<case>/
 - `mean_squared_change`：该 site/step 的实际修改量标量，供分析使用。
 - `metadata.json`：prompt、seed、概念对、参数、site 路径、实际 timestep/sigma、原型摘要、模型调用次数及批量耗时。
 
+多数投票模式中，距离和 margin 来自第一次未替换的前向，`mask_i` 为固定的概念级 `M_t`；额外保存 `probe_mask_i`（当前分支第一次的局部判断）、`vote_fraction_i`（按 block 统计的支持比例）和 `applied_mask`（当前分支实际执行编辑的位置）。`majority_last` 在其余层的 `applied_mask` 为 0；`observe` 全部为 0。`winner` 表示候选 anchor，`mean_squared_change` 记录第二次前向实际修改量。只保存这些空间图，不保存完整 AV。
+
 `metadata.json` 中的 `settings.intervention` 和 `settings.strength` 记录实际编辑模式与系数；`mean_squared_change` 按实际编辑后的结果计算。新增模式不改变 trace 的距离、掩码字段，也不保存 `I_user`、`I_new`。
 
 在线不提供保存完整激活的开关。观察模式提供未干预轨迹的距离/掩码诊断；替换模式中的距离来自当前已受先前干预影响的轨迹。`--no-trace` 关闭在线距离/掩码保存，仍记录运行元数据。启动采样前会估算剩余图片的 trace 用量，并在空间不足时提示改用 `--trace-root` 或 `--no-trace`。hook 时间为 host 耗时，I/O 时间包含张量向 CPU 的传输。
@@ -208,9 +251,11 @@ python DiT/attention_replacement/analyze.py --examples-only --step-end 20 --work
 
 `--examples-only` 需要已存在的实验分析 `manifest.json`，只补充单图 PNG、样本索引和实验页面，不读取全部 trace 或重新绘制汇总图。可重复执行以补齐中断任务；统一浏览入口为 `analysis/sample_examples_index.html`，每批执行的覆盖数与耗时保存为 `analysis/sample_examples_runs.json`。
 
-现有替换模式 trace 已包含前序干预的影响。阈值扫描只是在这些已保存轨迹上重新比较差值，不能替代修改 tau 后重新采样与评测图像效果。
+现有替换模式 trace 已包含前序干预的影响。多数投票模式的距离来自当前 latent 上的第一次前向，该 latent 可能已受先前采样步干预影响。阈值扫描只是在这些已保存轨迹上重新比较局部差值，不重新计算跨层投票，不能替代修改 tau 后重新采样与评测图像效果。分析器分别检查局部掩码与距离条件、共识掩码与 `vote_fraction > 0.5` 的一致性。
 
 ## 本次验证范围
+
+新增 `majority_all` / `majority_last` 已在 CPU 小型随机 SD3/FLUX 原生 pipeline 上完成双样本采样验证，覆盖 `replace` / `add` / `blend` / `observe`、多概念、严格多数与平票、同 block 多分支投票、指定层/步范围、CFG 负向分支以及 FLUX 文本/MLP 通道保留。确认两次前向输入相同、采样器每步只更新一次、窗口内多一次前向、离线 collect 仍单次前向，观察模式与原生单次前向逐像素一致，距离/投票记录可被分析器读取。原掩码函数在 FP32/FP16/BF16、四种模式和距离上限开关的 24 组配置下与修改前逐项一致，原方式的小型模型采样也与修改前逐像素一致；现有 8 项分析检查通过。以上验证算法与接入流程，未运行完整权重的概念擦除效果评测。
 
 新增 `add` / `blend` 已验证 FP32、FP16、BF16 公式、掩码外保留、重叠概念选择、距离上限、零系数和 blend=1 边界。在 CPU 小型随机 SD3/FLUX 原生 pipeline 上实际采样，确认 CFG 负向分支、FLUX 文本/MLP 通道及窗口外位置保持原有 hook 输入，保存的模式/系数与修改量正确；两种模式均完成四类 benchmark 的 8 个 case/9 项任务清单准备，确认可读名称、均值缓存复用及恢复参数限制。
 

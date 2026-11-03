@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from DiT.attention_replacement.method import (
-    AttentionReplacement, DEFAULTS, DIRECTORY, SUPPORTED_MODELS,
+    AttentionReplacement, DEFAULTS, DIRECTORY, MASK_MODES, SUPPORTED_MODELS,
     cache_identity, read_prototypes, resolve_settings,
 )
 from benchmark.common import digest, merge, read_json, write_json
@@ -30,7 +30,10 @@ def check_trace_space(config, collection, records):
     sites = [s for s in collection["sites"] if s["layer"] >= settings["layer_start"] and
              (settings["layer_end"] is None or s["layer"] < settings["layer_end"])]
     concepts = len(settings["pairs"])
-    per_step = sum(s["grid"][0] * s["grid"][1] * (13 * concepts + 5) + 1028 for s in sites)
+    bytes_per_pixel = 13 * concepts + 5
+    if settings["mask_mode"] != "layerwise":
+        bytes_per_pixel += 5 * concepts + 1  # Probe masks, vote fractions, applied mask.
+    per_step = sum(s["grid"][0] * s["grid"][1] * bytes_per_pixel + 1028 for s in sites)
     count = sum(not Path(record["image"]).is_file() for record in records)
     needed = count * (settings["step_end"] - settings["step_start"]) * per_step
     destination = Path(settings["trace_root"] or config["image_output_dir"])
@@ -80,6 +83,9 @@ def main(argv=None):
                      help="Masked AV edit; default: replace; observe only records diagnostics")
     own.add_argument("--strength", type=float,
                      help="Anchor coefficient for add/blend; default: 0.1; blend requires [0, 1]")
+    own.add_argument("--mask-mode", help=(
+        f"{', '.join(MASK_MODES)}; default: layerwise. Majority modes probe first, then edit "
+        "all selected layers or only the last selected layer on a second forward"))
     own.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None)
     own.add_argument("--trace-root", type=Path, help="Write online traces on a separate disk")
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
@@ -214,6 +220,7 @@ def main(argv=None):
             print(f"[{config['model_name']}:{config['case_id']}:{config['task']}] {count} images; "
                   f"steps=[{settings['step_start']},{settings['step_end']}); "
                   f"layers=[{settings['layer_start']},{settings['layer_end'] or 'all'}); "
+                  f"mask_mode={settings['mask_mode']}; "
                   f"intervention={settings['intervention']}; strength={settings['strength']:g}; "
                   f"N={len(settings['offline_seeds'])}; pairs={settings['pairs']}")
         return 0
@@ -259,6 +266,8 @@ def main(argv=None):
         intervention_label = settings["intervention"]
         if intervention_label in {"add", "blend"}:
             intervention_label += f"-strength-{settings['strength']:g}"
+        if settings["mask_mode"] != "layerwise":
+            intervention_label += f"-mask-{settings['mask_mode'].replace('_', '-')}"
         config["method"] = args.method or (
             f"AttentionReplacement-{intervention_label}-tau-{threshold}-u-{distance_limit}-"
             f"layers-{settings['layer_start']}-{settings['layer_end'] or 'all'}-"
