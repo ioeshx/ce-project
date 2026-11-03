@@ -29,7 +29,8 @@ logs/
 
 # 本地环境和凭据
 .env
-.vscode/
+.vscode/*
 /.aws/
 /.codex/
 /.agents/
+!.vscode/settings.json

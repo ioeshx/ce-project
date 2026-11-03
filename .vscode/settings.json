@@ -1,0 +1,17 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python.analysis.exclude": [
+        "DiT/attention_replacement/results",
+        "DiT/attention_replacement/cache",
+        "DiT/early_semantic/results",
+        "benchmark/original",
+        "benchmark/results",
+        "benchmark/cache",
+        "**/logs",
+        "**/checkpoints",
+        "**/original",
+        "**/results",
+        "**/cache",
+    ],
+}
