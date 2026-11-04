@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -e
+
+export HF_ENDPOINT="https://hf-mirror.com"
+
+querygraft_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+exec python "$querygraft_directory/run.py" benchmark \
+  --model "${MODEL:-sd35_medium}" \
+  --cases "${CASES:-all}" \
+  --localization-layers "${LOCALIZATION_LAYERS:-all}" \
+  --edit-layers "${EDIT_LAYERS:-last}" \
+  --representation "${REPRESENTATION:-av}" \
+  --rho "${RHO:-0.2}" \
+  --update-rule "${UPDATE_RULE:-replace}" \
+  --strength "${STRENGTH:-1}" \
+  "$@"
