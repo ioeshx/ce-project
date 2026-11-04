@@ -20,7 +20,7 @@ from benchmark.sampling_profile import initial_noise
 DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
 DEFAULTS = dict(background="background", localization_layers="all", edit_layers="last",
-                representation="av", rho=0.2, update_rule="replace", strength=1.0,
+                representation="av", eta=0.0, rho=0.0, update_rule="replace", strength=1.0,
                 trace=True, trace_root=None)
 
 
@@ -51,8 +51,9 @@ def resolve_settings(config, overrides=None):
     if not settings["pairs"] or any(not p["target"].strip() or not p["anchor"].strip()
                                     for p in settings["pairs"]):
         problems.append("provide nonempty target/anchor pairs")
-    if not math.isfinite(settings["rho"]) or not 0 <= settings["rho"] <= 1:
-        problems.append("rho must lie in [0,1]")
+    for name in ("eta", "rho"):
+        if not math.isfinite(settings[name]) or not 0 <= settings[name] <= 1:
+            problems.append(f"{name} must lie in [0,1]")
     if settings["representation"] not in {"av", "residual"}:
         problems.append("representation must be av or residual")
     if settings["update_rule"] not in {"replace", "blend", "add"}:
@@ -252,8 +253,10 @@ class QueryGraft(DiTAdapter):
             return
         # CFG batch order is [negative,positive]. Score only positive image rows.
         image_av, concept_av = image_av[-self.batch:], concept_av[-self.batch:]
-        concepts = concept_av.reshape(self.batch, -1, 3, concept_av.shape[-1])
-        scores = torch.einsum("bpd,bkcd->bkpc", image_av.float(), concepts.float())
+        concepts = concept_av.reshape(self.batch, -1, 3, concept_av.shape[-1]).float()
+        # Normalize each concept along D for scoring; keep the evolving AV states unchanged.
+        concepts = concepts / (concepts.norm(dim=-1, keepdim=True) + 1e-8)
+        scores = torch.einsum("bpd,bkcd->bkpc", image_av.float(), concepts)
         mask = (scores[..., 0] > scores[..., 1]) & (scores[..., 0] > scores[..., 2])
         if self.votes is None:
             self.votes = torch.zeros_like(mask, dtype=torch.int32)
@@ -263,7 +266,7 @@ class QueryGraft(DiTAdapter):
 
     def finish_mask(self):
         self.vote_fraction = self.votes.float() / len(self.localizers)
-        self.masks = 2 * self.votes > len(self.localizers)
+        self.masks = self.vote_fraction > self.settings["eta"]
         self.ratios = self.masks.float().mean(-1)
         self.triggered = self.ratios > self.settings["rho"]
         eligible = self.masks & self.triggered[..., None]

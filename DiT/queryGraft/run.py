@@ -29,7 +29,8 @@ def main(argv=None):
     own.add_argument("--localization-layers", help="all (default), or comma-separated 0-based block indices")
     own.add_argument("--edit-layers", help="last (default), all, or comma-separated 0-based block indices")
     own.add_argument("--representation", choices=("av", "residual"), help="Default: av, before output projection")
-    own.add_argument("--rho", type=float, help="Strict target-area threshold; default: 0.2")
+    own.add_argument("--eta", type=float, help="Strict layer-vote fraction threshold; default: 0 (any supporting layer)")
+    own.add_argument("--rho", type=float, help="Strict target-area threshold; default: 0 (any target token)")
     own.add_argument("--update-rule", choices=("replace", "blend", "add"), help="Default: replace")
     own.add_argument("--strength", type=float, help="Anchor coefficient for blend/add; default: 1")
     own.add_argument("--background", help="Background concept text; default: background")
@@ -116,7 +117,8 @@ def main(argv=None):
             if update_label != "replace":
                 update_label += f"-{settings['strength']:g}"
             config["method"] = args.method or (
-                f"queryGraft-{settings['representation']}-{update_label}-rho-{settings['rho']:g}-"
+                f"queryGraft-concept-l2-{settings['representation']}-{update_label}-"
+                f"eta-{settings['eta']:g}-rho-{settings['rho']:g}-"
                 f"loc-{local_label}-edit-{edit_label}-{started_at}")
             config = merge(config, {"image_output_dir": str(opts.result_root.expanduser().resolve()),
                 "adapter": {"kind": "plugin", "factory": "DiT.queryGraft.method:QueryGraft",

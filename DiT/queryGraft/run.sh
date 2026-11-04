@@ -11,7 +11,8 @@ exec python "$querygraft_directory/run.py" benchmark \
   --localization-layers "${LOCALIZATION_LAYERS:-all}" \
   --edit-layers "${EDIT_LAYERS:-last}" \
   --representation "${REPRESENTATION:-av}" \
-  --rho "${RHO:-0.2}" \
+  --eta "${ETA:-0.0}" \
+  --rho "${RHO:-0.0}" \
   --update-rule "${UPDATE_RULE:-replace}" \
   --strength "${STRENGTH:-1}" \
   "$@"

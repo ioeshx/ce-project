@@ -11,10 +11,10 @@
 | 定位概念 | target、anchor、background，共 3 个 | 本文固定单对概念 |
 | 概念初始化 | 每个完整概念短语独立编码，取输出的第一个 token | 沿用当前约定 |
 | 概念读取范围 | 原始 user text、image，以及概念 token | 单向读取，原始 token 不能读取概念 token |
-| 定位特征 | 同层、同一 attention 的多头拼接后原始 AV | 定位统一使用该空间 |
+| 定位特征 | 同层原始 image AV 与沿通道 L2 归一化后的 concept AV 点积 | 归一化只作用于分数读出 |
 | 定位层集 | 全部具有概念读出路径的主 attention 层 | 与关键层子集比较 |
-| 层间汇总 | 逐层二值掩码的严格多数投票 | 不与原始分数平均混用 |
-| 面积阈值 | \(\rho=0.20\)，严格大于才触发 | 对 \(\rho\) 做消融 |
+| 层间汇总 | 逐层二值掩码的支持比例严格大于 \(\eta=0\) | 对 \(\eta\) 做消融；\(0.5\) 为严格多数 |
+| 面积阈值 | \(\rho=0\)，掩码非空即触发 | 对 \(\rho\) 做消融 |
 | 替换表示 | 原始 AV，位于输出投影之前 | 与 attention 残差更新后的表示比较 |
 | 替换层集 | 模型最后一层的主 attention | 与全部层、关键层子集比较 |
 | 更新算子 | 硬替换 | 与比例融合、缩放相加比较 |
@@ -51,7 +51,8 @@
 | \(\mathcal L_e\) | 执行激活替换的层集，默认 \(\{L\}\) |
 | \(m_{t,\ell}(p),M_t(p)\) | 第 \(\ell\) 层的 target 二值掩码、跨层汇总后的 target 二值掩码 |
 | \(r_t,g_t\) | target 掩码面积比例、当前步是否触发替换的二值变量 |
-| \(\rho\) | 面积触发阈值，默认 \(0.20\) |
+| \(\eta\) | 跨层支持比例阈值，默认 \(0\) |
+| \(\rho\) | 面积触发阈值，默认 \(0\) |
 | \(\lambda\) | 融合或相加时的强度系数；硬替换不使用该参数 |
 | \(\widetilde f_{u,t},\widetilde y_t\) | 干预后的 user 条件预测、交给 scheduler 的原生 guidance 组合后预测 |
 | \(w,f^-_t\) | 原生 CFG 的 guidance scale、同一步负条件预测；仅在模型启用原生 CFG 时使用 |
@@ -168,16 +169,25 @@ C_t^\ell=\mathcal U^C_\ell
 
 ## 5. 同层输出空间的概念定位
 
-对每个定位层 \(\ell\in\mathcal L_q\)、image 位置 \(p\in\{1,\ldots,HW\}\) 和概念 \(k\in\mathcal K\)，计算：
+对每个定位层 \(\ell\in\mathcal L_q\) 和概念 \(k\in\mathcal K\)，先沿多头拼接后的通道维归一化 concept AV：
+
+\[
+\overline O^c_{t,\ell}(k,:)
+=\frac{O^c_{t,\ell}(k,:)}
+{\|O^c_{t,\ell}(k,:)\|_2+\epsilon},
+\qquad \epsilon=10^{-8}.
+\]
+
+随后对每个 image 位置 \(p\in\{1,\ldots,HW\}\) 计算：
 
 \[
 s_{t,\ell,k}(p)
 =\left\langle
 O^x_{t,\ell}(p,:),
-O^c_{t,\ell}(k,:)
+\overline O^c_{t,\ell}(k,:)
 \right\rangle
 =\sum_{d=1}^{D_\ell}
-O^x_{t,\ell}(p,d)O^c_{t,\ell}(k,d).
+O^x_{t,\ell}(p,d)\overline O^c_{t,\ell}(k,d).
 \tag{9}
 \]
 
@@ -186,7 +196,7 @@ S_{t,\ell}\in\mathbb R^{H\times W\times3}.
 \tag{10}
 \]
 
-默认使用多头拼接向量的原始点积，不做通道 L2 归一化。每次比较必须使用**同一层、同一 attention、同一 user 前向**的 image 和 concept 输出；不同层之间不平均特征向量。
+归一化与点积均用 FP32 计算，消除各概念输出范数对类别比较的影响。image AV 不做 L2 归一化，因此该分数不是完整的余弦相似度。归一化只用于分数读出，原始 concept AV 继续参与概念路径的原生状态更新，anchor 替换激活也保持原始 AV。每次比较必须使用**同一层、同一 attention、同一 user 前向**的 image 和 concept 输出；不同层之间不平均特征向量。
 
 如需可视化相对分数，可以在 concept 维计算：
 
@@ -216,7 +226,7 @@ s_{t,\ell,\mathrm{bg}}(p)
 
 平局取 0。background 提供第三个竞争类别，使位置可以归到 target、anchor 之外；它仍是一个文本概念，不自动等价于“所有其他语义”的完美拒识类别。
 
-### 5.2 跨层严格多数投票
+### 5.2 跨层投票比例阈值
 
 令 \(L_q=|\mathcal L_q|\)，先求逐层二值掩码的平均：
 
@@ -228,11 +238,11 @@ v_t(p)=\frac{1}{L_q}
 
 \[
 M_t(p)=\mathbf1[v_t(p)>\eta],
-\qquad \eta=\tfrac12.
+\qquad \eta\in[0,1],\quad \eta_{\rm default}=0.
 \tag{14}
 \]
 
-\(\eta\) 当前固定为严格多数阈值；恰好一半层支持 target 时，\(M_t(p)=0\)。每个 block 投一票，默认定位层集是所有主 attention 层。
+\(\eta\) 是可消融的超参数。默认 \(\eta=0\) 时，只要任意一个所选层支持 target，\(M_t(p)=1\)，等价于逐层掩码的并集。\(\eta=0.5\) 恢复严格多数投票，恰好一半层支持时取 0；\(\eta=1\) 时掩码恒为 0。每个 block 投一票，默认定位层集是所有主 attention 层。
 
 本方法当前采用的是 **“各层判定后再投票”**，不采用“先平均各层原始分数再 argmax”或“先平均各层 softmax 分数再阈值”。所有汇总均在当前 \(t\) 内完成，不跨采样步平均。
 
@@ -242,11 +252,11 @@ M_t(p)=\mathbf1[v_t(p)>\eta],
 r_t=\frac{1}{HW}\sum_{p=1}^{HW}M_t(p),
 \qquad
 g_t=\mathbf1[r_t>\rho],
-\qquad \rho=0.20.
+\qquad \rho_{\rm default}=0.
 \tag{15}
 \]
 
-\(r_t\) 只统计 target 掩码面积。\(r_t=0.20\) 不触发，\(r_t>0.20\) 才触发。未触发时，继续完成 user 原生输出，不计算 anchor source。该阈值是当前实验起点，最终取值通过面积阈值消融确定。
+\(r_t\) 只统计 target 掩码面积。默认 \(\rho=0\) 时，掩码非空就触发，空掩码仍跳过 anchor 前向。设置 \(\rho=0.20\) 时恢复旧的面积门控：\(r_t=0.20\) 不触发，\(r_t>0.20\) 才触发。未触发时，继续完成 user 原生输出。最终阈值通过消融确定。
 
 定义实际应用的掩码：
 
@@ -338,13 +348,13 @@ x_{t-1}=\operatorname{SchedulerStep}
 - **FLUX 双流层** 在 image attention 输出投影之前操作；概念沿用 text 侧路径。
 - **FLUX 单流层** 的 AV 与并行 MLP 特征拼接后进入融合投影；只替换图像行中的 AV 通道，随后沿用 user 的 MLP 特征、融合投影、门控和残差。
 
-为明确后续实现，本稿约定：SD3.5 原生 CFG 存在时，仅在正条件 user 路径定位与替换，负条件预测沿用原生结果，再按原生 CFG 组合。anchor source 提取其 anchor 正条件路径的 AV；这些原始 AV 不做 CFG 线性组合。该分支选择是模型接入约定，与前述五组消融设计分别记录。FLUX 默认沿用模型的内嵌 guidance；具体 guidance 数值与原生采样配置共同记录。
+为明确后续实现，本稿约定：SD3.5 原生 CFG 存在时，仅在正条件 user 路径定位与替换，负条件预测沿用原生结果，再按原生 CFG 组合。anchor source 提取其 anchor 正条件路径的 AV；这些原始 AV 不做 CFG 线性组合。该分支选择是模型接入约定，与六组消融设计分别记录。FLUX 默认沿用模型的内嵌 guidance；具体 guidance 数值与原生采样配置共同记录。
 
 ## 9. 单采样步算法
 
 ```text
 输入：当前 x_t、原生时间 tau_t、完整 user 条件、概念初始表示 C^0
-参数：定位层集 L_q、编辑层集 L_e={L}、eta=0.5、rho=0.2
+参数：定位层集 L_q、编辑层集 L_e={L}、eta=0、rho=0
 
 重置当前步概念状态 C <- C^0
 votes[p] <- 0
@@ -355,13 +365,14 @@ votes[p] <- 0
 
     对每个定位层 ell in L_q：
         取同层 image raw AV O_x 与 concept raw AV O_c
-        s[p,k] <- dot(O_x[p,:], O_c[k,:])
+        O_c_normalized[k,:] <- float32(O_c[k,:]) / (norm(float32(O_c[k,:])) + 1e-8)
+        s[p,k] <- dot(float32(O_x[p,:]), O_c_normalized[k,:])
         m[p] <- s[p,target] > max(s[p,anchor], s[p,background])
         votes[p] <- votes[p] + m[p]
 
     在最终层 image/concept AV 已得到、image 输出投影尚未执行时暂停
 
-M[p] <- 2 * votes[p] > |L_q|
+M[p] <- votes[p] / |L_q| > eta
 r <- sum(M) / (H * W)
 g <- r > rho
 
@@ -377,7 +388,7 @@ g <- r > rho
 
 完整采样对 \(t=T,\ldots,1\) 重复上述过程，最后执行原生图像解码。
 
-## 10. 五组保留的消融选择
+## 10. 六组保留的消融选择
 
 以下设计均保留为后续实验选项。默认配置是实验起点，不预先认定其为最优。
 
@@ -420,7 +431,7 @@ R^u_{t,\ell}, & g_t=0,\\
 \tag{23}
 \]
 
-默认全部层；备选使用明确列出的关键层子集。两者均按式 (13)–(14) 在所选层集内等权严格多数投票，分母同步改为 \(|\mathcal L_q|\)。关键层的选择依据和最终索引由实验确定并记录；仅改变读出层集不等于提前删除概念的逐层演化路径。
+默认全部层；备选使用明确列出的关键层子集。两者均按式 (13)–(14) 在所选层集内等权统计支持比例，并使用同一 \(\eta\) 判定，分母同步改为 \(|\mathcal L_q|\)。关键层的选择依据和最终索引由实验确定并记录；仅改变读出层集不等于提前删除概念的逐层演化路径。
 
 ### 10.3 替换层集：最后一层、全部层与关键层
 
@@ -456,7 +467,7 @@ g_t(\rho)=\mathbf1[r_t>\rho],
 \tag{26}
 \]
 
-默认 \(\rho=0.20\)。建议起始消融网格为
+默认 \(\rho=0\)。建议起始消融网格为
 \(\{0,0.05,0.10,0.20,0.30,0.40\}\)，最终实验网格可根据结果调整；这些值是实验建议，不是已经验证的设置。
 
 在当前严格不等号下，\(\rho=0\) 表示只要存在 target 掩码位置便触发，\(\rho=1\) 永不触发。比较时报告擦除效果、保留效果、触发率与额外 anchor 计算量，尤其观察小目标受面积阈值影响的情况。
@@ -475,6 +486,12 @@ g_t(\rho)=\mathbf1[r_t>\rho],
 
 融合与相加的 \(\lambda\) 分别调参，并记录各自扫描值；硬替换作为无强度系数的基准。
 
+### 10.6 跨层投票阈值 \(\eta\)
+
+\(\eta\in[0,1]\) 按式 (14) 控制需要多少定位层支持 target，默认 \(\eta=0\)。建议起始消融网格为 \(\{0,0.1,0.25,0.5,0.75\}\)。所有设置都使用严格大于：例如 \(\eta=0.5\) 时，恰好一半层支持仍取 0。
+
+定位层集 \(\mathcal L_q\) 决定哪些层参与统计，\(\eta\) 决定这些层中所需的支持比例；二者分别配置。\(\eta\) 与面积阈值 \(\rho\) 也分别判定：前者决定每个位置是否进入掩码，后者决定当前步是否计算 anchor source 并替换。
+
 ## 11. 超参数与实验配置记录
 
 | 配置项 | 符号或字段 | 当前设置 | 属性 |
@@ -482,8 +499,9 @@ g_t(\rho)=\mathbf1[r_t>\rho],
 | 目标、anchor、background 原文 | \(c_{\rm tar},c_{\rm anc},c_{\rm bg}\) | 随任务配置；background 起始文本为 `background` | 文本条件 |
 | 概念数 | \(N_c\) | 3 | 当前单对概念设计常量 |
 | 定位层集 | \(\mathcal L_q\) | 全部主 attention 层 | 消融轴 2 |
-| 投票阈值 | \(\eta\) | \(0.5\)，严格大于 | 当前固定规则 |
-| 面积阈值 | \(\rho\) | \(0.20\)，严格大于 | 数值超参数，消融轴 4 |
+| 投票阈值 | \(\eta\) / `--eta` | \(0\)，严格大于 | 数值超参数，消融轴 6 |
+| 面积阈值 | \(\rho\) / `--rho` | \(0\)，严格大于 | 数值超参数，消融轴 4 |
+| concept 归一化 | 通道 L2，\(\epsilon=10^{-8}\) | FP32，原生 concept AV 除以 `norm + epsilon` | 固定的分数计算规则 |
 | 替换表示位置 | `representation_site` | `av_pre_projection` | 消融轴 1 |
 | 替换层集 | \(\mathcal L_e\) | 最后一层主 attention | 消融轴 3 |
 | 更新算子 | `update_rule` | `hard_replace` | 消融轴 5 |
@@ -494,7 +512,7 @@ g_t(\rho)=\mathbf1[r_t>\rho],
 
 \(1/\sqrt{d_\ell}\) 是原生 attention 缩放，\(D_\ell\)、\(H\)、\(W\) 是模型或输入形状；它们不作为额外的方法调参项。本文也不增加新的 softmax 温度、置信度阈值或学习式门控。
 
-最小实验记录包括：模型与原生采样配置、三个概念原文、概念编码与位置约定、定位层和替换层的完整列表、替换表示、更新算子及系数、\(\rho\)，以及逐步的 \(r_t\)、\(g_t\) 和实际额外前向开销。五组消融优先分别改变一个设计项，其他配置保持一致。
+最小实验记录包括：模型与原生采样配置、三个概念原文、概念编码与位置约定、concept 归一化规则、定位层和替换层的完整列表、替换表示、更新算子及系数、\(\eta\)、\(\rho\)，以及逐步的 \(r_t\)、\(g_t\) 和实际额外前向开销。六组消融优先分别改变一个设计项，其他配置保持一致。
 
 ## 12. 与 ConceptAttention 的实现对应
 
@@ -503,6 +521,7 @@ g_t(\rho)=\mathbf1[r_t>\rho],
 - [概念编码 `embed_concepts`](../../baseline/ConceptAttention/concept_attention/utils.py)：逐概念编码并提取索引 0 的 token。
 - [FLUX 概念与图像输出](../../baseline/ConceptAttention/concept_attention/flux/dit_block.py)：保留多头拼接后的 AV，计算 concept/image 输出点积，并分别更新原始与概念路径。
 - [输出空间 saliency 汇总](../../baseline/ConceptAttention/concept_attention/flux/pipeline.py)：在概念维 softmax，再对指定层和采样步求平均。
+- [SD3 concept 输出归一化](../../baseline/ConceptAttention/concept_attention/sd3/concept_attention_pipeline.py)：先对 concept 输出做通道 L2 归一化，再与 image 输出点积；本文沿用这一归一化规则。
 - [ConceptAttention 论文](https://arxiv.org/abs/2502.04320)。
 
 queryGraft 在此基础上定义了当前的只读扩展：concept query 直接读取原始 user text、image 与 concept；上游 FLUX 概念 attention 默认读取 image 与 concept。queryGraft 的掩码则采用**当前单步内的逐层二值投票**，随后通过在线 anchor 条件 source 执行显式激活替换。上游跨层／跨步 saliency 平均与本文式 (12)–(15) 是不同的汇总算法。
