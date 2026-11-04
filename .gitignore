@@ -3,10 +3,11 @@ aaai27/
 *.pdf
 tmp/
 /DiT/*
+DiT/early_semantic/results/
 !/DiT/renoise_self_check/
 !/DiT/early_semantic/
 !DiT/attention_replacement/
-DiT/early_semantic/results/
+!DiT/queryGraft
 
 # Python 缓存和虚拟环境
 __pycache__/
