@@ -10,8 +10,8 @@ import time
 
 import torch
 import torch.nn.functional as F
-from safetensors.torch import save_file
 
+from DiT.queryGraft.diagnostics import save_step_diagnostics
 from benchmark.common import ROOT, read_json, write_json
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.sampling_profile import initial_noise
@@ -249,7 +249,7 @@ class QueryGraft(DiTAdapter):
         return inputs
 
     def record_concepts(self, layer, image_av, concept_av):
-        if layer not in self.localizers:
+        if layer not in self.localizers and not self.settings["trace"]:
             return
         # CFG batch order is [negative,positive]. Score only positive image rows.
         image_av, concept_av = image_av[-self.batch:], concept_av[-self.batch:]
@@ -258,11 +258,22 @@ class QueryGraft(DiTAdapter):
         concepts = concepts / (concepts.norm(dim=-1, keepdim=True) + 1e-8)
         scores = torch.einsum("bpd,bkcd->bkpc", image_av.float(), concepts)
         mask = (scores[..., 0] > scores[..., 1]) & (scores[..., 0] > scores[..., 2])
-        if self.votes is None:
-            self.votes = torch.zeros_like(mask, dtype=torch.int32)
-        self.votes.add_(mask.to(self.votes.device))
+        if layer in self.localizers:
+            if self.votes is None:
+                self.votes = torch.zeros_like(mask, dtype=torch.int32)
+            self.votes.add_(mask.to(self.votes.device))
         if self.settings["trace"]:
             self.layer_ratios[str(layer)] = mask.float().mean(-1).cpu().tolist()
+            probabilities = scores.softmax(dim=-1)
+            if self.diagnostic_mask_sum is None:
+                self.diagnostic_mask_sum = mask.float()
+                self.diagnostic_score_sum = probabilities.detach().clone()
+                self.diagnostic_logit_sum = scores.detach().clone()
+            else:
+                self.diagnostic_mask_sum.add_(mask.to(self.diagnostic_mask_sum.device))
+                self.diagnostic_score_sum.add_(probabilities.to(self.diagnostic_score_sum.device))
+                self.diagnostic_logit_sum.add_(scores.to(self.diagnostic_logit_sum.device))
+            self.diagnostic_layers.append(layer)
 
     def finish_mask(self):
         self.vote_fraction = self.votes.float() / len(self.localizers)
@@ -316,6 +327,24 @@ class QueryGraft(DiTAdapter):
                 edited = (image.float() + self.settings["strength"] * source.float()).to(image.dtype)
             mask = (self.winner == pair).to(image.device)[..., None]
             result = torch.where(mask, edited, result)
+        if self.settings["trace"]:
+            before, after = image.float(), result.float()
+            delta = after - before
+            before_energy = before.square().sum(-1)
+            after_energy = after.square().sum(-1)
+            delta_energy = delta.square().sum(-1)
+            delta_max = delta.abs().amax(-1)
+            statistics = []
+            for pair in range(len(self.settings["pairs"])):
+                selected = (self.winner == pair).to(image.device).float()
+                tokens = selected.sum(-1)
+                statistics.append(torch.stack((
+                    (before_energy * selected).sum(-1),
+                    (after_energy * selected).sum(-1),
+                    (delta_energy * selected).sum(-1),
+                    (delta_max * selected).amax(-1),
+                    tokens * image.shape[-1], tokens), dim=-1))
+            self.activation_sums[layer] = torch.stack(statistics, dim=1).detach().cpu()
         return result
 
     def attention_output(self, layer, image_av):
@@ -387,6 +416,8 @@ class QueryGraft(DiTAdapter):
         self.input_call = dict(self.forward_signature.bind(*args, **kwargs).arguments)
         self.text_count = self.input_call["encoder_hidden_states"].shape[1]
         self.votes, self.sources, self.layer_ratios = None, {}, {}
+        self.diagnostic_mask_sum = self.diagnostic_score_sum = self.diagnostic_logit_sum = None
+        self.diagnostic_layers, self.activation_sums = [], {}
         self.dual_state.clear()
         self.forward_calls += 1
         self.mode = "user" if self.inline else "probe"
@@ -400,17 +431,34 @@ class QueryGraft(DiTAdapter):
                 output = self.native_forward(**self.input_call)
         self.mode = "idle"
         if self.settings["trace"]:
+            pairs = len(self.settings["pairs"])
+            applied = self.winner[:, None] == torch.arange(pairs, device=self.winner.device)[None, :, None]
+            layers = len(self.diagnostic_layers)
+            payload = {
+                "mask": self.masks.reshape(self.batch, pairs, *self.grid).cpu(),
+                "vote_fraction": self.vote_fraction.reshape(self.batch, pairs, *self.grid).cpu(),
+                "winner": self.winner.reshape(self.batch, *self.grid).cpu(),
+                "applied_mask": applied.reshape(self.batch, pairs, *self.grid).cpu(),
+                "layer_mask_mean": (self.diagnostic_mask_sum / layers).reshape(self.batch, pairs, *self.grid).cpu(),
+                "concept_scores_mean": (self.diagnostic_score_sum / layers).reshape(self.batch, pairs, *self.grid, 3).cpu(),
+                "concept_logits_mean": (self.diagnostic_logit_sum / layers).reshape(self.batch, pairs, *self.grid, 3).cpu(),
+            }
+            activation = torch.stack([self.activation_sums.get(layer, torch.zeros(self.batch, pairs, 6))
+                                      for layer in self.editors], dim=2)
             for i, directory in enumerate(self.trace_dirs):
-                self.step_traces[i].append({"step_index": self.step,
+                info = {"step_index": self.step,
                     "timestep": float(self.input_call["timestep"][0].item()),
                     "target_area": self.ratios[i].cpu().tolist(),
                     "triggered": self.triggered[i].cpu().tolist(),
-                    "layer_target_area": {key: value[i] for key, value in self.layer_ratios.items()}})
-                destination = directory / f"step_{self.step:04d}.safetensors"
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                save_file({"mask": self.masks[i].reshape(-1, *self.grid).cpu().contiguous(),
-                           "vote_fraction": self.vote_fraction[i].reshape(-1, *self.grid).cpu().contiguous(),
-                           "winner": self.winner[i].reshape(*self.grid).cpu().contiguous()}, str(destination))
+                    "layer_target_area": {key: value[i] for key, value in self.layer_ratios.items()},
+                    "pairs": self.settings["pairs"], "eta": self.settings["eta"], "rho": self.settings["rho"],
+                    "representation": self.settings["representation"],
+                    "diagnostic_layers": self.diagnostic_layers, "localization_layers": self.localizers}
+                tensors = {name: value[i] for name, value in payload.items()}
+                tensors["edit_layer_indices"] = torch.tensor(self.editors)
+                info["activation_change"] = save_step_diagnostics(
+                    directory, self.step, tensors, activation[i], info)
+                self.step_traces[i].append(info)
         self.sources.clear()
         self.dual_state.clear()
         return output

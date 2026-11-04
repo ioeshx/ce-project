@@ -1,3 +1,6 @@
+CASES=i2p bash DiT/queryGraft/run.sh \
+  --device cuda:1 --tasks i2p --phase sample --trace> DiT/queryGraft/logs/i2p_record.log
+
 MASK_MODE=majority_all bash DiT/attention_replacement/run.sh --device cuda:0 > DiT/attention_replacement/logs/majority_all.log
 
 MASK_MODE=majority_last bash DiT/attention_replacement/run.sh --device cuda:1 > DiT/attention_replacement/logs/majority_last.log

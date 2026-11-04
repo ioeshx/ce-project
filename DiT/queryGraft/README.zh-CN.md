@@ -525,3 +525,79 @@ g_t(\rho)=\mathbf1[r_t>\rho],
 - [ConceptAttention 论文](https://arxiv.org/abs/2502.04320)。
 
 queryGraft 在此基础上定义了当前的只读扩展：concept query 直接读取原始 user text、image 与 concept；上游 FLUX 概念 attention 默认读取 image 与 concept。queryGraft 的掩码则采用**当前单步内的逐层二值投票**，随后通过在线 anchor 条件 source 执行显式激活替换。上游跨层／跨步 saliency 平均与本文式 (12)–(15) 是不同的汇总算法。
+
+## 13. 逐采样步诊断的数学定义
+
+诊断通过 `--trace` 开启，默认启用；每个样本、每个时间步保存一张四联图与一份数值张量。多 pair 在同一张图中按行展示。下面恢复 pair 索引 \(k\)，并用 \(w_t(p)\) 表示经过面积门控与重叠选择后的胜出 pair；没有胜出者时为 −1。
+
+### 13.1 最终执行掩码
+
+\[
+A_{t,k}(p)=\mathbf1[w_t(p)=k],
+\qquad
+A_{t,\ell,k}(p)=\mathbf1[\ell\in\mathcal L_e]A_{t,k}(p).
+\tag{27}
+\]
+
+第一张热力图展示 \(A_{t,k}\)。单 pair 时它等于式 (16) 的 \(\widehat M_t\)；多 pair 时还剔除重叠位置中未胜出的概念。未触发时为零图。这里记录的是算法执行替换的区域；实际数值改变量由第 13.4 节独立统计。
+
+### 13.2 所有执行层的平均掩码
+
+令 \(\mathcal L_d\) 为本次 user 定位前向实际执行的全部主 attention 层，则第二张热力图为：
+
+\[
+U_{t,k}(p)=\frac1{|\mathcal L_d|}
+\sum_{\ell\in\mathcal L_d}m_{t,\ell,k}(p).
+\tag{28}
+\]
+
+默认 \(\mathcal L_d=\mathcal L_q\)，此时它等于式 (13) 的支持比例。选择关键定位层时，诊断仍统计所有执行层，而最终掩码继续只由 \(\mathcal L_q\) 决定。诊断不改变算法的层选择。
+
+### 13.3 平均 target 概念分数
+
+对式 (9) 的归一化 concept 点积分数，在每层、本组的三个概念间计算 softmax。第三张热力图展示：
+
+\[
+P^{\rm tar}_{t,k}(p)
+=\frac1{|\mathcal L_d|}
+\sum_{\ell\in\mathcal L_d}
+\frac{\exp s_{t,\ell,k,\mathrm{tar}}(p)}
+{\sum_{c\in\{\mathrm{tar},\mathrm{anc},\mathrm{bg}\}}
+\exp s_{t,\ell,k,c}(p)}.
+\tag{29}
+\]
+
+该图取值在 `[0,1]`，用于展示 target 相对于 anchor、background 的得分，不作为校准的存在概率。保存全部三个概念的均值通道，并额外保存未 softmax 的点积分数均值。该 softmax 只用于诊断，逐层掩码仍按式 (12) 的严格分数比较产生。
+
+### 13.4 实际替换位置的激活变化
+
+令 \(X_{t,\ell}\)、\(X'_{t,\ell}\) 为编辑位置更新前、更新后的 user 表示；位置遵循 `av`／`residual` 配置。对 pair \(k\)，只在其实际执行区域统计，记通道元素集合为：
+
+\[
+\Omega_{t,k}=\{(\ell,p,d):\ell\in\mathcal L_e,
+A_{t,k}(p)=1,\ 1\le d\le D_\ell\}.
+\]
+
+其中 \(D_\ell\) 在 residual 配置下使用该编辑表示的实际通道数。第四个面板用柱状图展示 \(Z\in\{X,X',X'-X\}\) 的：
+
+\[
+\operatorname{RMS}_{\Omega}(Z)
+=\sqrt{\frac{\sum_{(\ell,p,d)\in\Omega_{t,k}}Z_{t,\ell}(p,d)^2}
+{|\Omega_{t,k}|}}.
+\tag{30}
+\]
+
+同时标注相对 L2 改变量与最大绝对改变量：
+
+\[
+R_{t,k}
+=\frac{\sqrt{\sum_{\Omega_{t,k}}(X'-X)^2}}
+{\sqrt{\sum_{\Omega_{t,k}}X^2}+10^{-8}},
+\qquad
+B_{t,k}=\max_{\Omega_{t,k}}|X'-X|.
+\tag{31}
+\]
+
+集合为空时统计值记为零，并显示未执行更新。多层汇总使用各层平方和与通道元素数计算，不直接平均各层 RMS；另存逐编辑层的相同指标与 token 数。默认 AV 模式的统计发生在输出投影之前，不能将它解释为最终速度预测的改变量。
+
+实现仅增加统计、绘图与 I/O，不增加模型前向。输出字段、目录与运行命令见 [运行说明](README.md)。

@@ -36,8 +36,9 @@ def main(argv=None):
     own.add_argument("--background", help="Background concept text; default: background")
     own.add_argument("--pairs", type=json.loads, help='JSON: [{"target":"nudity","anchor":"clothed"}]')
     own.add_argument("--anchor-overrides", type=json.loads, help='JSON: {"nudity":"clothed"}')
-    own.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None)
-    own.add_argument("--trace-root", type=Path)
+    own.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None,
+                     help="Save per-step four-panel PNGs, numeric maps and activation statistics (default: on)")
+    own.add_argument("--trace-root", type=Path, help="Root for readable per-model/case/run/sample diagnostic directories")
     own.add_argument("--result-root", type=Path, default=DIRECTORY / "results")
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
     own.add_argument("--seed", type=int, default=42, help="sample: initial noise seed")
@@ -122,7 +123,7 @@ def main(argv=None):
                 f"loc-{local_label}-edit-{edit_label}-{started_at}")
             config = merge(config, {"image_output_dir": str(opts.result_root.expanduser().resolve()),
                 "adapter": {"kind": "plugin", "factory": "DiT.queryGraft.method:QueryGraft",
-                            "source_files": ["method.py", "run.py"], "query_graft": settings}})
+                            "source_files": ["method.py", "run.py", "diagnostics.py"], "query_graft": settings}})
             configs.append(config)
             if opts.action == "sample":
                 break
