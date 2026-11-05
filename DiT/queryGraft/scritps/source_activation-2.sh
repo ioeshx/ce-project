@@ -1,4 +1,5 @@
-cd /home/shx/code/ce-new
+# cd /home/shx/code/ce-new
+export HF_ENDPOINT="https://hf-mirror.com"
 
 # 共用设置；可统一修改 eta、rho
 common=(

@@ -1,3 +1,6 @@
+DiT/queryGraft/scritps/source_activation.sh > DiT/queryGraft/logs/source_activation.log 2>&1
+DiT/queryGraft/scritps/source_activation-2.sh > DiT/queryGraft/logs/source_activation-2.log 2>&1
+
 REPRESENTATION=block_output bash DiT/queryGraft/run.sh \
   --device cuda:0 --phase run --device cuda:0 > DiT/queryGraft/logs/block_output.log 2>&1
 
