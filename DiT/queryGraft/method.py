@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 
 from DiT.queryGraft.diagnostics import save_step_diagnostics
+from DiT.queryGraft.source import SOURCE_MODES, controlled_attention, joint_prompts, token_groups
 from benchmark.common import ROOT, read_json, write_json
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.sampling_profile import initial_noise
@@ -21,7 +22,8 @@ DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
 DEFAULTS = dict(background="background", localization_layers="all", edit_layers="last",
                 representation="av", eta=0.0, rho=0.0, update_rule="replace", strength=1.0,
-                trace=True, trace_root=None)
+                source_mode="anchor", source_user_weight=1.0, source_anchor_weight=1.0, source_scale=1.0,
+                trace=False, trace_root=None)
 
 
 def resolve_settings(config, overrides=None):
@@ -54,8 +56,16 @@ def resolve_settings(config, overrides=None):
     for name in ("eta", "rho"):
         if not math.isfinite(settings[name]) or not 0 <= settings[name] <= 1:
             problems.append(f"{name} must lie in [0,1]")
-    if settings["representation"] not in {"av", "residual"}:
-        problems.append("representation must be av or residual")
+    if settings["representation"] not in {"av", "residual", "block_output"}:
+        problems.append("representation must be av, residual or block_output")
+    if settings["source_mode"] not in SOURCE_MODES:
+        problems.append(f"source_mode must be one of {SOURCE_MODES}")
+    for name in ("source_user_weight", "source_anchor_weight", "source_scale"):
+        if not math.isfinite(settings[name]) or settings[name] < 0:
+            problems.append(f"{name} must be finite and nonnegative")
+    if settings["source_mode"] == "logits" and (
+            settings["source_user_weight"] <= 0 or settings["source_anchor_weight"] <= 0):
+        problems.append("logits source weights must be positive")
     if settings["update_rule"] not in {"replace", "blend", "add"}:
         problems.append("update_rule must be replace, blend or add")
     if not math.isfinite(settings["strength"]) or settings["strength"] < 0:
@@ -147,7 +157,15 @@ class QueryAttention:
                                   image_av.transpose(1, 2).flatten(2),
                                   oc.transpose(1, 2).flatten(2))
         else:
-            output = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
+            if owner.mode == "anchor" and owner.settings["source_mode"] in {"logits", "values"}:
+                user_tokens, anchor_tokens = owner.source_groups[owner.current_anchor]
+                output = controlled_attention(
+                    query, key, value, attention_mask, text_count=text_count, flux=owner.flux,
+                    user_tokens=user_tokens, anchor_tokens=anchor_tokens, region=owner.source_region,
+                    mode=owner.settings["source_mode"], user_weight=owner.settings["source_user_weight"],
+                    anchor_weight=owner.settings["source_anchor_weight"])
+            else:
+                output = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
 
         output = output.transpose(1, 2).flatten(2).to(query.dtype)
         if self.single:
@@ -201,9 +219,11 @@ class QueryGraft(DiTAdapter):
             original = block.attn.processor
             self.processors.append((block.attn, original))
             block.attn.set_processor(QueryAttention(self, layer, single, original))
-            if self.settings["representation"] == "residual" and layer in self.editors:
+            if self.settings["representation"] == "block_output" and layer in self.editors:
+                self.handles.append(block.register_forward_hook(partial(self.block_output, layer)))
+            elif self.settings["representation"] == "residual" and layer in self.editors:
                 if single:
-                    self.handles.append(block.register_forward_hook(partial(self.single_residual, layer)))
+                    self.handles.append(block.register_forward_hook(partial(self.block_output, layer)))
                 else:
                     self.handles.append(block.norm2.register_forward_pre_hook(partial(self.residual, layer)))
                     if not self.flux and block.use_dual_attention:
@@ -221,22 +241,58 @@ class QueryGraft(DiTAdapter):
         # Full phrases are independent batch items. Only localization uses token zero.
         phrases = [text for pair in self.settings["pairs"]
                    for text in (pair["target"], pair["anchor"], self.settings["background"])]
+        self.anchor_conditions, self.source_groups = {}, {}
         with torch.inference_mode():
             self.concepts = self.pipe._get_t5_prompt_embeds(
                 prompt=phrases, max_sequence_length=opts["max_sequence_length"],
                 num_images_per_prompt=1, device=self.device, dtype=self.dtype)[:, 0].unsqueeze(0).cpu()
-            anchors = list(dict.fromkeys(pair["anchor"] for pair in self.settings["pairs"]))
-            encode_kwargs = dict(prompt=anchors, device=self.device,
-                                 max_sequence_length=opts["max_sequence_length"])
-            if self.flux:
-                sequence, pooled, text_ids = self.pipe.encode_prompt(**encode_kwargs)
-            else:
-                sequence, _, pooled, _ = self.pipe.encode_prompt(
-                    **encode_kwargs, prompt_2=None, prompt_3=None, do_classifier_free_guidance=False)
-                text_ids = None
-            self.anchor_conditions = {anchor: (sequence[i:i+1].cpu(), pooled[i:i+1].cpu(),
-                                               text_ids.cpu() if text_ids is not None else None)
-                                      for i, anchor in enumerate(anchors)}
+            if self.settings["source_mode"] == "anchor":
+                anchors = list(dict.fromkeys(pair["anchor"] for pair in self.settings["pairs"]))
+                sequence, pooled, text_ids = self.encode_source(anchors)
+                self.anchor_conditions = {anchor: (sequence[i:i+1], pooled[i:i+1], text_ids)
+                                          for i, anchor in enumerate(anchors)}
+
+    def encode_source(self, prompts):
+        kwargs = dict(prompt=prompts, device=self.device,
+                      max_sequence_length=self.config["sampling"]["max_sequence_length"])
+        if self.flux:
+            sequence, pooled, text_ids = self.pipe.encode_prompt(**kwargs)
+        else:
+            sequence, _, pooled, _ = self.pipe.encode_prompt(
+                **kwargs, prompt_2=None, prompt_3=None, do_classifier_free_guidance=False)
+            text_ids = None
+        return sequence.cpu(), pooled.cpu(), text_ids.cpu() if text_ids is not None else None
+
+    def prepare_sources(self, records):
+        """Encode native joint prompts per sample; localization concepts stay fixed."""
+        if self.settings["source_mode"] == "anchor":
+            return
+        self.anchor_conditions.clear()
+        self.source_groups.clear()
+        prompts = [record["prompt"] for record in records]
+        length = self.config["sampling"]["max_sequence_length"]
+        for anchor in dict.fromkeys(pair["anchor"] for pair in self.settings["pairs"]):
+            joint = joint_prompts(prompts, anchor)
+            condition = self.encode_source(joint)
+            self.anchor_conditions[anchor] = condition
+            if self.settings["source_mode"] in {"logits", "values"}:
+                tokenizer = self.pipe.tokenizer_2 if self.flux else self.pipe.tokenizer_3
+                user, added = token_groups(tokenizer, prompts, joint, length)
+                if not added.any(-1).all():
+                    raise ValueError("The appended source anchor was truncated; increase sampling.max_sequence_length "
+                                     "in the config or shorten the prompt/anchor.")
+                if not self.flux:
+                    clip_user, clip_added = token_groups(
+                        self.pipe.tokenizer, prompts, joint, self.pipe.tokenizer_max_length)
+                    second = token_groups(self.pipe.tokenizer_2, prompts, joint, self.pipe.tokenizer_max_length)
+                    # A native SD3 row contains both CLIP encoders' channels.
+                    # Mixed/unaligned rows cannot be assigned to either group.
+                    clip_user = clip_user & second[0]
+                    clip_added = clip_added & second[1]
+                    user, added = torch.cat((clip_user, user), -1), torch.cat((clip_added, added), -1)
+                if user.shape[1] != condition[0].shape[1]:
+                    raise ValueError("Source token groups do not match the native encoded sequence length.")
+                self.source_groups[anchor] = user, added
 
     def with_concepts(self, call):
         inputs = dict(call)
@@ -294,6 +350,11 @@ class QueryGraft(DiTAdapter):
                 if not self.triggered[:, pair].any().item() or anchor in self.sources:
                     continue
                 sequence, pooled, text_ids = self.anchor_conditions[anchor]
+                if self.settings["source_mode"] in {"logits", "values"}:
+                    self.source_region = torch.zeros_like(self.winner, dtype=torch.bool)
+                    for index, pair_definition in enumerate(self.settings["pairs"]):
+                        if pair_definition["anchor"] == anchor:
+                            self.source_region |= self.winner == index
                 call = dict(self.input_call)
                 call["hidden_states"] = call["hidden_states"][-self.batch:]
                 call["encoder_hidden_states"] = sequence.to(self.input_call["encoder_hidden_states"]).expand(self.batch, -1, -1)
@@ -319,6 +380,9 @@ class QueryGraft(DiTAdapter):
             if anchor not in self.sources:
                 continue
             source = self.sources[anchor][layer].to(image)
+            if self.settings["source_mode"] == "extrapolate" and self.settings["source_scale"] != 1:
+                baseline = self.user_sources[layer].to(image).float()
+                source = (baseline + self.settings["source_scale"] * (source.float() - baseline)).to(image.dtype)
             if self.settings["update_rule"] == "replace":
                 edited = source
             elif self.settings["update_rule"] == "blend":
@@ -347,7 +411,15 @@ class QueryGraft(DiTAdapter):
             self.activation_sums[layer] = torch.stack(statistics, dim=1).detach().cpu()
         return result
 
+    def remember_user(self, layer, image):
+        if (self.settings["source_mode"] == "extrapolate" and self.mode in {"user", "probe"}
+                and layer in self.editors):
+            baseline = image[-self.batch:].detach()
+            self.user_sources[layer] = baseline if self.inline else baseline.cpu()
+
     def attention_output(self, layer, image_av):
+        if self.settings["representation"] == "av":
+            self.remember_user(layer, image_av)
         if self.mode == "anchor":
             if layer in self.editors and self.settings["representation"] == "av":
                 self.sources[self.current_anchor][layer] = (image_av.detach() if self.inline
@@ -364,7 +436,7 @@ class QueryGraft(DiTAdapter):
         return image_av
 
     def dual_attention(self, layer, kind, module, args, output):
-        if self.active and self.mode != "probe":
+        if self.active and (self.mode != "probe" or self.settings["source_mode"] == "extrapolate"):
             if kind == "gate":
                 self.dual_state[self.mode, layer, "input"] = args[0]
                 self.dual_state[self.mode, layer, "main_gate"] = output[1]
@@ -374,7 +446,7 @@ class QueryGraft(DiTAdapter):
 
     def residual(self, layer, module, args):
         """Patch the main-attention residual, retaining SD3.5's image-only attn2 update."""
-        if not self.active or self.mode == "probe":
+        if not self.active or (self.mode == "probe" and self.settings["source_mode"] != "extrapolate"):
             return
         image = args[0]
         extra = 0
@@ -386,6 +458,9 @@ class QueryGraft(DiTAdapter):
             main_gate = self.dual_state.pop((self.mode, layer, "main_gate"))
             main_output = self.dual_state.pop((self.mode, layer, "main"))
             main_residual = original + main_gate[:, None] * main_output
+        self.remember_user(layer, main_residual)
+        if self.mode == "probe":
+            return
         if self.mode == "anchor":
             self.sources[self.current_anchor][layer] = (main_residual.detach() if self.inline
                                                         else main_residual.detach().cpu())
@@ -398,10 +473,17 @@ class QueryGraft(DiTAdapter):
             result[-self.batch:] = torch.where(mask, changed, image[-self.batch:])
             return (result, *args[1:])
 
-    def single_residual(self, layer, module, args, output):
-        if not self.active or self.mode == "probe":
+    def block_output(self, layer, module, args, output):
+        """Patch final image states after the block's MLP and residual updates.
+
+        FLUX single-stream residual editing uses this same native output site.
+        """
+        if not self.active:
             return
         context, image = output
+        self.remember_user(layer, image)
+        if self.mode == "probe":
+            return
         if self.mode == "anchor":
             self.sources[self.current_anchor][layer] = (image.detach() if self.inline
                                                         else image.detach().cpu())
@@ -416,6 +498,7 @@ class QueryGraft(DiTAdapter):
         self.input_call = dict(self.forward_signature.bind(*args, **kwargs).arguments)
         self.text_count = self.input_call["encoder_hidden_states"].shape[1]
         self.votes, self.sources, self.layer_ratios = None, {}, {}
+        self.user_sources = {}
         self.diagnostic_mask_sum = self.diagnostic_score_sum = self.diagnostic_logit_sum = None
         self.diagnostic_layers, self.activation_sums = [], {}
         self.dual_state.clear()
@@ -453,6 +536,10 @@ class QueryGraft(DiTAdapter):
                     "layer_target_area": {key: value[i] for key, value in self.layer_ratios.items()},
                     "pairs": self.settings["pairs"], "eta": self.settings["eta"], "rho": self.settings["rho"],
                     "representation": self.settings["representation"],
+                    "source_mode": self.settings["source_mode"],
+                    "source_user_weight": self.settings["source_user_weight"],
+                    "source_anchor_weight": self.settings["source_anchor_weight"],
+                    "source_scale": self.settings["source_scale"],
                     "diagnostic_layers": self.diagnostic_layers, "localization_layers": self.localizers}
                 tensors = {name: value[i] for name, value in payload.items()}
                 tensors["edit_layer_indices"] = torch.tensor(self.editors)
@@ -460,12 +547,15 @@ class QueryGraft(DiTAdapter):
                     directory, self.step, tensors, activation[i], info)
                 self.step_traces[i].append(info)
         self.sources.clear()
+        self.user_sources.clear()
         self.dual_state.clear()
         return output
 
     def generate(self, records, sampling_config):
         opts, pipe = sampling_config, self.pipe
         self.batch, self.step, self.forward_calls = len(records), 0, 0
+        with torch.inference_mode():
+            self.prepare_sources(records)
         self.step_traces = [[] for _ in records]
         self.trace_dirs = []
         for record in records:
@@ -523,4 +613,5 @@ class QueryGraft(DiTAdapter):
             handle.remove()
         self.handles.clear()
         self.anchor_conditions.clear()
+        self.source_groups.clear()
         super().close()

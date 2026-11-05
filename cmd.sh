@@ -1,3 +1,12 @@
+REPRESENTATION=block_output bash DiT/queryGraft/run.sh \
+  --device cuda:0 --phase run --device cuda:0 > DiT/queryGraft/logs/block_output.log 2>&1
+
+bash DiT/queryGraft/sweep_eta_rho.sh --device cuda:0 > DiT/queryGraft/logs/sweep_eta_rho.log 2>&1
+bash DiT/queryGraft/sweep_eta_rho-2.sh --device cuda:1 > DiT/queryGraft/logs/sweep_eta_rho-2.log 2>&1
+
+
+REPRESENTATION=residual bash DiT/queryGraft/run.sh --device cuda:0 > DiT/queryGraft/logs/replace_residual.log
+
 CASES=i2p bash DiT/queryGraft/run.sh \
   --device cuda:1 --tasks i2p --phase sample --trace> DiT/queryGraft/logs/i2p_record.log
 

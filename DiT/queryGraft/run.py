@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from benchmark.common import merge, write_json
-from DiT.queryGraft.method import DEFAULTS, SUPPORTED_MODELS, QueryGraft, resolve_settings
+from DiT.queryGraft.method import DEFAULTS, SOURCE_MODES, SUPPORTED_MODELS, QueryGraft, resolve_settings
 
 DIRECTORY = Path(__file__).resolve().parent
 WORKSPACE = DIRECTORY.parents[1]
@@ -28,16 +28,26 @@ def main(argv=None):
                      help="Default: sd35_medium; existing manifests retain their saved model")
     own.add_argument("--localization-layers", help="all (default), or comma-separated 0-based block indices")
     own.add_argument("--edit-layers", help="last (default), all, or comma-separated 0-based block indices")
-    own.add_argument("--representation", choices=("av", "residual"), help="Default: av, before output projection")
+    own.add_argument("--representation", choices=("av", "residual", "block_output"),
+                     help="av (default): before output projection; residual: after attention residual; "
+                          "block_output: final block output after MLP and residual updates")
     own.add_argument("--eta", type=float, help="Strict layer-vote fraction threshold; default: 0 (any supporting layer)")
     own.add_argument("--rho", type=float, help="Strict target-area threshold; default: 0 (any target token)")
     own.add_argument("--update-rule", choices=("replace", "blend", "add"), help="Default: replace")
     own.add_argument("--strength", type=float, help="Anchor coefficient for blend/add; default: 1")
+    own.add_argument("--source-mode", choices=SOURCE_MODES,
+                     help="Default: anchor (original); joint, logits, values, extrapolate use user prompt + anchor")
+    own.add_argument("--source-user-weight", type=float,
+                     help="logits/values: user text attention/value weight in masked source image rows; default: 1")
+    own.add_argument("--source-anchor-weight", type=float,
+                     help="logits/values: appended anchor attention/value weight; default: 1")
+    own.add_argument("--source-scale", type=float,
+                     help="extrapolate: H_user + scale * (H_joint - H_user); default: 1")
     own.add_argument("--background", help="Background concept text; default: background")
     own.add_argument("--pairs", type=json.loads, help='JSON: [{"target":"nudity","anchor":"clothed"}]')
     own.add_argument("--anchor-overrides", type=json.loads, help='JSON: {"nudity":"clothed"}')
     own.add_argument("--trace", action=argparse.BooleanOptionalAction, default=None,
-                     help="Save per-step four-panel PNGs, numeric maps and activation statistics (default: on)")
+                     help="Save per-step four-panel PNGs, numeric maps and activation statistics (default: off; enable with --trace)")
     own.add_argument("--trace-root", type=Path, help="Root for readable per-model/case/run/sample diagnostic directories")
     own.add_argument("--result-root", type=Path, default=DIRECTORY / "results")
     own.add_argument("--prompt", action="append", help="sample: repeat for multiple prompts")
@@ -117,13 +127,21 @@ def main(argv=None):
             update_label = settings["update_rule"]
             if update_label != "replace":
                 update_label += f"-{settings['strength']:g}"
+            source_label = ""
+            if settings["source_mode"] != "anchor":
+                source_label = f"source-{settings['source_mode']}-"
+                if settings["source_mode"] in {"logits", "values"}:
+                    source_label += f"u-{settings['source_user_weight']:g}-a-{settings['source_anchor_weight']:g}-"
+                elif settings["source_mode"] == "extrapolate":
+                    source_label += f"scale-{settings['source_scale']:g}-"
             config["method"] = args.method or (
                 f"queryGraft-concept-l2-{settings['representation']}-{update_label}-"
+                f"{source_label}"
                 f"eta-{settings['eta']:g}-rho-{settings['rho']:g}-"
                 f"loc-{local_label}-edit-{edit_label}-{started_at}")
             config = merge(config, {"image_output_dir": str(opts.result_root.expanduser().resolve()),
                 "adapter": {"kind": "plugin", "factory": "DiT.queryGraft.method:QueryGraft",
-                            "source_files": ["method.py", "run.py", "diagnostics.py"], "query_graft": settings}})
+                            "source_files": ["method.py", "run.py", "diagnostics.py", "source.py"], "query_graft": settings}})
             configs.append(config)
             if opts.action == "sample":
                 break
