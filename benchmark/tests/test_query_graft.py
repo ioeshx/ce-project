@@ -166,8 +166,8 @@ class QueryGraftTests(unittest.TestCase):
 
     def test_all_representations_match_native_when_mask_is_empty(self):
         for flux in (False, True):
-            for representation in ("av", "residual", "block_output"):
-                for edit_layers in ("last", "all"):
+            for representation in ("av", "residual", "block_output", "velocity"):
+                for edit_layers in (("last",) if representation == "velocity" else ("last", "all")):
                     with self.subTest(flux=flux, representation=representation, edit_layers=edit_layers):
                         graft, _, call, _, _ = self.adapter(flux, representation, edit_layers, eta=1)
                         with torch.inference_mode():

@@ -56,8 +56,10 @@ def resolve_settings(config, overrides=None):
     for name in ("eta", "rho"):
         if not math.isfinite(settings[name]) or not 0 <= settings[name] <= 1:
             problems.append(f"{name} must lie in [0,1]")
-    if settings["representation"] not in {"av", "residual", "block_output"}:
-        problems.append("representation must be av, residual or block_output")
+    if settings["representation"] not in {"av", "residual", "block_output", "velocity"}:
+        problems.append("representation must be av, residual, block_output or velocity")
+    if settings["representation"] == "velocity" and settings["edit_layers"] != "last":
+        problems.append("velocity has one final Transformer output site; use edit_layers=last")
     if settings["source_mode"] not in SOURCE_MODES:
         problems.append(f"source_mode must be one of {SOURCE_MODES}")
     for name in ("source_user_weight", "source_anchor_weight", "source_scale"):
@@ -197,6 +199,7 @@ class QueryGraft(DiTAdapter):
         super().__init__(native)
         self.active, self.mode = False, "idle"
         self.handles, self.processors = [], []
+        self.velocity = self.settings["representation"] == "velocity"
         transformer = self.pipe.transformer
         blocks = [(f"transformer_blocks.{i}", block, False)
                   for i, block in enumerate(transformer.transformer_blocks)]
@@ -206,12 +209,14 @@ class QueryGraft(DiTAdapter):
         count = len(blocks)
         self.localizers = list(range(count)) if self.settings["localization_layers"] == "all" else self.settings["localization_layers"]
         selection = self.settings["edit_layers"]
-        self.editors = ([count - 1] if selection == "last" else list(range(count))
+        self.editors = ([-1] if self.velocity else [count - 1] if selection == "last" else list(range(count))
                         if selection == "all" else selection)
         # Resolving actual module indices also exposes an out-of-range selection at setup.
         self.sites = [{"layer": i, "path": blocks[i][0], "single": blocks[i][2]}
-                      for i in sorted(set(self.localizers) | set(self.editors))]
-        self.inline = self.editors == [count - 1]
+                      for i in sorted(set(self.localizers) | (set() if self.velocity else set(self.editors)))]
+        if self.velocity:
+            self.sites.append({"layer": -1, "path": "output.sample", "single": False})
+        self.inline = self.velocity or self.editors == [count - 1]
         self.last_layer = count - 1
         self.concept_count = 3 * len(self.settings["pairs"])
         self.dual_state = {}
@@ -368,9 +373,46 @@ class QueryGraft(DiTAdapter):
                 self.current_anchor = anchor
                 self.sources[anchor] = {}
                 self.forward_calls += 1
-                self.native_forward(**call)
+                output = self.native_forward(**call)
+                if self.velocity:
+                    self.sources[anchor][-1] = self.velocity_tokens(output[0]).detach()
         finally:
             self.mode, self.text_count = previous_mode, previous_text_count
+
+    def velocity_tokens(self, velocity):
+        """Group the completed latent-space output by the localization patch grid.
+
+        SD3 has already unpatchified to BCHW. Grouping its values only changes
+        their layout: selecting one row replaces every latent value of that
+        patch. FLUX's native velocity is already packed in this layout.
+        """
+        if self.flux:
+            return velocity
+        batch, channels, height, width = velocity.shape
+        rows, columns = self.grid
+        return (velocity.reshape(batch, channels, rows, height // rows, columns, width // columns)
+                .permute(0, 2, 4, 3, 5, 1).reshape(batch, rows * columns, -1))
+
+    def velocity_output(self, output):
+        """Patch the positive velocity after the entire native output head, before CFG."""
+        velocity = output[0]
+        image = self.velocity_tokens(velocity)
+        self.remember_user(-1, image)
+        self.finish_mask()
+        if not self.triggered.any().item():
+            return output
+        self.capture_sources()
+        changed = image.clone()
+        changed[-self.batch:] = self.patch(-1, image[-self.batch:])
+        if not self.flux:
+            batch, channels, height, width = velocity.shape
+            rows, columns = self.grid
+            changed = (changed.reshape(batch, rows, columns, height // rows, width // columns, channels)
+                       .permute(0, 5, 1, 3, 2, 4).reshape(velocity.shape))
+        if isinstance(output, tuple):
+            return (changed, *output[1:])
+        output.sample = changed
+        return output
 
     def patch(self, layer, image):
         """Edit disjoint winning regions; each update reads the same current user tensor."""
@@ -425,7 +467,7 @@ class QueryGraft(DiTAdapter):
                 self.sources[self.current_anchor][layer] = (image_av.detach() if self.inline
                                                             else image_av.detach().cpu())
             return image_av
-        if self.mode == "user" and layer == self.last_layer:
+        if self.mode == "user" and layer == self.last_layer and not self.velocity:
             self.finish_mask()
             self.capture_sources()
         if (self.mode in {"user", "edit"} and layer in self.editors
@@ -505,7 +547,9 @@ class QueryGraft(DiTAdapter):
         self.forward_calls += 1
         self.mode = "user" if self.inline else "probe"
         output = self.native_forward(**self.with_concepts(self.input_call))
-        if not self.inline:
+        if self.velocity:
+            output = self.velocity_output(output)
+        elif not self.inline:
             self.finish_mask()
             if self.triggered.any().item():
                 self.capture_sources()

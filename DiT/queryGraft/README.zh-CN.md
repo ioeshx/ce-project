@@ -15,7 +15,7 @@
 | 定位层集 | 全部具有概念读出路径的主 attention 层 | 与关键层子集比较 |
 | 层间汇总 | 逐层二值掩码的支持比例严格大于 $\eta=0$ | 对 $\eta$ 做消融；$0.5$ 为严格多数 |
 | 面积阈值 | $\rho=0$，掩码非空即触发 | 对 $\rho$ 做消融 |
-| 替换表示 | 原始 AV，位于输出投影之前 | 与 attention 残差更新后、整个 block 最终输出的表示比较 |
+| 替换表示 | 原始 AV，位于输出投影之前 | 与 attention 残差更新后、整个 block 最终输出、最终 velocity 比较 |
 | 替换层集 | 模型最后一层的主 attention | 与全部层、关键层子集比较 |
 | 更新算子 | 硬替换 | 与比例融合、缩放相加比较 |
 | 干预采样步 | 每个采样步都重新定位并判定触发 | 采样配置独立记录 |
@@ -282,7 +282,7 @@ $$
 
 该分支使用模型原生 text–image joint attention。文本条件中不加入 user prompt、target 或 background，也不附加定位概念 token；图像侧仍可读取当前 $x_t$ 的信息。因此，anchor 条件与 target 文本分离，并不意味着当前 image latent 已经没有 target 信息。
 
-提取的 source 必须与 user 被替换激活具有相同的层、attention 分支、空间 token 顺序和表示位置。该分支只提供中间激活；不推进 scheduler，不用其最终预测单独更新 latent。source 已提取且不需要最终预测时，可以提前结束其余计算。
+提取的 source 必须与 user 被替换激活具有相同的层、attention 分支、空间 token 顺序和表示位置。该分支不推进 scheduler，不单独更新 latent。中间表示模式提取对应激活，`velocity` 则使用完整 source 前向的最终预测；source 已提取且不需要最终预测时，可以提前结束其余计算。
 
 ### 7.1 可选的联合条件与 source 增强
 
@@ -421,7 +421,7 @@ g <- r > rho
 
 以下设计均保留为后续实验选项。默认配置是实验起点，不预先认定其为最优。
 
-### 10.1 替换表示：AV、attention 残差更新后与 block 最终输出
+### 10.1 替换表示：AV、attention 残差更新后、block 最终输出与 velocity
 
 默认：使用式 (18) 的原始 AV。
 
@@ -461,6 +461,17 @@ B^b=S^b+G^b_{\mathrm{MLP}}\odot
 $$
 
 替换位置为 MLP、MLP 门控及第二次残差相加之后；未触发时保留 user 输出，text 分支不替换。FLUX 单流层没有独立的第二次残差相加，其 `block_output` 与 `residual` 共享原生融合残差输出位置。三种选择均使用 raw AV 定位，并支持相同的编辑层选择和更新算子。
+
+第四种选择 `--representation velocity` 使用完整 Transformer 的最终输出。SD3.5 两条分支各自执行最终 modulation、linear projection 和 unpatchify，得到 $v^u_t$、$v^s_t$；source 输出头使用自身的 pooled 条件。令 $M^{\mathrm{lat}}_t$ 为 token 掩码向其对应 latent patch 的最近邻扩展，硬替换为：
+
+$$
+\widetilde v^u_t=(1-M^{\mathrm{lat}}_t)\odot v^u_t
++M^{\mathrm{lat}}_t\odot v^s_t,
+\qquad
+v^{\mathrm{CFG}}_t=v^-_t+w(\widetilde v^u_t-v^-_t).
+$$
+
+负条件预测不替换，CFG 和 scheduler 继续使用原生实现。`joint`／`logits`／`values` 的 source 构造遵循第 7.1 节；`extrapolate` 在完整输出上使用 $v^s_t=v^u_t+\lambda_s(v^{\mathrm{joint}}_t-v^u_t)$。`blend`／`add` 同样可用于 velocity。最终输出只有一个编辑位置，要求 `--edit-layers last`；定位层仍可单独选择。每步取得 user 最终预测后按需计算 source，再直接替换输出，无需重放 user。FLUX 在原生 packed velocity 布局中执行等价替换，保留内嵌 guidance。运行命令见 [Velocity：I2P 采样与评估](README.md#velocityi2p-采样与评估)。
 
 ### 10.2 定位层集：全部层与关键层
 
@@ -611,14 +622,14 @@ $$
 
 ### 13.4 实际替换位置的激活变化
 
-令 $X_{t,\ell}$、$X'_{t,\ell}$ 为编辑位置更新前、更新后的 user 表示；位置遵循 `av`／`residual`／`block_output` 配置。对 pair $k$，只在其实际执行区域统计，记通道元素集合为：
+令 $X_{t,\ell}$、$X'_{t,\ell}$ 为编辑位置更新前、更新后的 user 表示；位置遵循 `av`／`residual`／`block_output`／`velocity` 配置。对 pair $k$，只在其实际执行区域统计，记通道元素集合为：
 
 $$
 \Omega_{t,k}=\{(\ell,p,d):\ell\in\mathcal L_e,
 A_{t,k}(p)=1,\ 1\le d\le D_\ell\}.
 $$
 
-其中 $D_\ell$ 在 `residual`／`block_output` 配置下使用该编辑表示的实际通道数。第四个面板用柱状图展示 $Z\in\{X,X',X'-X\}$ 的：
+其中 $D_\ell$ 在 `residual`／`block_output` 配置下使用该编辑表示的实际通道数。`velocity` 将一个 token 对应 patch 的全部 latent 位置与通道作为该行元素，诊断编辑索引记为 −1；这仅改变统计布局，不对 velocity 数值做 patch 平均。第四个面板用柱状图展示 $Z\in\{X,X',X'-X\}$ 的：
 
 $$
 \operatorname{RMS}_{\Omega}(Z)

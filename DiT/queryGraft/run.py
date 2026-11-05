@@ -27,10 +27,11 @@ def main(argv=None):
     own.add_argument("--model", choices=SUPPORTED_MODELS,
                      help="Default: sd35_medium; existing manifests retain their saved model")
     own.add_argument("--localization-layers", help="all (default), or comma-separated 0-based block indices")
-    own.add_argument("--edit-layers", help="last (default), all, or comma-separated 0-based block indices")
-    own.add_argument("--representation", choices=("av", "residual", "block_output"),
+    own.add_argument("--edit-layers", help="last (default), all, or comma-separated 0-based block indices; velocity requires last")
+    own.add_argument("--representation", choices=("av", "residual", "block_output", "velocity"),
                      help="av (default): before output projection; residual: after attention residual; "
-                          "block_output: final block output after MLP and residual updates")
+                          "block_output: final block output after MLP and residual updates; "
+                          "velocity: final Transformer prediction after the output head, before CFG")
     own.add_argument("--eta", type=float, help="Strict layer-vote fraction threshold; default: 0 (any supporting layer)")
     own.add_argument("--rho", type=float, help="Strict target-area threshold; default: 0 (any target token)")
     own.add_argument("--update-rule", choices=("replace", "blend", "add"), help="Default: replace")
@@ -42,7 +43,7 @@ def main(argv=None):
     own.add_argument("--source-anchor-weight", type=float,
                      help="logits/values: appended anchor attention/value weight; default: 1")
     own.add_argument("--source-scale", type=float,
-                     help="extrapolate: H_user + scale * (H_joint - H_user); default: 1")
+                     help="extrapolate: H_user + scale * (H_joint - H_user), using velocity for that representation; default: 1")
     own.add_argument("--background", help="Background concept text; default: background")
     own.add_argument("--pairs", type=json.loads, help='JSON: [{"target":"nudity","anchor":"clothed"}]')
     own.add_argument("--anchor-overrides", type=json.loads, help='JSON: {"nudity":"clothed"}')

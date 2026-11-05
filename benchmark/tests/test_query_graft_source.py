@@ -91,12 +91,15 @@ class SourcePlanTests(unittest.TestCase):
                 output = StringIO()
                 with redirect_stdout(output):
                     self.assertEqual(main(["benchmark", "--cases", "i2p", "--tasks", "i2p", "--max-records", "2",
+                                           "--representation", "velocity",
                                            "--phase", "prepare", "--offline", "--output-dir", directory,
                                            "--result-root", str(Path(directory) / "images"), *options]), 0)
                 path = Path(output.getvalue().strip().split("[manifest] ")[-1])
                 manifest = load_manifest(path)
                 settings = manifest["config"]["adapter"]["query_graft"]
                 self.assertEqual(settings["source_mode"], mode)
+                self.assertEqual(settings["representation"], "velocity")
+                self.assertIn("velocity", manifest["method"])
                 self.assertEqual(len(manifest["records"]), 2)
                 self.assertIn("source.py", manifest["config"]["adapter"]["source_files"])
                 if mode != "anchor":
@@ -154,8 +157,8 @@ class SourceModeTests(unittest.TestCase):
 
     def test_neutral_weight_modes_equal_joint_and_weighted_modes_change_source(self):
         for flux in (False, True):
-            for representation in ("av", "residual", "block_output"):
-                for edit_layers in ("last", "all"):
+            for representation in ("av", "residual", "block_output", "velocity"):
+                for edit_layers in (("last",) if representation == "velocity" else ("last", "all")):
                     with self.subTest(flux=flux, representation=representation, edit_layers=edit_layers):
                         results = {}
                         votes = {}
@@ -186,8 +189,8 @@ class SourceModeTests(unittest.TestCase):
 
     def test_zero_extrapolation_matches_native_for_all_edit_sites(self):
         for flux in (False, True):
-            for representation in ("av", "residual", "block_output"):
-                for edit_layers in ("last", "all"):
+            for representation in ("av", "residual", "block_output", "velocity"):
+                for edit_layers in (("last",) if representation == "velocity" else ("last", "all")):
                     with self.subTest(flux=flux, representation=representation, edit_layers=edit_layers):
                         graft, _, call, _, _ = self.adapter(
                             flux, representation, edit_layers, source_mode="extrapolate", source_scale=0)

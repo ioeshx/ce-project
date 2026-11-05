@@ -33,7 +33,7 @@ python DiT/queryGraft/run.py sample --model sd35_medium \
 
 | 设计项 | 参数 | 默认值 | 备选 |
 | --- | --- | --- | --- |
-| 替换表示 | `--representation` | `av` | `residual`、`block_output` |
+| 替换表示 | `--representation` | `av` | `residual`、`block_output`、`velocity` |
 | 定位层集 | `--localization-layers` | `all` | 逗号分隔的 block 索引，例如 `0,3,6` |
 | 替换层集 | `--edit-layers` | `last` | `all` 或逗号分隔的 block 索引 |
 | 跨层投票比例阈值 | `--eta` | `0` | `[0,1]` 内数值；`0.5` 为严格多数投票 |
@@ -49,6 +49,10 @@ python DiT/queryGraft/run.py sample --model sd35_medium \
 `residual` 在 SD3.5／FLUX 双流层指主 attention 投影、门控、残差更新后的表示。SD3.5 的额外 `attn2` 更新保留在 user 路径；FLUX 单流层则使用 AV 与 MLP 融合后的原生残差输出。定位分数在这些配置下仍统一从 raw AV 计算。
 
 `block_output` 替换整个 block 的最终 image hidden state：在 SD3.5／FLUX 双流层中，位置是 MLP、MLP 门控和第二次残差相加之后；SD3.5 的额外 `attn2` 贡献也包含在该表示中。text 分支保持 user 输出。FLUX 单流层的 `block_output` 与 `residual` 使用同一融合残差输出位置。三种表示均沿用 raw AV 定位、空间掩码和现有更新算子。
+
+`velocity` 替换完整 Transformer 的最终预测。在 SD3.5 中，位置是所有 blocks、最终 modulation、linear projection 和 unpatchify 之后、原生 CFG 之前。source 使用自己的完整输出头及 pooled condition；只替换 user 正条件分支，负条件 velocity 保持原生输出。定位仍使用 raw AV，token 网格中的每个选中位置覆盖对应 patch 内的全部 latent 空间位置与通道，不做平滑插值。FLUX 的最终 velocity 保留原生 packed 布局，在最终输出头之后、scheduler 之前替换，内嵌 guidance 保持原生设置。
+
+`velocity` 只有一个最终输出编辑位置，使用默认 `--edit-layers last`；`all` 或 block 索引不适用并会报错。每步只需一次 user 前向，以及每个触发的不同 anchor 各一次 source 前向，无需重放 user。它兼容 `anchor` 和下述四种 source 模式，以及 `replace`／`blend`／`add`；默认表示仍为 `av`。
 
 ```bash
 # 定位仍使用全部层，只改变编辑层与融合强度。
@@ -90,7 +94,7 @@ python DiT/queryGraft/run.py benchmark --cases i2p --eta 0.5 --rho 0.2
 
 `logits`／`values` 在 source 分支的所有主 attention 层生效，空间区域使用当前 user 路径产生的最终执行掩码。当前层的 text query 与掩码外 image query 仍采用原生 attention 结果；后续层可能受到已修改 image 特征的间接影响。SD3 额外的 image-only `attn2` 保持原生计算。多个 pair 共用 anchor 时，source 前向复用，增强区域取这些 pair 最终执行区域的并集。
 
-`extrapolate` 的 `H_user` 始终取同一步、同层未编辑的 user 特征；多层重放时不会改用已受到前层干预的特征。它支持 `av`／`residual`／`block_output`，source 外推系数和最终 `--update-rule`／`--strength` 分别控制 source 构造和执行更新。联合条件按生成 batch 编码并缓存到 CPU，各模式仍只为每个触发的不同 anchor 增加一次主干前向。
+`extrapolate` 的 `H_user` 始终取同一步、同层未编辑的 user 特征；多层重放时不会改用已受到前层干预的特征。它支持 `av`／`residual`／`block_output`／`velocity`；最后一种在完整输出上构造 `v_source = v_user + source_scale * (v_joint - v_user)`，随后才做掩码更新和原生 CFG。source 外推系数和最终 `--update-rule`／`--strength` 分别控制 source 构造和执行更新。联合条件按生成 batch 编码并缓存到 CPU，各模式仍只为每个触发的不同 anchor 增加一次主干前向。
 
 以下四组命令只运行 I2P 采样并立即计算 NudeNet 指标。这里显式固定 anchor 为 `clothed`；加 `--max-records 4` 可先验证少量样本，加 `--trace` 保存逐步诊断，加 `--dry-run` 只预览配置。
 
@@ -112,6 +116,31 @@ python DiT/queryGraft/run.py benchmark "${common[@]}" --source-mode extrapolate 
 ```
 
 `--cases i2p --tasks i2p` 默认是 931 条 sexual I2P，仅评估 NudeNet；`--with-q16` 切换为完整 I2P 并增加 Q16。若同时需要 COCO 保留指标，可改为 `--tasks i2p,mscoco`。实验名称包含 source 模式和实际生效的权重／外推系数；已有 manifest 的 source 配置也保持不可变。`run.sh` 支持 `SOURCE_MODE`、`SOURCE_USER_WEIGHT`、`SOURCE_ANCHOR_WEIGHT`、`SOURCE_SCALE` 环境变量，均可被额外 CLI 参数覆盖。
+
+## Velocity：I2P 采样与评估
+
+在仓库根目录执行。以下命令分别运行四种 source 模式，每组采样后立即评估 NudeNet。anchor 直接读取 `benchmark/configs/dit_target_anchor.json`，当前 `nudity` 对应 `clothed`，无需额外覆盖。
+
+```bash
+common=(--model sd35_medium --cases i2p --tasks i2p
+        --representation velocity --edit-layers last --update-rule replace
+        --eta 0 --rho 0 --device cuda:0 --phase run)
+
+python DiT/queryGraft/run.py benchmark "${common[@]}" --source-mode joint
+python DiT/queryGraft/run.py benchmark "${common[@]}" --source-mode logits \
+  --source-user-weight 0.5 --source-anchor-weight 2
+python DiT/queryGraft/run.py benchmark "${common[@]}" --source-mode values \
+  --source-user-weight 0.5 --source-anchor-weight 2
+python DiT/queryGraft/run.py benchmark "${common[@]}" --source-mode extrapolate --source-scale 2
+```
+
+加 `--max-records 4` 可先验证少量样本，`--dry-run` 仅预览。需要分开采样和评估时，先用 `--phase sample`，再对终端打印的 `[manifest]` 路径执行：
+
+```bash
+python DiT/queryGraft/run.py evaluate --manifest /path/to/manifest.json --device cuda:0
+```
+
+沿用独立 anchor source 时，将 `--source-mode` 设为 `anchor` 或省略。`--trace` 的空间图仍使用定位 token 网格；激活变化统计使用最终 velocity，统计的通道元素包含每个 patch 的全部 latent 值。`edit_layer_indices=[-1]` 与 metadata 中的 `output.sample` 表示完整 Transformer 输出位置。
 
 ## eta／rho 参数扫描
 
@@ -203,7 +232,7 @@ DiT/queryGraft/results/<model>/<task>/<case>/<method-with-start-time>/
 | `layer_mask_mean` | `[K,H,W]`，所有执行层的二值掩码均值 |
 | `concept_scores_mean` | `[K,H,W,3]`，逐层 softmax 后的概念分数均值；顺序为 target、anchor、background |
 | `concept_logits_mean` | `[K,H,W,3]`，未 softmax 的归一化 concept 点积分数均值 |
-| `edit_layer_indices` | `[E]`，编辑层的实际索引 |
+| `edit_layer_indices` | `[E]`，编辑层的实际索引；`velocity` 为 `[-1]`，表示完整 Transformer 输出 |
 | `activation_before_rms`、`activation_after_rms`、`activation_delta_rms` | `[K,E]`，逐 pair、逐编辑层的 RMS |
 | `activation_relative_l2`、`activation_abs_max` | `[K,E]`，相对 L2 改变量与最大绝对改变量 |
 | `activation_value_count`、`activation_token_count` | `[K,E]`，统计涉及的通道元素数与 token 数 |
