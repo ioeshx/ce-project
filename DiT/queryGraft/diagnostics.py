@@ -1,4 +1,4 @@
-"""Save one numeric trace and one four-panel diagnostic per sample and step."""
+"""Save per-step diagnostics and temporal heatmap summaries for each sample."""
 from __future__ import annotations
 
 import os
@@ -16,7 +16,9 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
     RMS and relative L2 are measured only on each pair's actual winning region.
     """
     directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
+    figures, numeric = directory / "timesteps", directory / "tensors"
+    figures.mkdir(parents=True, exist_ok=True)
+    numeric.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("MPLCONFIGDIR", str(directory.parent / ".matplotlib"))
     os.environ.setdefault("XDG_CACHE_HOME", str(directory.parent / ".cache"))
     from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -32,34 +34,53 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
         activation_value_count=activation_sums[..., 4].long(),
         activation_token_count=activation_sums[..., 5].long())
     save_file({name: value.contiguous() for name, value in tensors.items()},
-              str(directory / f"step_{step:04d}.safetensors"))
+              str(numeric / f"step_{step:04d}.safetensors"))
 
     pairs, editors = info["pairs"], tensors["edit_layer_indices"].tolist()
     figure = Figure(figsize=(16, 3.8 * len(pairs)), layout="constrained")
     FigureCanvasAgg(figure)
     axes = figure.subplots(len(pairs), 4, squeeze=False)
+    aggregation = "layer vote" if info["my_layer_aggre"] else "soft-map mean"
+    policy = (info["mask_rule"] if info["my_layer_policy"] else
+              "CA spatial mean" if len(pairs) == 1 else "CA concept argmax")
+    limits = f"eta={info['eta']:g}, rho={info['rho']:g}" if info["my_layer_aggre"] else f"rho={info['rho']:g}"
     figure.suptitle(
         f"queryGraft | step {step:03d} | model timestep {info['timestep']:g} | "
-        f"eta={info['eta']:g}, rho={info['rho']:g} | {info['representation']}\n"
-        f"Heatmap averages: all {len(info['diagnostic_layers'])} executed blocks; "
-        f"mask decision: {len(info['localization_layers'])} selected blocks",
+        f"aggregation={aggregation} | policy={policy} | "
+        f"{limits} | {info['representation']}\n"
+        f"Decision input: {len(info['localization_layers'])} selected blocks "
+        f"of {len(info['diagnostic_layers'])} executed blocks; softmax={info['softmax_scope']}",
         fontsize=12)
     summaries = []
     for pair, definition in enumerate(pairs):
         applied = tensors["applied_mask"][pair]
         area = float(applied.float().mean())
         target, anchor = definition["target"], definition["anchor"]
+        if info["my_layer_aggre"]:
+            decision_input = tensors["vote_fraction"][pair]
+            input_title = "Decision input\nLayer-vote fraction"
+        else:
+            decision_input = tensors["localization_scores_mean"][pair, ..., 0]
+            input_title = "Decision input\nMean soft maps: target channel"
         titles = [f"{target} -> {anchor}\nApplied mask: {area:.1%}",
-                  "Mean layer mask\nFraction of all blocks voting target",
-                  "Mean target saliency\nLayer softmax, then layer average"]
-        maps = [applied, tensors["layer_mask_mean"][pair],
-                tensors["concept_scores_mean"][pair, ..., 0]]
-        for column, (data, title, cmap) in enumerate(zip(maps, titles, ("Blues", "viridis", "magma"))):
+                  input_title,
+                  f"Candidate mask: {float(tensors['mask'][pair].float().mean()):.1%}\nBefore area gate / overlap selection"]
+        maps = [applied, decision_input, tensors["mask"][pair]]
+        for column, (data, title, cmap) in enumerate(zip(maps, titles, ("Blues", "magma", "Blues"))):
             axis = axes[pair, column]
             plot = axis.imshow(data.float().numpy(), vmin=0, vmax=1, cmap=cmap,
                                interpolation="nearest", origin="upper")
             axis.set(title=title, xticks=[], yticks=[])
             figure.colorbar(plot, ax=axis, shrink=0.78)
+        if info["decision_threshold"] is not None:
+            kind = "vote fraction" if info["my_layer_aggre"] else "target spatial mean"
+            rule = f"Strict > {info['decision_threshold'][pair]:.6g} ({kind})"
+        elif info["region_policy"] == "concept_argmax":
+            rule = f"Global argmax over {3 * len(pairs)} concepts; target index={3 * pair}"
+        else:
+            rule = ("target > anchor and background" if info["region_policy"] == "target_max" else
+                    "anchor < target and background")
+        axes[pair, 1].set_xlabel(rule)
 
         # Aggregate energies over the edited layers, rather than averaging their RMS values.
         totals = activation_sums[pair].sum(0)
@@ -100,6 +121,47 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
             f"candidate area={info['target_area'][pair]:.1%}; "
             f"gate={'on' if info['triggered'][pair] else 'off'}")
 
-    figure.savefig(directory / f"step_{step:04d}.png", dpi=130)
+    figure.savefig(figures / f"step_{step:04d}.png", dpi=130)
     figure.clear()
     return summaries
+
+
+def save_sample_diagnostics(directory, tensors, pairs, step_count, *, mask_rule="target_max",
+                            my_layer_aggre=False, my_layer_policy=False,
+                            localization_layers=None, diagnostic_layers=None):
+    """Summarize all sampling steps equally, including steps with no applied mask."""
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    directory = Path(directory)
+    save_file({name: value.contiguous() for name, value in tensors.items()},
+              str(directory / "summary.safetensors"))
+    figure = Figure(figsize=(10, 3.8 * len(pairs)), layout="constrained")
+    FigureCanvasAgg(figure)
+    axes = figure.subplots(len(pairs), 2, squeeze=False)
+    aggregation = "layer vote" if my_layer_aggre else "soft-map mean"
+    policy = mask_rule if my_layer_policy else "CA spatial mean" if len(pairs) == 1 else "CA concept argmax"
+    scope = (f"Soft scores use {len(localization_layers)} selected blocks "
+             f"of {len(diagnostic_layers)} executed blocks\n"
+             if localization_layers is not None else "")
+    figure.suptitle(
+        f"queryGraft | sample summary | mean over all {step_count} sampling steps | "
+        f"aggregation={aggregation}, policy={policy}\n"
+        f"{scope}"
+        "Applied mask: time average, no new threshold; target score: selected-layer soft mean, then time mean",
+        fontsize=12)
+    for pair, definition in enumerate(pairs):
+        applied = tensors["applied_mask_mean"][pair]
+        scores = tensors["localization_scores_mean"][pair, ..., 0]
+        titles = [f"{definition['target']} -> {definition['anchor']}\nMean applied mask",
+                  "Mean target soft score over selected layers and time" +
+                  ("\nAuxiliary score; masks use layer votes" if my_layer_aggre else "")]
+        for column, (data, title, cmap) in enumerate(zip((applied, scores), titles, ("Blues", "magma"))):
+            axis = axes[pair, column]
+            plot = axis.imshow(data.float().numpy(), vmin=0, vmax=1, cmap=cmap,
+                               interpolation="nearest", origin="upper")
+            axis.set(title=title, xticks=[], yticks=[])
+            figure.colorbar(plot, ax=axis, shrink=0.78)
+        axes[pair, 0].set_xlabel(f"Mean applied area per step: {float(applied.mean()):.1%}")
+    figure.savefig(directory / "summary.png", dpi=130)
+    figure.clear()

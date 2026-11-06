@@ -11,7 +11,7 @@ import time
 import torch
 import torch.nn.functional as F
 
-from DiT.queryGraft.diagnostics import save_step_diagnostics
+from DiT.queryGraft.diagnostics import save_sample_diagnostics, save_step_diagnostics
 from DiT.queryGraft.source import SOURCE_MODES, controlled_attention, joint_prompts, token_groups
 from benchmark.common import ROOT, read_json, write_json
 from benchmark.dit_adapter import DiTAdapter
@@ -20,7 +20,10 @@ from benchmark.sampling_profile import initial_noise
 
 DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
-DEFAULTS = dict(background="background", localization_layers="all", edit_layers="last",
+MASK_RULES = ("target_max", "anchor_min")
+DEFAULTS = dict(background="background", mask_rule="target_max", concept_include_prompt=False,
+                my_layer_aggre=False, my_layer_policy=False,
+                localization_layers="all", edit_layers="last",
                 representation="av", eta=0.0, rho=0.0, update_rule="replace", strength=1.0,
                 source_mode="anchor", source_user_weight=1.0, source_anchor_weight=1.0, source_scale=1.0,
                 trace=False, trace_root=None)
@@ -53,6 +56,11 @@ def resolve_settings(config, overrides=None):
     if not settings["pairs"] or any(not p["target"].strip() or not p["anchor"].strip()
                                     for p in settings["pairs"]):
         problems.append("provide nonempty target/anchor pairs")
+    if settings["mask_rule"] not in MASK_RULES:
+        problems.append(f"mask_rule must be one of {MASK_RULES}")
+    for name in ("concept_include_prompt", "my_layer_aggre", "my_layer_policy"):
+        if not isinstance(settings[name], bool):
+            problems.append(f"{name} must be a boolean")
     for name in ("eta", "rho"):
         if not math.isfinite(settings[name]) or not 0 <= settings[name] <= 1:
             problems.append(f"{name} must lie in [0,1]")
@@ -137,14 +145,22 @@ class QueryAttention:
             qb, kb, vb = (tensor.index_select(2, base_indices) for tensor in (query, key, value))
             base_mask = None if attention_mask is None else attention_mask[..., base_indices, :][..., base_indices]
             ob = F.scaled_dot_product_attention(qb, kb, vb, attn_mask=base_mask)
+            # ConceptAttention Eq. (7)-(9): concepts read image + concept K/V.
+            # Including prompt K/V is an explicit opt-in to the previous behavior.
+            if owner.settings.get("concept_include_prompt", False):
+                read_indices, kr, vr = base_indices, kb, vb
+            else:
+                image_slice = slice(text_count, None) if owner.flux else slice(0, hidden_states.shape[1])
+                read_indices = base_indices[image_slice]
+                kr, vr = kb[:, :, image_slice], vb[:, :, image_slice]
             concept_outputs = []
-            # Each pair reads the same base plus only its own target/anchor/background.
+            # Each pair reads the selected tokens plus its own target/anchor/background.
             for pair in range(len(owner.settings["pairs"])):
                 cs = slice(start + 3 * pair, start + 3 * pair + 3)
-                kc, vc = torch.cat((kb, key[:, :, cs]), 2), torch.cat((vb, value[:, :, cs]), 2)
+                kc, vc = torch.cat((kr, key[:, :, cs]), 2), torch.cat((vr, value[:, :, cs]), 2)
                 concept_mask = None
                 if attention_mask is not None:
-                    columns = torch.cat((base_indices, torch.arange(cs.start, cs.stop, device=query.device)))
+                    columns = torch.cat((read_indices, torch.arange(cs.start, cs.stop, device=query.device)))
                     concept_mask = attention_mask[..., cs, :].index_select(-1, columns)
                 concept_outputs.append(F.scaled_dot_product_attention(
                     query[:, :, cs], kc, vc, attn_mask=concept_mask))
@@ -188,6 +204,62 @@ class QueryAttention:
         return image_output, text_av
 
 
+class ConceptModulation:
+    """Reuse native text modules with a separate, zero-pooled concept condition."""
+
+    def __init__(self, owner, block, single):
+        self.owner, self.block, self.single = owner, block, single
+        self.original = block.forward
+
+    def reading(self):
+        return self.owner.active and self.owner.mode in {"user", "probe"}
+
+    def normalize(self, module, args, output):
+        if not self.reading():
+            return
+        start = self.owner.text_count
+        stop = start + self.owner.concept_count
+        self.input = args[0][:, start:stop]
+        if not self.single and self.block.attn.context_pre_only:
+            normalized = module.forward(self.input, self.owner.concept_temb)
+            return torch.cat((output[:, :start], normalized, output[:, stop:]), dim=1)
+        self.normalized, *self.gates = module.forward(self.input, emb=self.owner.concept_temb)
+        normalized = torch.cat((output[0][:, :start], self.normalized, output[0][:, stop:]), dim=1)
+        # Native gates still apply to image/prompt rows. Concept residuals are
+        # recomputed below using the gates from the separate concept condition.
+        return (normalized, *output[1:])
+
+    def attention(self, module, args, output):
+        if self.reading():
+            start = self.owner.text_count
+            states = output if self.single else output[1]
+            self.av = states[:, start:start + self.owner.concept_count]
+
+    def __call__(self, *args, **kwargs):
+        if not self.reading():
+            return self.original(*args, **kwargs)
+        try:
+            context, image = self.original(*args, **kwargs)
+            if context is None:  # SD3's final context_pre_only block has no text update.
+                return context, image
+            if self.single:
+                mlp = self.block.act_mlp(self.block.proj_mlp(self.normalized))
+                concepts = self.input + self.gates[0][:, None] * self.block.proj_out(
+                    torch.cat((self.av, mlp), dim=-1))
+            else:
+                gate_msa, shift_mlp, scale_mlp, gate_mlp = self.gates
+                concepts = self.input + gate_msa[:, None] * self.av
+                normalized = self.block.norm2_context(concepts)
+                normalized = normalized * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+                concepts = concepts + gate_mlp[:, None] * self.block.ff_context(normalized)
+            if self.owner.flux and concepts.dtype == torch.float16:
+                concepts = concepts.clip(-65504, 65504)
+            return torch.cat((context[:, :self.owner.text_count], concepts), dim=1), image
+        finally:
+            # These slices can otherwise retain full image/text activation buffers.
+            self.input = self.normalized = self.gates = self.av = None
+
+
 class QueryGraft(DiTAdapter):
     """Own native sampling, concept readouts and live source activations in one adapter."""
 
@@ -198,7 +270,7 @@ class QueryGraft(DiTAdapter):
         native["adapter"] = {"kind": "diffusers", "model_path": model_path} if model_path else {"kind": "original"}
         super().__init__(native)
         self.active, self.mode = False, "idle"
-        self.handles, self.processors = [], []
+        self.handles, self.processors, self.block_forwards = [], [], []
         self.velocity = self.settings["representation"] == "velocity"
         transformer = self.pipe.transformer
         blocks = [(f"transformer_blocks.{i}", block, False)
@@ -220,10 +292,18 @@ class QueryGraft(DiTAdapter):
         self.last_layer = count - 1
         self.concept_count = 3 * len(self.settings["pairs"])
         self.dual_state = {}
+        self.sample_trace_sums = {}
+        self.handles.append(transformer.time_text_embed.register_forward_hook(self.concept_condition))
         for layer, (_, block, single) in enumerate(blocks):
             original = block.attn.processor
             self.processors.append((block.attn, original))
             block.attn.set_processor(QueryAttention(self, layer, single, original))
+            modulation = ConceptModulation(self, block, single)
+            self.block_forwards.append((block, block.forward))
+            block.forward = modulation
+            normalizer = block.norm if single else block.norm1_context
+            self.handles.append(normalizer.register_forward_hook(modulation.normalize))
+            self.handles.append(block.attn.register_forward_hook(modulation.attention))
             if self.settings["representation"] == "block_output" and layer in self.editors:
                 self.handles.append(block.register_forward_hook(partial(self.block_output, layer)))
             elif self.settings["representation"] == "residual" and layer in self.editors:
@@ -256,6 +336,12 @@ class QueryGraft(DiTAdapter):
                 sequence, pooled, text_ids = self.encode_source(anchors)
                 self.anchor_conditions = {anchor: (sequence[i:i+1], pooled[i:i+1], text_ids)
                                           for i, anchor in enumerate(anchors)}
+
+    def concept_condition(self, module, args, output):
+        if self.active and self.mode in {"user", "probe"}:
+            # Use the native timestep/guidance scaling and text embedding weights.
+            # Only the pooled CLIP input is zeroed; projection biases are retained.
+            self.concept_temb = module.forward(*args[:-1], torch.zeros_like(args[-1]))
 
     def encode_source(self, prompts):
         kwargs = dict(prompt=prompts, device=self.device,
@@ -309,23 +395,44 @@ class QueryGraft(DiTAdapter):
             inputs["txt_ids"] = torch.cat((ids, ids.new_zeros(self.concept_count, 3)), dim=0)
         return inputs
 
+    def region_mask(self, scores):
+        """Apply the selected policy to one layer or the averaged soft maps."""
+        if self.settings["my_layer_policy"]:
+            if self.settings["mask_rule"] == "anchor_min":
+                return (scores[..., 1] < scores[..., 0]) & (scores[..., 1] < scores[..., 2])
+            return (scores[..., 0] > scores[..., 1]) & (scores[..., 0] > scores[..., 2])
+        if scores.shape[1] == 1:
+            target = scores[..., 0]
+            return target > target.mean(dim=-1, keepdim=True)
+        # All configured target/anchor/background channels compete globally.
+        labels = scores.transpose(1, 2).flatten(2).argmax(dim=-1)
+        targets = 3 * torch.arange(scores.shape[1], device=scores.device)
+        return labels[:, None] == targets[None, :, None]
+
     def record_concepts(self, layer, image_av, concept_av):
         if layer not in self.localizers and not self.settings["trace"]:
             return
         # CFG batch order is [negative,positive]. Score only positive image rows.
         image_av, concept_av = image_av[-self.batch:], concept_av[-self.batch:]
         concepts = concept_av.reshape(self.batch, -1, 3, concept_av.shape[-1]).float()
-        # Normalize each concept along D for scoring; keep the evolving AV states unchanged.
-        concepts = concepts / (concepts.norm(dim=-1, keepdim=True) + 1e-8)
+        # ConceptAttention scores are raw attention-output dot products in FP32.
         scores = torch.einsum("bpd,bkcd->bkpc", image_av.float(), concepts)
-        mask = (scores[..., 0] > scores[..., 1]) & (scores[..., 0] > scores[..., 2])
+        if self.settings["my_layer_policy"]:
+            probabilities = scores.softmax(dim=-1)
+            mask = self.region_mask(scores)
+        else:
+            batch, pairs, positions, channels = scores.shape
+            probabilities = scores.transpose(1, 2).flatten(2).softmax(dim=-1)
+            probabilities = probabilities.reshape(batch, positions, pairs, channels).transpose(1, 2)
+            mask = self.region_mask(probabilities)
         if layer in self.localizers:
             if self.votes is None:
                 self.votes = torch.zeros_like(mask, dtype=torch.int32)
+                self.score_sum = torch.zeros_like(probabilities)
             self.votes.add_(mask.to(self.votes.device))
+            self.score_sum.add_(probabilities.to(self.score_sum.device))
         if self.settings["trace"]:
             self.layer_ratios[str(layer)] = mask.float().mean(-1).cpu().tolist()
-            probabilities = scores.softmax(dim=-1)
             if self.diagnostic_mask_sum is None:
                 self.diagnostic_mask_sum = mask.float()
                 self.diagnostic_score_sum = probabilities.detach().clone()
@@ -338,11 +445,17 @@ class QueryGraft(DiTAdapter):
 
     def finish_mask(self):
         self.vote_fraction = self.votes.float() / len(self.localizers)
-        self.masks = self.vote_fraction > self.settings["eta"]
+        self.localization_scores = self.score_sum / len(self.localizers)
+        if self.settings["my_layer_aggre"]:
+            self.masks = self.vote_fraction > self.settings["eta"]
+            confidence = self.vote_fraction
+        else:
+            self.masks = self.region_mask(self.localization_scores)
+            confidence = self.localization_scores[..., 0]
         self.ratios = self.masks.float().mean(-1)
         self.triggered = self.ratios > self.settings["rho"]
         eligible = self.masks & self.triggered[..., None]
-        confidence = self.vote_fraction.masked_fill(~eligible, -1)
+        confidence = confidence.masked_fill(~eligible, -1)
         self.winner = torch.where(eligible.any(1), confidence.argmax(1), -1)
 
     def capture_sources(self):
@@ -540,6 +653,7 @@ class QueryGraft(DiTAdapter):
         self.input_call = dict(self.forward_signature.bind(*args, **kwargs).arguments)
         self.text_count = self.input_call["encoder_hidden_states"].shape[1]
         self.votes, self.sources, self.layer_ratios = None, {}, {}
+        self.score_sum = None
         self.user_sources = {}
         self.diagnostic_mask_sum = self.diagnostic_score_sum = self.diagnostic_logit_sum = None
         self.diagnostic_layers, self.activation_sums = [], {}
@@ -569,7 +683,24 @@ class QueryGraft(DiTAdapter):
                 "layer_mask_mean": (self.diagnostic_mask_sum / layers).reshape(self.batch, pairs, *self.grid).cpu(),
                 "concept_scores_mean": (self.diagnostic_score_sum / layers).reshape(self.batch, pairs, *self.grid, 3).cpu(),
                 "concept_logits_mean": (self.diagnostic_logit_sum / layers).reshape(self.batch, pairs, *self.grid, 3).cpu(),
+                "localization_scores_mean": self.localization_scores.reshape(self.batch, pairs, *self.grid, 3).cpu(),
             }
+            # Record the actual cutoff or concept winner used before the area gate.
+            if self.settings["my_layer_aggre"]:
+                payload["decision_threshold"] = self.ratios.new_full(self.ratios.shape, self.settings["eta"]).cpu()
+            elif not self.settings["my_layer_policy"]:
+                if pairs == 1:
+                    payload["decision_threshold"] = self.localization_scores[..., 0].mean(-1).cpu()
+                else:
+                    labels = self.localization_scores.transpose(1, 2).flatten(2).argmax(-1)
+                    payload["concept_argmax"] = labels.reshape(self.batch, *self.grid).cpu()
+            # Keep only running CPU spatial sums; no per-step activations are retained.
+            for name in ("applied_mask", "concept_scores_mean", "localization_scores_mean"):
+                values = payload[name].float()
+                if name not in self.sample_trace_sums:
+                    self.sample_trace_sums[name] = values.clone()
+                else:
+                    self.sample_trace_sums[name].add_(values)
             activation = torch.stack([self.activation_sums.get(layer, torch.zeros(self.batch, pairs, 6))
                                       for layer in self.editors], dim=2)
             for i, directory in enumerate(self.trace_dirs):
@@ -579,6 +710,15 @@ class QueryGraft(DiTAdapter):
                     "triggered": self.triggered[i].cpu().tolist(),
                     "layer_target_area": {key: value[i] for key, value in self.layer_ratios.items()},
                     "pairs": self.settings["pairs"], "eta": self.settings["eta"], "rho": self.settings["rho"],
+                    "mask_rule": self.settings["mask_rule"],
+                    "my_layer_aggre": self.settings["my_layer_aggre"],
+                    "my_layer_policy": self.settings["my_layer_policy"],
+                    "aggregation": "layer_vote" if self.settings["my_layer_aggre"] else "soft_mean",
+                    "region_policy": (self.settings["mask_rule"] if self.settings["my_layer_policy"] else
+                                      "spatial_mean" if pairs == 1 else "concept_argmax"),
+                    "softmax_scope": "per_pair" if self.settings["my_layer_policy"] else "all_concepts",
+                    "decision_threshold": (payload["decision_threshold"][i].tolist()
+                                           if "decision_threshold" in payload else None),
                     "representation": self.settings["representation"],
                     "source_mode": self.settings["source_mode"],
                     "source_user_weight": self.settings["source_user_weight"],
@@ -601,6 +741,7 @@ class QueryGraft(DiTAdapter):
         with torch.inference_mode():
             self.prepare_sources(records)
         self.step_traces = [[] for _ in records]
+        self.sample_trace_sums.clear()
         self.trace_dirs = []
         for record in records:
             image = Path(record["image"])
@@ -640,6 +781,15 @@ class QueryGraft(DiTAdapter):
             self.active, self.mode = False, "idle"
         if self.settings["trace"]:
             for i, directory in enumerate(self.trace_dirs):
+                step_count = len(self.step_traces[i])
+                save_sample_diagnostics(directory, {
+                    "applied_mask_mean": self.sample_trace_sums["applied_mask"][i] / step_count,
+                    "concept_scores_mean": self.sample_trace_sums["concept_scores_mean"][i] / step_count,
+                    "localization_scores_mean": self.sample_trace_sums["localization_scores_mean"][i] / step_count,
+                }, self.settings["pairs"], step_count, mask_rule=self.settings["mask_rule"],
+                    my_layer_aggre=self.settings["my_layer_aggre"],
+                    my_layer_policy=self.settings["my_layer_policy"],
+                    localization_layers=self.localizers, diagnostic_layers=self.diagnostic_layers)
                 write_json(directory / "metadata.json", {
                     "record": records[i], "settings": self.settings, "sites": self.sites,
                     "sampling": opts, "steps": self.step_traces[i],
@@ -656,6 +806,9 @@ class QueryGraft(DiTAdapter):
         for handle in self.handles:
             handle.remove()
         self.handles.clear()
+        for block, forward in self.block_forwards:
+            block.forward = forward
+        self.block_forwards.clear()
         self.anchor_conditions.clear()
         self.source_groups.clear()
         super().close()

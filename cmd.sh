@@ -1,3 +1,21 @@
+python /home/shx/code/ce-new/DiT/queryGraft/run.py benchmark \
+  --cases i2p \
+  --tasks i2p \
+  --device cuda:1 \
+  --phase run \
+  --trace > DiT/queryGraft/logs/new_decision.log 2>&1
+
+python /home/shx/code/ce-new/DiT/queryGraft/run.py benchmark \
+  --model sd35_medium --cases i2p --tasks i2p \
+  --mask-rule anchor_min \
+  --device cuda:1 --phase run --trace > DiT/queryGraft/logs/anchor_min.log 2>&1
+
+python DiT/queryGraft/run.py benchmark \
+  --model sd35_medium --cases i2p --tasks i2p,mscoco \
+  --representation av --localization-layers all --edit-layers last \
+  --source-mode anchor --update-rule replace --eta 0 --rho 0 \
+  --device cuda:0 --phase run --trace > DiT/queryGraft/logs/trace_i2p.log 2>&1
+
 DiT/queryGraft/scritps/source_activation.sh > DiT/queryGraft/logs/source_activation.log 2>&1
 DiT/queryGraft/scritps/source_activation-2.sh > DiT/queryGraft/logs/source_activation-2.log 2>&1
 

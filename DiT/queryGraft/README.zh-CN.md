@@ -10,10 +10,12 @@
 | --- | --- | --- |
 | 定位概念 | target、anchor、background，共 3 个 | 本文固定单对概念 |
 | 概念初始化 | 每个完整概念短语独立编码，取输出的第一个 token | 沿用当前约定 |
-| 概念读取范围 | 原始 user text、image，以及概念 token | 单向读取，原始 token 不能读取概念 token |
-| 定位特征 | 同层原始 image AV 与沿通道 L2 归一化后的 concept AV 点积 | 归一化只作用于分数读出 |
+| 概念读取范围 | image 与本组概念 token | `--concept-include-prompt` 显式加入 user prompt；原始 token 不能读取概念 token |
+| concept 调制条件 | pooled CLIP 输入置零，保留时间与 guidance | 复用 text 分支参数，单独计算门控、scale 与 shift |
+| 定位特征 | 同层原始 image AV 与 concept AV 点积 | 不做 L2 归一化 |
+| 区域判据 | 单 target：热图空间均值阈值；多 target：全部概念 argmax | `--my-layer-policy` 开启 `target_max`／`anchor_min` |
 | 定位层集 | 全部具有概念读出路径的主 attention 层 | 与关键层子集比较 |
-| 层间汇总 | 逐层二值掩码的支持比例严格大于 $\eta=0$ | 对 $\eta$ 做消融；$0.5$ 为严格多数 |
+| 层间汇总 | 各层 softmax 软分数图等权平均，再做区域判定 | `--my-layer-aggre` 开启二值掩码投票，使用 $\eta$ |
 | 面积阈值 | $\rho=0$，掩码非空即触发 | 对 $\rho$ 做消融 |
 | 替换表示 | 原始 AV，位于输出投影之前 | 与 attention 残差更新后、整个 block 最终输出、最终 velocity 比较 |
 | 替换层集 | 模型最后一层的主 attention | 与全部层、关键层子集比较 |
@@ -44,20 +46,20 @@
 | $N=N_p+N_x,\;N_c=3$ | 原始 token 总数、附加概念 token 数 |
 | $\ell=1,\ldots,L$ | 按模型执行顺序编号的 Transformer 层；每层指定一个主 attention 读出位置 |
 | $h_\ell,d_\ell,D_\ell=h_\ell d_\ell$ | 第 $\ell$ 层的 attention 头数、每头通道数、多头拼接后的 AV 通道数 |
-| $\kappa_{u,t},\kappa_{a,t}$ | user、anchor 前向各自的原生条件，包括原生文本条件、pooled 条件、时间和 guidance 设置 |
+| $\kappa_{u,t},\kappa_{a,t},\kappa_{c,t}$ | user、anchor 各自的原生条件；concept 独立使用 pooled CLIP 输入置零、保留原生时间和 guidance 的调制条件 |
 | $O^x_{t,\ell},O^c_{t,\ell}$ | user 前向中的 image、concept 原始 AV，形状为 $N_x\times D_\ell$、$3\times D_\ell$ |
 | $O^a_{t,\ell}$ | anchor 前向在对应层的 image 原始 AV，形状为 $N_x\times D_\ell$ |
 | $\mathcal L_q$ | 用于计算定位掩码的层集，默认 $\{1,\ldots,L\}$ |
 | $\mathcal L_e$ | 执行激活替换的层集，默认 $\{L\}$ |
 | $m_{t,\ell}(p),M_t(p)$ | 第 $\ell$ 层的 target 二值掩码、跨层汇总后的 target 二值掩码 |
 | $r_t,g_t$ | target 掩码面积比例、当前步是否触发替换的二值变量 |
-| $\eta$ | 跨层支持比例阈值，默认 $0$ |
+| $\eta$ | 仅 `--my-layer-aggre` 模式使用的跨层支持比例阈值，默认 $0$ |
 | $\rho$ | 面积触发阈值，默认 $0$ |
 | $\lambda$ | 融合或相加时的强度系数；硬替换不使用该参数 |
 | $\widetilde f_{u,t},\widetilde y_t$ | 干预后的 user 条件预测、交给 scheduler 的原生 guidance 组合后预测 |
 | $w,f^-_t$ | 原生 CFG 的 guidance scale、同一步负条件预测；仅在模型启用原生 CFG 时使用 |
 
-本文的“层”按模型主干的 Transformer block 计数。SD3.5 若存在额外 image-only `attn2`，默认不把它作为第二个定位投票来源。FLUX 的双流层、单流层按实际执行顺序统一编号，保留完整模块路径与原生列表内编号。
+本文的“层”按模型主干的 Transformer block 计数。SD3.5 若存在额外 image-only `attn2`，不把它作为第二个定位汇总来源。FLUX 的双流层、单流层按实际执行顺序统一编号，保留完整模块路径与原生列表内编号。
 
 ## 3. 独立编码 user 与三个概念
 
@@ -85,7 +87,7 @@ $E_{\rm seq}$ 表示用于概念初始化的序列文本编码器；按照 Conce
 
 “取第一个 token”指：**先编码整个多词短语，再取输出序列索引 0 的向量**，不是只输入短语的第一个词。三个概念独立编码，避免初始化时因拼接成一句话而互相改变文本表示。
 
-概念表示在 DiT 输入处加入；user 的原始序列编码、pooled 条件、image/text 位置编号保持原生定义。概念 token 使用对应模型的 text 位置编码约定；采用 ConceptAttention 的 FLUX 约定时其 position IDs 为零。概念不加入 user pooled 条件，概念路径沿用当前 user 前向的原生时间、guidance 与调制条件。
+概念表示在 DiT 输入处加入；user 的原始序列编码、pooled 条件、image/text 位置编号保持原生定义。概念 token 使用对应模型的 text 位置编码约定；采用 ConceptAttention 的 FLUX 约定时其 position IDs 为零。concept 单独构造 $\kappa_{c,t}$：将 pooled CLIP 输入置零，保留当前前向的原生时间和 guidance，经同一套原生条件嵌入参数计算调制向量，保留投影 bias。concept 复用 text 分支的归一化、调制、投影与 MLP 参数；attention 前的 scale/shift、attention 残差门控和 MLP 的 scale/shift/门控均使用独立 concept 条件。user/image 与 anchor source 的条件保持原生定义。
 
 $C^0$ 可预先编码并复用；**每个采样步从 $C^0$ 开始重新演化概念状态，不把上一步的末层概念状态直接传到下一采样步。**
 
@@ -106,8 +108,9 @@ $$
 $$
 \mathcal B=
 \begin{bmatrix}
-0_{N\times N} & -\infty_{N\times N_c}\\
-0_{N_c\times N} & 0_{N_c\times N_c}
+0_{N_p\times N_p} & 0_{N_p\times N_x} & -\infty_{N_p\times N_c}\\
+0_{N_x\times N_p} & 0_{N_x\times N_x} & -\infty_{N_x\times N_c}\\
+-\infty_{N_c\times N_p} & 0_{N_c\times N_x} & 0_{N_c\times N_c}
 \end{bmatrix}.
 \tag{4}
 $$
@@ -115,8 +118,10 @@ $$
 行是 query，列是 key。式 (4) 表示：
 
 - 原始 user text、image query 只能读取原始 text、image 的 key/value。
-- concept query 可以读取 user text、image 和全部 concept 的 key/value。
+- concept query 默认只读取 image 和本组 concept 的 key/value，不直接读取 user prompt token。
 - target、anchor、background 在定位路径内可以互相读取；这个路径只负责定位。
+
+这一默认读取范围对应 [ConceptAttention 第 4.1 节式 (7)–(9)](https://arxiv.org/html/2502.04320v1#S4.SS1)，包含 image cross-attention 与 concept self-attention。显式设置 `--concept-include-prompt`（配置键 `adapter.query_graft.concept_include_prompt=true`）时，式 (4) 左下角的 $-\infty_{N_c\times N_p}$ 改为零，恢复此前 concept 同时读取 prompt、image 与本组 concept 的行为。默认值为 `false`，也可用 `--no-concept-include-prompt` 显式关闭。这里控制的是直接的 K/V 读取范围；concept 的 pooled CLIP 调制输入始终置零，image 状态仍受 user prompt 条件影响。
 
 如果原生 attention 已有 padding 或其他限制，保留原始 $B\!\to\!B$ 掩码，并对 concept 读取的无效 padding 列施加相同限制。式 (4) 展示的是所有原始 token 均有效时的概念隔离偏置。
 
@@ -134,7 +139,7 @@ $$
 $$
 O_C=
 \operatorname{Attn}
-\left(Q_C,[K_B;K_C],[V_B;V_C]\right),
+\left(Q_C,[K_X;K_C],[V_X;V_C]\right),
 \tag{6}
 $$
 
@@ -150,6 +155,8 @@ $$
 
 式 (7) 中的 $\mathcal B_j$ 是该次 attention 所需的有效位置掩码；只读分解后的两次调用分别使用对应的行列范围。图像与文本使用各自的原生 Q/K/V 投影；在有独立 text 参数的层，概念复用 text 侧投影、归一化和更新路径。
 
+式 (6) 的 $K_X,V_X$ 仅包含 image token；启用 `--concept-include-prompt` 时，将它们替换为包含 image 与 prompt 的 $K_B,V_B$。多 pair 时每组只拼接自己的 $K_C,V_C$。
+
 从 $O_B$ 取出 image 行得到 $O^x_{t,\ell}$，从 $O_C$ 取出三个 concept 行得到 $O^c_{t,\ell}$。这里取的是**输出投影前的原始 AV**。
 
 当前层完成读出后，原始 token 和概念状态各自通过对应的原生投影、门控、残差与 MLP 更新，再进入下一层。可统一记为：
@@ -159,7 +166,7 @@ B_t^\ell=\mathcal U^B_\ell
 \left(B_t^{\ell-1},O_B;\kappa_{u,t}\right),
 \qquad
 C_t^\ell=\mathcal U^C_\ell
-\left(C_t^{\ell-1},O_C;\kappa_{u,t}\right).
+\left(C_t^{\ell-1},O_C;\kappa_{c,t}\right).
 \tag{8}
 $$
 
@@ -169,25 +176,16 @@ $\mathcal U$ 保留该层实际存在的其他原生运算；FLUX 单流层中�
 
 ## 5. 同层输出空间的概念定位
 
-对每个定位层 $\ell\in\mathcal L_q$ 和概念 $k\in\mathcal K$，先沿多头拼接后的通道维归一化 concept AV：
-
-$$
-\overline O^c_{t,\ell}(k,:)
-=\frac{O^c_{t,\ell}(k,:)}
-{\|O^c_{t,\ell}(k,:)\|_2+\epsilon},
-\qquad \epsilon=10^{-8}.
-$$
-
-随后对每个 image 位置 $p\in\{1,\ldots,HW\}$ 计算：
+对每个定位层 $\ell\in\mathcal L_q$、概念 $k\in\mathcal K$ 和 image 位置 $p\in\{1,\ldots,HW\}$，直接计算原始 AV 点积：
 
 $$
 s_{t,\ell,k}(p)
 =\left\langle
 O^x_{t,\ell}(p,:),
-\overline O^c_{t,\ell}(k,:)
+O^c_{t,\ell}(k,:)
 \right\rangle
 =\sum_{d=1}^{D_\ell}
-O^x_{t,\ell}(p,d)\overline O^c_{t,\ell}(k,d).
+O^x_{t,\ell}(p,d)O^c_{t,\ell}(k,d).
 \tag{9}
 $$
 
@@ -196,9 +194,9 @@ S_{t,\ell}\in\mathbb R^{H\times W\times3}.
 \tag{10}
 $$
 
-归一化与点积均用 FP32 计算，消除各概念输出范数对类别比较的影响。image AV 不做 L2 归一化，因此该分数不是完整的余弦相似度。归一化只用于分数读出，原始 concept AV 继续参与概念路径的原生状态更新，anchor 替换激活也保持原始 AV。每次比较必须使用**同一层、同一 attention、同一 user 前向**的 image 和 concept 输出；不同层之间不平均特征向量。
+点积使用 FP32 计算，image AV 与 concept AV 均不做 L2 归一化；向量范数保留在分数中，与 ConceptAttention 原始 FLUX 输出空间点积一致。concept AV 继续参与概念路径的状态更新，anchor 替换激活也保持原始 AV。每次比较必须使用**同一层、同一 attention、同一 user 前向**的 image 和 concept 输出；不同层之间不平均特征向量。
 
-如需可视化相对分数，可以在 concept 维计算：
+在 concept 维计算软分数图：
 
 $$
 \pi_{t,\ell,k}(p)
@@ -207,44 +205,81 @@ $$
 \tag{11}
 $$
 
-该 softmax 不改变单个位置的类别排序，因此下面的二值判定直接使用 $s$。$\pi$ 是三个配置概念之间的相对分数，不作为校准后的 target 存在概率。
+单 pair 时 concept 维包含 target、anchor、background；默认多 pair 时包含全部 $3K$ 个概念通道。开启 `--my-layer-policy` 时恢复各 pair 独立的三概念 softmax。$\pi$ 是配置概念之间的相对分数，不作为校准后的 target 存在概率。
 
-### 5.1 每层 target 掩码
+### 5.1 ConceptAttention 的区域判据
 
-只有 target 严格胜过 anchor 与 background 时，当前位置才标记为 1：
+令 $\mathcal P$ 表示区域判据。单类／多类按配置中的 target 数（pair 数）区分，anchor 和 background 不计为待编辑目标类。只有一个 target 时，对输入软分数图 $H$ 的 target 通道使用空间均值阈值：
 
 $$
-m_{t,\ell}(p)
+\mathcal P_{\rm CA}(H)(p)
 =\mathbf1\!\left[
-s_{t,\ell,\mathrm{tar}}(p)
->\max\left\{
-s_{t,\ell,\mathrm{anc}}(p),
-s_{t,\ell,\mathrm{bg}}(p)
-\right\}\right].
+H_{\rm tar}(p)>\frac{1}{HW}\sum_q H_{\rm tar}(q)
+\right].
 \tag{12}
 $$
 
-平局取 0。background 提供第三个竞争类别，使位置可以归到 target、anchor 之外；它仍是一个文本概念，不自动等价于“所有其他语义”的完美拒识类别。
-
-### 5.2 跨层投票比例阈值
-
-令 $L_q=|\mathcal L_q|$，先求逐层二值掩码的平均：
+等于均值时不选中，空间恒定的 target 热图得到空掩码。多个 target 时，在所有概念通道上选择最高分：
 
 $$
-v_t(p)=\frac{1}{L_q}
-\sum_{\ell\in\mathcal L_q}m_{t,\ell}(p),
+j^*(p)=\operatorname*{argmax}_j H_j(p),
+\qquad
+\mathcal P_{{\rm CA},k}(H)(p)
+=\mathbf1[j^*(p)=\operatorname{index}(\mathrm{tar}_k)].
+\tag{12a}
+$$
+
+anchor 或 background 获胜的位置不编辑；并列最高时按配置中的概念顺序选择。concept attention 的逐 pair 隔离保持不变，默认区域判定在其读出的全部概念图上进行全局竞争。
+
+### 5.2 默认跨层软图平均
+
+令 $L_q=|\mathcal L_q|$，先对所选定位层的软分数图等权平均：
+
+$$
+\overline\pi_t=\frac{1}{L_q}
+\sum_{\ell\in\mathcal L_q}\pi_{t,\ell},
 \tag{13}
 $$
 
 $$
-M_t(p)=\mathbf1[v_t(p)>\eta],
-\qquad \eta\in[0,1],\quad \eta_{\rm default}=0.
+M_t=\mathcal P(\overline\pi_t).
 \tag{14}
 $$
 
-$\eta$ 是可消融的超参数。默认 $\eta=0$ 时，只要任意一个所选层支持 target，$M_t(p)=1$，等价于逐层掩码的并集。$\eta=0.5$ 恢复严格多数投票，恰好一半层支持时取 0；$\eta=1$ 时掩码恒为 0。每个 block 投一票，默认定位层集是所有主 attention 层。
+默认 $\mathcal P=\mathcal P_{\rm CA}$，对应式 (12)／(12a)。这是“各层先 softmax，随后平均软图，再做区域判定”；不是先平均原始 logits 再 softmax，也不先二值化。默认不使用 $\eta$。所有汇总仅在当前采样步 $t$ 内完成。
 
-本方法当前采用的是 **“各层判定后再投票”**，不采用“先平均各层原始分数再 argmax”或“先平均各层 softmax 分数再阈值”。所有汇总均在当前 $t$ 内完成，不跨采样步平均。
+### 5.3 显式开启此前的汇总与区域判据
+
+`--my-layer-aggre` 显式恢复二值掩码投票。每层先应用所选区域判据：
+
+$$
+m_{t,\ell}=\mathcal P(\pi_{t,\ell}),
+\qquad
+v_t(p)=\frac{1}{L_q}\sum_{\ell\in\mathcal L_q}m_{t,\ell}(p),
+\qquad
+M_t(p)=\mathbf1[v_t(p)>\eta].
+\tag{14a}
+$$
+
+$\eta\in[0,1]$，默认 $0$：只要任意所选层支持就选中；$0.5$ 为严格多数，$1$ 产生空掩码。没有 `--my-layer-aggre` 时，`eta` 不参与掩码计算。
+
+`--my-layer-policy` 显式恢复各 pair 的 target/anchor/background 判据，使用 `--mask-rule` 选择：
+
+$$
+\mathcal P_{\rm target\_max}(H)(p)
+=\mathbf1[H_{\rm tar}(p)>\max\{H_{\rm anc}(p),H_{\rm bg}(p)\}],
+\tag{14b}
+$$
+
+$$
+\mathcal P_{\rm anchor\_min}(H)(p)
+=\mathbf1[H_{\rm anc}(p)<\min\{H_{\rm tar}(p),H_{\rm bg}(p)\}].
+\tag{14c}
+$$
+
+`target_max` 为该开关下的默认规则；其 target 并列最高时不选中。`anchor_min` 在 anchor 并列最低时不选中，target 与 background 并列高于 anchor 时仍选中。仅设置 `--mask-rule` 不会开启该策略。
+
+两个开关独立：仅开 `--my-layer-policy` 时，对平均软图应用式 (14b)／(14c)；仅开 `--my-layer-aggre` 时，各层先应用 ConceptAttention 的区域判据再投票。同时开启两者时，恢复此前“每层按原始点积分数比较 target/anchor/background，再按 `eta` 投票”的行为；单层内 softmax 不改变三个概念的分数顺序。多 pair 候选区域重叠时，投票模式按支持票比例选择，软图平均模式按平均 target 分数选择，平票按配置顺序选择。
 
 ## 6. 按 target 面积触发 anchor 前向
 
@@ -383,25 +418,32 @@ $\mathcal R^u_{t,L}$ 表示继续 user 计算所需的原生状态，例如残�
 
 ```text
 输入：当前 x_t、原生时间 tau_t、完整 user 条件、概念初始表示 C^0
-参数：定位层集 L_q、编辑层集 L_e={L}、eta=0、rho=0
+参数：定位层集 L_q、编辑层集 L_e={L}、rho=0
+      my_layer_aggre=false、my_layer_policy=false；投票模式的 eta=0
 
 重置当前步概念状态 C <- C^0
 votes[p] <- 0
+soft_sum[p,k] <- 0
 
 执行 user 前向，并在所有携带概念 token 的层执行单向概念读取：
     原始 text/image attention 只能读取原始 text/image
-    concept attention 可以读取原始 text/image 和 concept
+    concept attention 默认只读取 image 和本组 concept
+    concept 调制单独使用 pooled CLIP 输入为零的条件，保留时间与 guidance
 
     对每个定位层 ell in L_q：
         取同层 image raw AV O_x 与 concept raw AV O_c
-        O_c_normalized[k,:] <- float32(O_c[k,:]) / (norm(float32(O_c[k,:])) + 1e-8)
-        s[p,k] <- dot(float32(O_x[p,:]), O_c_normalized[k,:])
-        m[p] <- s[p,target] > max(s[p,anchor], s[p,background])
+        s[p,k] <- dot(float32(O_x[p,:]), float32(O_c[k,:]))
+        pi[p,k] <- softmax_over_concepts(s[p,k])
+        soft_sum[p,k] <- soft_sum[p,k] + pi[p,k]
+        m[p] <- selected_policy(pi)；自定义策略在每层比较原始 s
         votes[p] <- votes[p] + m[p]
 
     在最终层 image/concept AV 已得到、image 输出投影尚未执行时暂停
 
-M[p] <- votes[p] / |L_q| > eta
+如果 my_layer_aggre：M[p] <- votes[p] / |L_q| > eta
+否则：M[p] <- selected_policy(soft_sum / |L_q|)
+默认 selected_policy：单 target 用空间均值阈值，多 target 用全部概念 argmax
+my_layer_policy=true 时：selected_policy 使用 target_max 或 anchor_min
 r <- sum(M) / (H * W)
 g <- r > rho
 
@@ -539,7 +581,7 @@ $\{0,0.05,0.10,0.20,0.30,0.40\}$，最终实验网格可根据结果调整；这
 
 ### 10.6 跨层投票阈值 $\eta$
 
-$\eta\in[0,1]$ 按式 (14) 控制需要多少定位层支持 target，默认 $\eta=0$。建议起始消融网格为 $\{0,0.1,0.25,0.5,0.75\}$。所有设置都使用严格大于：例如 $\eta=0.5$ 时，恰好一半层支持仍取 0。
+仅开启 `--my-layer-aggre` 后，$\eta\in[0,1]$ 按式 (14a) 控制需要多少定位层支持 target，默认 $\eta=0$。建议起始消融网格为 $\{0,0.1,0.25,0.5,0.75\}$。所有设置都使用严格大于：例如 $\eta=0.5$ 时，恰好一半层支持仍取 0。默认软图平均不使用 $\eta$。
 
 定位层集 $\mathcal L_q$ 决定哪些层参与统计，$\eta$ 决定这些层中所需的支持比例；二者分别配置。$\eta$ 与面积阈值 $\rho$ 也分别判定：前者决定每个位置是否进入掩码，后者决定当前步是否计算 anchor source 并替换。
 
@@ -550,9 +592,13 @@ $\eta\in[0,1]$ 按式 (14) 控制需要多少定位层支持 target，默认 $\e
 | 目标、anchor、background 原文 | $c_{\rm tar},c_{\rm anc},c_{\rm bg}$ | 随任务配置；background 起始文本为 `background` | 文本条件 |
 | 概念数 | $N_c$ | 3 | 当前单对概念设计常量 |
 | 定位层集 | $\mathcal L_q$ | 全部主 attention 层 | 消融轴 2 |
-| 投票阈值 | $\eta$ / `--eta` | $0$，严格大于 | 数值超参数，消融轴 6 |
+| 跨层汇总 | `my_layer_aggre` / `--my-layer-aggre` | 默认关闭，软图平均；开启后投票 | 离散汇总规则 |
+| 区域判据 | `my_layer_policy` / `--my-layer-policy` | 默认关闭，ConceptAttention 单类／多类规则 | 离散定位规则 |
+| 自定义判据 | `mask_rule` / `--mask-rule` | 仅 `my_layer_policy=true` 时生效，`target_max` 或 `anchor_min` | 离散定位规则 |
+| 投票阈值 | $\eta$ / `--eta` | 仅 `my_layer_aggre=true` 时生效，$0$，严格大于 | 数值超参数，消融轴 6 |
 | 面积阈值 | $\rho$ / `--rho` | $0$，严格大于 | 数值超参数，消融轴 4 |
-| concept 归一化 | 通道 L2，$\epsilon=10^{-8}$ | FP32，原生 concept AV 除以 `norm + epsilon` | 固定的分数计算规则 |
+| concept 调制 | $\kappa_{c,t}$ | pooled CLIP 输入置零，保留时间和 guidance | 复用 text 分支参数 |
+| 概念分数 | 原始 AV 点积 | FP32，image 与 concept 均不做 L2 归一化 | 固定的分数计算规则 |
 | 替换表示位置 | `representation_site` | `av_pre_projection` | 消融轴 1 |
 | 替换层集 | $\mathcal L_e$ | 最后一层主 attention | 消融轴 3 |
 | 更新算子 | `update_rule` | `hard_replace` | 消融轴 5 |
@@ -563,7 +609,7 @@ $\eta\in[0,1]$ 按式 (14) 控制需要多少定位层支持 target，默认 $\e
 
 $1/\sqrt{d_\ell}$ 是原生 attention 缩放，$D_\ell$、$H$、$W$ 是模型或输入形状；它们不作为额外的方法调参项。本文也不增加新的 softmax 温度、置信度阈值或学习式门控。
 
-最小实验记录包括：模型与原生采样配置、三个概念原文、概念编码与位置约定、concept 归一化规则、定位层和替换层的完整列表、替换表示、更新算子及系数、$\eta$、$\rho$，以及逐步的 $r_t$、$g_t$ 和实际额外前向开销。六组消融优先分别改变一个设计项，其他配置保持一致。
+最小实验记录包括：模型与原生采样配置、三个概念原文、概念编码与位置约定、concept 独立调制与原始 AV 点积规则、`my_layer_aggre`、`my_layer_policy`、`mask_rule`、定位层和替换层的完整列表、替换表示、更新算子及系数、$\eta$、$\rho$，以及逐步的 $r_t$、$g_t$ 和实际额外前向开销。消融优先分别改变一个设计项，其他配置保持一致。
 
 ## 12. 与 ConceptAttention 的实现对应
 
@@ -572,12 +618,12 @@ $1/\sqrt{d_\ell}$ 是原生 attention 缩放，$D_\ell$、$H$、$W$ 是模型或
 - [概念编码 `embed_concepts`](../../baseline/ConceptAttention/concept_attention/utils.py)：逐概念编码并提取索引 0 的 token。
 - [FLUX 概念与图像输出](../../baseline/ConceptAttention/concept_attention/flux/dit_block.py)：保留多头拼接后的 AV，计算 concept/image 输出点积，并分别更新原始与概念路径。
 - [输出空间 saliency 汇总](../../baseline/ConceptAttention/concept_attention/flux/pipeline.py)：在概念维 softmax，再对指定层和采样步求平均。
-- [SD3 concept 输出归一化](../../baseline/ConceptAttention/concept_attention/sd3/concept_attention_pipeline.py)：先对 concept 输出做通道 L2 归一化，再与 image 输出点积；本文沿用这一归一化规则。
+- [FLUX 独立概念调制](../../baseline/ConceptAttention/concept_attention/flux/dit.py)：concept 使用 pooled CLIP 输入置零后的独立调制条件，复用 text 分支参数。
 - [ConceptAttention 论文](https://arxiv.org/abs/2502.04320)。
 
-queryGraft 在此基础上定义了当前的只读扩展：concept query 直接读取原始 user text、image 与 concept；上游 FLUX 概念 attention 默认读取 image 与 concept。queryGraft 的掩码则采用**当前单步内的逐层二值投票**，随后通过在线 anchor 条件 source 执行显式激活替换。上游跨层／跨步 saliency 平均与本文式 (12)–(15) 是不同的汇总算法。
+queryGraft 与上游 FLUX 的 concept attention 默认均读取 image 与 concept；可通过 `--concept-include-prompt` 显式加入 user text。当前默认的跨层软图平均和单类／多类区域判据与 ConceptAttention 一致，每个当前采样步独立计算，再通过在线 anchor 条件 source 执行显式激活替换。`--my-layer-aggre` 与 `--my-layer-policy` 可独立恢复此前的二值投票与三概念判据；跨采样步的平均仅用于诊断展示。
 
-## 13. 逐采样步诊断的数学定义
+## 13. 逐采样步诊断与样本汇总的数学定义
 
 诊断默认关闭，显式传入 `--trace` 后开启；`--trace-root` 仅指定保存路径。开启后，每个样本、每个时间步保存一张四联图与一份数值张量。多 pair 在同一张图中按行展示。下面恢复 pair 索引 $k$，并用 $w_t(p)$ 表示经过面积门控与重叠选择后的胜出 pair；没有胜出者时为 −1。
 
@@ -592,33 +638,30 @@ $$
 
 第一张热力图展示 $A_{t,k}$。单 pair 时它等于式 (16) 的 $\widehat M_t$；多 pair 时还剔除重叠位置中未胜出的概念。未触发时为零图。这里记录的是算法执行替换的区域；实际数值改变量由第 13.4 节独立统计。
 
-### 13.2 所有执行层的平均掩码
+### 13.2 实际决策输入
 
-令 $\mathcal L_d$ 为本次 user 定位前向实际执行的全部主 attention 层，则第二张热力图为：
+第二张热力图使用实际所选定位层 $\mathcal L_q$。默认软图平均模式显示 target 通道：
 
 $$
-U_{t,k}(p)=\frac1{|\mathcal L_d|}
-\sum_{\ell\in\mathcal L_d}m_{t,\ell,k}(p).
+U_{t,k}(p)=\frac1{|\mathcal L_q|}
+\sum_{\ell\in\mathcal L_q}\pi_{t,\ell,k,\mathrm{tar}}(p).
 \tag{28}
 $$
 
-默认 $\mathcal L_d=\mathcal L_q$，此时它等于式 (13) 的支持比例。选择关键定位层时，诊断仍统计所有执行层，而最终掩码继续只由 $\mathcal L_q$ 决定。诊断不改变算法的层选择。
+默认单类时，在图下标注本样本的空间均值阈值，按严格大于生成候选掩码；多类时，标明在全部 $3K$ 个概念上 argmax 及当前 target 的通道索引。开启 `--my-layer-policy` 时，标注实际的三概念比较规则。开启 `--my-layer-aggre` 时，第二图改为式 (14a) 的二值支持比例 $v_t$，阈值为 $\eta$。非投票模式不在标题中展示无效的 `eta`。
 
-### 13.3 平均 target 概念分数
+### 13.3 候选掩码与复算数据
 
-对式 (9) 的归一化 concept 点积分数，在每层、本组的三个概念间计算 softmax。第三张热力图展示：
+第三张热力图展示经过所选区域策略／投票阈值后的候选掩码，尚未经过面积门控和重叠选择：
 
 $$
-P^{\rm tar}_{t,k}(p)
-=\frac1{|\mathcal L_d|}
-\sum_{\ell\in\mathcal L_d}
-\frac{\exp s_{t,\ell,k,\mathrm{tar}}(p)}
-{\sum_{c\in\{\mathrm{tar},\mathrm{anc},\mathrm{bg}\}}
-\exp s_{t,\ell,k,c}(p)}.
+V_{t,k}(p)=M_{t,k}(p).
 \tag{29}
 $$
 
-该图取值在 `[0,1]`，用于展示 target 相对于 anchor、background 的得分，不作为校准的存在概率。保存全部三个概念的均值通道，并额外保存未 softmax 的点积分数均值。该 softmax 只用于诊断，逐层掩码仍按式 (12) 的严格分数比较产生。
+该图与第一张执行掩码图对照，可区分区域判定、面积门控和重叠选择。`localization_scores_mean` 保存全部所选层的三通道均值；单类默认模式另存实际 `decision_threshold`，投票模式在同名字段记录 $\eta$。默认多类模式另存 `concept_argmax`，其索引顺序为 `[target_0,anchor_0,background_0,target_1,...]`，只有索引 $3k$ 对应第 $k$ 个 target。无标量阈值时，metadata 的 `decision_threshold` 为 `null`。
+
+全执行层辅助统计 `layer_mask_mean`、`concept_scores_mean`、`concept_logits_mean` 继续保存，供额外核查；它们不作为默认决策输入绘图。metadata 另记录实际的 `aggregation`、`region_policy` 和 `softmax_scope`。trace 不改变层选择、掩码计算或模型前向次数。
 
 ### 13.4 实际替换位置的激活变化
 
@@ -651,4 +694,29 @@ $$
 
 集合为空时统计值记为零，并显示未执行更新。多层汇总使用各层平方和与通道元素数计算，不直接平均各层 RMS；另存逐编辑层的相同指标与 token 数。默认 AV 模式的统计发生在输出投影之前，不能将它解释为最终速度预测的改变量。
 
-实现仅增加统计、绘图与 I/O，不增加模型前向。输出字段、目录与运行命令见 [运行说明](README.md)。
+### 13.5 单个样本跨时间步的汇总
+
+令 $\mathcal T_d$ 为本次采样实际执行并记录的全部时间步，$S=|\mathcal T_d|$。采样完成后，将每步的最终执行掩码等权平均：
+
+$$
+\overline A_k(p)=\frac1S\sum_{t\in\mathcal T_d}A_{t,k}(p).
+\tag{32}
+$$
+
+未触发步骤的 $A_{t,k}$ 为零，仍计入分母。$\overline A_k(p)\in[0,1]$ 表示该位置被编辑的时间步比例，不再施加二值阈值。
+
+对实际所选定位层的逐层 softmax、跨层平均分数，再计算跨时间步的均值。保存每组三个概念通道，汇总图展示 target：
+
+$$
+\overline P^c_k(p)=\frac1S\sum_{t\in\mathcal T_d}
+\frac1{|\mathcal L_q|}\sum_{\ell\in\mathcal L_q}
+\pi_{t,\ell,k,c}(p),
+\quad c\in\{\mathrm{tar},\mathrm{anc},\mathrm{bg}\}.
+\tag{33}
+$$
+
+这里按采样步等权平均，不按模型 timestep 的间隔加权，也不先平均原始点积分数再 softmax。未触发替换的步骤仍参与概念分数平均。汇总图不对时间均值重新施加空间阈值或 argmax；执行频率直接由各步已经执行的掩码平均得到。投票模式下，第二张汇总热图标为辅助软分数。
+
+每个样本目录直接保存 `summary.png`（执行频率与所选定位层 target 分数两张热力图）及 `summary.safetensors`（`applied_mask_mean`、`localization_scores_mean`，以及保留的全执行层辅助统计 `concept_scores_mean`）。逐步四联图位于 `timesteps/step_XXXX.png`，逐步数值位于 `tensors/step_XXXX.safetensors`，`metadata.json` 保留在样本根目录。
+
+实现仅增加空间图的 CPU 累加、统计、绘图与 I/O，不增加模型前向。诊断仍默认关闭。输出字段、目录与运行命令见 [运行说明](README.md)。

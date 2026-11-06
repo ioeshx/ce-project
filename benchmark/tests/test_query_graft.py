@@ -38,14 +38,15 @@ class Tokenizer:
 
 
 class QueryGraftTests(unittest.TestCase):
-    def adapter(self, flux, representation, edit_layers="last", trace=False, eta=0, **source_settings):
+    def adapter(self, flux, representation, edit_layers="last", trace=False, eta=0,
+                guidance_embeds=False, **source_settings):
         torch.manual_seed(7)
         if flux:
             transformer = FluxTransformer2DModel(
                 in_channels=4, num_layers=1, num_single_layers=1,
                 attention_head_dim=8, num_attention_heads=2,
                 joint_attention_dim=16, pooled_projection_dim=8,
-                axes_dims_rope=(2, 2, 4))
+                axes_dims_rope=(2, 2, 4), guidance_embeds=guidance_embeds)
         else:
             transformer = SD3Transformer2DModel(
                 sample_size=4, patch_size=2, in_channels=4, out_channels=4,
@@ -80,6 +81,8 @@ class QueryGraftTests(unittest.TestCase):
                   "sampling": {"height": 4, "width": 4, "max_sequence_length": 8}, "adapter": {}}
         config["adapter"]["query_graft"] = resolve_settings(config, {
             "representation": representation, "edit_layers": edit_layers, "trace": trace, "eta": eta,
+            # Edit-site fixtures inject binary votes to prescribe exact regions.
+            "my_layer_aggre": True, "my_layer_policy": True,
             **source_settings})
 
         def initialize(adapter, native):
@@ -193,8 +196,8 @@ class QueryGraftTests(unittest.TestCase):
             with patch.object(graft, "finish_mask", side_effect=full_mask), torch.inference_mode():
                 graft.forward(**call)
             for i, destination in enumerate(graft.trace_dirs):
-                self.assertTrue((destination / "step_0000.png").is_file())
-                tensors = load_file(destination / "step_0000.safetensors")
+                self.assertTrue((destination / "timesteps" / "step_0000.png").is_file())
+                tensors = load_file(destination / "tensors" / "step_0000.safetensors")
                 self.assertTrue(tensors["applied_mask"].all())
                 anchor = frames["anchor", graft.last_layer][1][i]
                 before = frames["user", graft.last_layer][1][-graft.batch:][i]

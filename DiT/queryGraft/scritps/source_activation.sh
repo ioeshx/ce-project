@@ -4,13 +4,16 @@ export HF_ENDPOINT="https://hf-mirror.com"
 # 共用设置；可统一修改 eta、rho
 common=(
   --model sd35_medium
-  --cases i2p --tasks i2p
+  --cases ip,style,object  
+  # --tasks i2p
   --representation block_output
   --edit-layers last --update-rule replace
   --eta 0 --rho 0
   --device cuda:0 --phase run
   # --anchor-overrides '{"nudity":"clothed"}'
 )
+# 0. 不开启
+python DiT/queryGraft/run.py benchmark "${common[@]}" 
 
 # 1. 联合条件，不加权
 python DiT/queryGraft/run.py benchmark "${common[@]}" \

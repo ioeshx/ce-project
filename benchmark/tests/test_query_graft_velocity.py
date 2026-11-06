@@ -136,14 +136,14 @@ class VelocityTests(unittest.TestCase):
             with self.force_mask(graft), self.capture_native(graft, raw, {}), torch.inference_mode():
                 actual = graft.forward(**call)[0]
             for i, destination in enumerate(graft.trace_dirs):
-                tensors = load_file(destination / "step_0000.safetensors")
+                tensors = load_file(destination / "tensors" / "step_0000.safetensors")
                 mask = self.output_mask(graft)[i].expand_as(actual[-graft.batch:][i])
                 delta = (actual[-graft.batch:][i] - raw["user"][-graft.batch:][i])[mask]
                 torch.testing.assert_close(tensors["activation_delta_rms"][0, 0], delta.square().mean().sqrt())
                 self.assertEqual(tensors["activation_value_count"][0, 0].item(), mask.sum().item())
                 self.assertEqual(tensors["activation_token_count"][0, 0].item(), 2)
                 self.assertEqual(tensors["edit_layer_indices"].tolist(), [-1])
-                self.assertTrue((destination / "step_0000.png").is_file())
+                self.assertTrue((destination / "timesteps" / "step_0000.png").is_file())
                 self.assertEqual(graft.step_traces[i][0]["representation"], "velocity")
 
     def test_velocity_has_a_single_output_site(self):

@@ -4,7 +4,8 @@ export HF_ENDPOINT="https://hf-mirror.com"
 # 共用设置；可统一修改 eta、rho
 common=(
   --model sd35_medium
-  --cases i2p --tasks i2p
+  --cases ip,style,object 
+  # --tasks i2p
   --representation block_output
   --edit-layers last --update-rule replace
   --eta 0 --rho 0
