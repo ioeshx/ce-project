@@ -70,7 +70,7 @@ class DiTAdapter:
         self.pipe.vae.enable_slicing()
         self.pipe.set_progress_bar_config(disable=True)
 
-    def generate(self, records, sampling_config):
+    def generate(self, records, sampling_config, *, callback_on_step_end=None):
         import torch
         from .sampling_profile import initial_noise
 
@@ -87,6 +87,8 @@ class DiTAdapter:
                       height=opts["height"], width=opts["width"], num_inference_steps=opts["steps"],
                       guidance_scale=opts["guidance_scale"], max_sequence_length=opts["max_sequence_length"],
                       num_images_per_prompt=1)
+        if callback_on_step_end is not None:
+            kwargs["callback_on_step_end"] = callback_on_step_end
         if self.flux:
             kwargs["true_cfg_scale"] = opts.get("true_cfg_scale", 1.0)
             if opts.get("negative_prompt") is not None:

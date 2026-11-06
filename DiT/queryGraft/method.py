@@ -1,4 +1,4 @@
-"""Read-only concept queries localize targets; live anchor activations patch image tokens."""
+"""Read-only concept queries localize targets for source updates or explicit zeroing."""
 from __future__ import annotations
 
 import copy
@@ -20,7 +20,8 @@ from benchmark.sampling_profile import initial_noise
 
 DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
-MASK_RULES = ("target_max", "anchor_min")
+MASK_RULES = ("target_max", "anchor_min", "mean_target_max")
+UPDATE_RULES = ("replace", "blend", "add", "zero")
 DEFAULTS = dict(background="background", mask_rule="target_max", concept_include_prompt=False,
                 my_layer_aggre=False, my_layer_policy=False,
                 localization_layers="all", edit_layers="last",
@@ -76,8 +77,8 @@ def resolve_settings(config, overrides=None):
     if settings["source_mode"] == "logits" and (
             settings["source_user_weight"] <= 0 or settings["source_anchor_weight"] <= 0):
         problems.append("logits source weights must be positive")
-    if settings["update_rule"] not in {"replace", "blend", "add"}:
-        problems.append("update_rule must be replace, blend or add")
+    if settings["update_rule"] not in UPDATE_RULES:
+        problems.append(f"update_rule must be one of {UPDATE_RULES}")
     if not math.isfinite(settings["strength"]) or settings["strength"] < 0:
         problems.append("strength must be finite and nonnegative")
     if settings["update_rule"] == "blend" and settings["strength"] > 1:
@@ -272,6 +273,7 @@ class QueryGraft(DiTAdapter):
         self.active, self.mode = False, "idle"
         self.handles, self.processors, self.block_forwards = [], [], []
         self.velocity = self.settings["representation"] == "velocity"
+        self.zero_update = self.settings["update_rule"] == "zero"
         transformer = self.pipe.transformer
         blocks = [(f"transformer_blocks.{i}", block, False)
                   for i, block in enumerate(transformer.transformer_blocks)]
@@ -331,7 +333,7 @@ class QueryGraft(DiTAdapter):
             self.concepts = self.pipe._get_t5_prompt_embeds(
                 prompt=phrases, max_sequence_length=opts["max_sequence_length"],
                 num_images_per_prompt=1, device=self.device, dtype=self.dtype)[:, 0].unsqueeze(0).cpu()
-            if self.settings["source_mode"] == "anchor":
+            if not self.zero_update and self.settings["source_mode"] == "anchor":
                 anchors = list(dict.fromkeys(pair["anchor"] for pair in self.settings["pairs"]))
                 sequence, pooled, text_ids = self.encode_source(anchors)
                 self.anchor_conditions = {anchor: (sequence[i:i+1], pooled[i:i+1], text_ids)
@@ -356,7 +358,7 @@ class QueryGraft(DiTAdapter):
 
     def prepare_sources(self, records):
         """Encode native joint prompts per sample; localization concepts stay fixed."""
-        if self.settings["source_mode"] == "anchor":
+        if self.zero_update or self.settings["source_mode"] == "anchor":
             return
         self.anchor_conditions.clear()
         self.source_groups.clear()
@@ -400,7 +402,11 @@ class QueryGraft(DiTAdapter):
         if self.settings["my_layer_policy"]:
             if self.settings["mask_rule"] == "anchor_min":
                 return (scores[..., 1] < scores[..., 0]) & (scores[..., 1] < scores[..., 2])
-            return (scores[..., 0] > scores[..., 1]) & (scores[..., 0] > scores[..., 2])
+            target = scores[..., 0]
+            target_max = (target > scores[..., 1]) & (target > scores[..., 2])
+            if self.settings["mask_rule"] == "mean_target_max":
+                return target_max & (target > target.mean(dim=-1, keepdim=True))
+            return target_max
         if scores.shape[1] == 1:
             target = scores[..., 0]
             return target > target.mean(dim=-1, keepdim=True)
@@ -419,7 +425,10 @@ class QueryGraft(DiTAdapter):
         scores = torch.einsum("bpd,bkcd->bkpc", image_av.float(), concepts)
         if self.settings["my_layer_policy"]:
             probabilities = scores.softmax(dim=-1)
-            mask = self.region_mask(scores)
+            # A spatial mean threshold depends on the score scale. Use soft
+            # maps for the intersection, including when voting across layers.
+            policy_scores = probabilities if self.settings["mask_rule"] == "mean_target_max" else scores
+            mask = self.region_mask(policy_scores)
         else:
             batch, pairs, positions, channels = scores.shape
             probabilities = scores.transpose(1, 2).flatten(2).softmax(dim=-1)
@@ -460,6 +469,8 @@ class QueryGraft(DiTAdapter):
 
     def capture_sources(self):
         """Reenter the native model from this step's original x_t; never step its scheduler."""
+        if self.zero_update:
+            return
         previous_mode, previous_text_count = self.mode, self.text_count
         self.mode = "anchor"
         try:
@@ -530,22 +541,25 @@ class QueryGraft(DiTAdapter):
     def patch(self, layer, image):
         """Edit disjoint winning regions; each update reads the same current user tensor."""
         result = image.clone()
-        for pair, definition in enumerate(self.settings["pairs"]):
-            anchor = definition["anchor"]
-            if anchor not in self.sources:
-                continue
-            source = self.sources[anchor][layer].to(image)
-            if self.settings["source_mode"] == "extrapolate" and self.settings["source_scale"] != 1:
-                baseline = self.user_sources[layer].to(image).float()
-                source = (baseline + self.settings["source_scale"] * (source.float() - baseline)).to(image.dtype)
-            if self.settings["update_rule"] == "replace":
-                edited = source
-            elif self.settings["update_rule"] == "blend":
-                edited = (image.float() + self.settings["strength"] * (source.float() - image.float())).to(image.dtype)
-            else:
-                edited = (image.float() + self.settings["strength"] * source.float()).to(image.dtype)
-            mask = (self.winner == pair).to(image.device)[..., None]
-            result = torch.where(mask, edited, result)
+        if self.zero_update:
+            result.masked_fill_((self.winner >= 0).to(image.device)[..., None], 0)
+        else:
+            for pair, definition in enumerate(self.settings["pairs"]):
+                anchor = definition["anchor"]
+                if anchor not in self.sources:
+                    continue
+                source = self.sources[anchor][layer].to(image)
+                if self.settings["source_mode"] == "extrapolate" and self.settings["source_scale"] != 1:
+                    baseline = self.user_sources[layer].to(image).float()
+                    source = (baseline + self.settings["source_scale"] * (source.float() - baseline)).to(image.dtype)
+                if self.settings["update_rule"] == "replace":
+                    edited = source
+                elif self.settings["update_rule"] == "blend":
+                    edited = (image.float() + self.settings["strength"] * (source.float() - image.float())).to(image.dtype)
+                else:
+                    edited = (image.float() + self.settings["strength"] * source.float()).to(image.dtype)
+                mask = (self.winner == pair).to(image.device)[..., None]
+                result = torch.where(mask, edited, result)
         if self.settings["trace"]:
             before, after = image.float(), result.float()
             delta = after - before
@@ -567,7 +581,7 @@ class QueryGraft(DiTAdapter):
         return result
 
     def remember_user(self, layer, image):
-        if (self.settings["source_mode"] == "extrapolate" and self.mode in {"user", "probe"}
+        if (not self.zero_update and self.settings["source_mode"] == "extrapolate" and self.mode in {"user", "probe"}
                 and layer in self.editors):
             baseline = image[-self.batch:].detach()
             self.user_sources[layer] = baseline if self.inline else baseline.cpu()
@@ -619,7 +633,7 @@ class QueryGraft(DiTAdapter):
         if self.mode == "anchor":
             self.sources[self.current_anchor][layer] = (main_residual.detach() if self.inline
                                                         else main_residual.detach().cpu())
-        elif self.sources:
+        elif self.zero_update or self.sources:
             changed = self.patch(layer, main_residual[-self.batch:])
             if isinstance(extra, torch.Tensor):
                 changed = changed + extra[-self.batch:]
@@ -688,6 +702,8 @@ class QueryGraft(DiTAdapter):
             # Record the actual cutoff or concept winner used before the area gate.
             if self.settings["my_layer_aggre"]:
                 payload["decision_threshold"] = self.ratios.new_full(self.ratios.shape, self.settings["eta"]).cpu()
+            elif self.settings["my_layer_policy"] and self.settings["mask_rule"] == "mean_target_max":
+                payload["decision_threshold"] = self.localization_scores[..., 0].mean(-1).cpu()
             elif not self.settings["my_layer_policy"]:
                 if pairs == 1:
                     payload["decision_threshold"] = self.localization_scores[..., 0].mean(-1).cpu()
@@ -720,6 +736,7 @@ class QueryGraft(DiTAdapter):
                     "decision_threshold": (payload["decision_threshold"][i].tolist()
                                            if "decision_threshold" in payload else None),
                     "representation": self.settings["representation"],
+                    "update_rule": self.settings["update_rule"], "strength": self.settings["strength"],
                     "source_mode": self.settings["source_mode"],
                     "source_user_weight": self.settings["source_user_weight"],
                     "source_anchor_weight": self.settings["source_anchor_weight"],
@@ -789,6 +806,7 @@ class QueryGraft(DiTAdapter):
                 }, self.settings["pairs"], step_count, mask_rule=self.settings["mask_rule"],
                     my_layer_aggre=self.settings["my_layer_aggre"],
                     my_layer_policy=self.settings["my_layer_policy"],
+                    update_rule=self.settings["update_rule"],
                     localization_layers=self.localizers, diagnostic_layers=self.diagnostic_layers)
                 write_json(directory / "metadata.json", {
                     "record": records[i], "settings": self.settings, "sites": self.sites,

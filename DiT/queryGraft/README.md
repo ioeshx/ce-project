@@ -10,8 +10,8 @@
 | --- | --- | --- |
 | 默认 | 各层软分数图平均 | 对平均图应用 ConceptAttention 单类／多类规则 |
 | `--my-layer-aggre` | 各层二值掩码投票 | 每层先应用 ConceptAttention 规则，再按 `eta` 汇总 |
-| `--my-layer-policy` | 各层软分数图平均 | 对平均图应用 `target_max`／`anchor_min` |
-| 两个开关同时指定 | 各层二值掩码投票 | 每层先应用 `target_max`／`anchor_min`，恢复此前行为 |
+| `--my-layer-policy` | 各层软分数图平均 | 对平均图应用 `--mask-rule` 指定的三概念判据 |
+| 两个开关同时指定 | 各层二值掩码投票 | 每层先应用 `--mask-rule` 指定的判据，再投票 |
 
 ```bash
 # ConceptAttention 的默认汇总与区域判据。
@@ -67,21 +67,35 @@ python DiT/queryGraft/run.py sample --model sd35_medium \
 | 替换层集 | `--edit-layers` | `last` | `all` 或逗号分隔的 block 索引 |
 | 跨层汇总 | `--my-layer-aggre` | 关闭：软图平均 | 开启：逐层二值投票 |
 | 区域判据 | `--my-layer-policy` | 关闭：ConceptAttention 单类／多类规则 | 开启：使用 `--mask-rule` |
-| 自定义区域判据 | `--mask-rule` | `target_max`，仅 `--my-layer-policy` 开启时生效 | `anchor_min`：anchor 严格低于 target 和 background |
+| 自定义区域判据 | `--mask-rule` | `target_max`，仅 `--my-layer-policy` 开启时生效 | `anchor_min`、`mean_target_max`（空间均值与 target 最高分区域的交集） |
 | 跨层投票比例阈值 | `--eta` | `0`，仅 `--my-layer-aggre` 开启时生效 | `[0,1]` 内数值；`0.5` 为严格多数投票 |
 | target 面积阈值 | `--rho` | `0` | `[0,1]` 内数值；`0.2` 为旧面积门控 |
-| 更新算子 | `--update-rule` | `replace` | `blend`、`add`，用 `--strength` 控制系数 |
+| 更新算子 | `--update-rule` | `replace` | `blend`、`add` 用 `--strength` 控制系数；`zero` 将掩码区域置零 |
 
 层索引从 0 开始；FLUX 的双流 blocks 在前、单流 blocks 在后。每个 block 的主 attention 等权参与软图平均；启用投票时每个 block 投一票。SD3.5 额外的 image-only `attn2` 不参与定位汇总。
 
 开启 `--my-layer-aggre` 后使用严格的 `vote_fraction > eta`：`eta=0` 是逐层掩码的并集，`eta=1` 不产生掩码；默认软图平均不使用 `eta`。所有模式均保留 source 前向的严格面积门控 `target_area > rho`，`rho=0` 在掩码非空时触发，空掩码仍跳过 anchor 前向。概念分数使用 FP32 的原始 AV 点积，不归一化 image 或 concept 向量；用于状态更新与 anchor 替换的激活保持原始表示。
 
-显式指定 `--my-layer-policy` 后，`--mask-rule` 控制本组三个概念的区域判据；软图平均模式比较平均后的软分数，投票模式比较每层的原始分数：
+显式指定 `--my-layer-policy` 后，`--mask-rule` 控制本组三个概念的区域判据；软图平均模式比较平均后的软分数：
 
 - `target_max`（默认）：`target > anchor` 且 `target > background`。
 - `anchor_min`：`anchor < target` 且 `anchor < background`；anchor 并列最低时不选中，target 和 background 并列高于 anchor 时仍选中。“最低”在同一位置的三个概念分数之间比较。
+- `mean_target_max`：`target > mean_spatial(target)` 且 `target > anchor` 且 `target > background`。均值按当前样本、当前采样步和当前 pair 的全部空间位置计算，三个条件均为严格大于。仅指定 `--mask-rule mean_target_max` 不会启用此规则，还需 `--my-layer-policy`。
 
-两种规则均支持所有替换表示与 source 模式；是否逐层判定后投票由 `--my-layer-aggre` 独立控制。例如，恢复逐层判定与投票，以 `clothed` 为 anchor 选择其分数最低的位置：
+多 target 时，`mean_target_max` 沿用自定义策略的组内三概念 softmax，逐组取上述交集；各组独立计算 target 均值，候选掩码重叠时再按现有 winner 规则选择。默认不启用 `--my-layer-aggre`，先平均所选层的软图，再计算交集；若显式启用投票，则每层先在其 softmax 软图上计算交集，再按 `vote_fraction > eta` 汇总。原有 `target_max`／`anchor_min` 在投票模式下继续比较每层原始点积分数。
+
+例如，在 I2P 上以 `nude` 定位，开启交集策略并保存 trace：
+
+```bash
+python DiT/queryGraft/run.py benchmark --cases i2p --tasks i2p \
+  --pairs '[{"target":"nude","anchor":"clothed"}]' \
+  --my-layer-policy --mask-rule mean_target_max \
+  --device cuda:0 --phase run --trace
+```
+
+加 `--update-rule zero` 使用置零更新。交集策略默认关闭，不改变原有默认判据。
+
+三种规则均支持所有替换表示与 source 模式；是否逐层判定后投票由 `--my-layer-aggre` 独立控制。例如，恢复逐层判定与投票，以 `clothed` 为 anchor 选择其分数最低的位置：
 
 ```bash
 python DiT/queryGraft/run.py benchmark --model sd35_medium --cases i2p --tasks i2p \
@@ -91,6 +105,17 @@ python DiT/queryGraft/run.py benchmark --model sd35_medium --cases i2p --tasks i
 ```
 
 `blend` 的更新为 `X + strength * M * (A - X)`；`add` 为 `X + strength * M * A`；`replace` 不使用 `strength`。最后一层 AV 替换可在当前 user 前向内取得掩码后按需计算 anchor source；多层替换使用固定的当前步掩码并重放 user 路径，实际前向成本随配置变化。
+
+显式指定 `--update-rule zero` 时，更新为 `X' = where(M, 0, X)`：将实际执行掩码内所选表示的全部通道置零。默认仍为 `replace`。`zero` 支持 `av`／`residual`／`block_output`／`velocity`，沿用原有定位、面积门控、编辑层选择和 CFG 正条件分支约定，跳过 source 编码及前向；`--strength` 和 source 参数不参与更新。target／anchor／background 仍参与定位。最后一层或 velocity 每步只需一次 user 前向；其他编辑层配置在掩码触发时重放 user，总计两次前向。
+
+置零发生在 `--representation` 指定的位置；默认 `av` 是输出投影之前，后续投影、门控、残差和 MLP 继续执行。trace 的激活统计也在该位置计算，图中标注 `update=zero` 和 `target -> zero`。
+
+例如，在 I2P 上沿用默认定位及 AV 编辑位置，开启置零与 trace 后采样、评估：
+
+```bash
+python DiT/queryGraft/run.py benchmark --cases i2p --tasks i2p \
+  --device cuda:0 --phase run --update-rule zero --trace
+```
 
 `residual` 在 SD3.5／FLUX 双流层指主 attention 投影、门控、残差更新后的表示。SD3.5 的额外 `attn2` 更新保留在 user 路径；FLUX 单流层则使用 AV 与 MLP 融合后的原生残差输出。定位分数在这些配置下仍统一从 raw AV 计算。
 
@@ -249,7 +274,7 @@ python DiT/queryGraft/run.py evaluate --manifest /path/to/manifest.json --device
 
 两项均使用实际完成的采样步数作为分母，不只统计触发步骤，也不按模型 timestep 间隔加权。汇总仅累加小型 CPU 空间图，不保留完整激活或增加模型前向。
 
-逐步图和样本汇总图的标题注明实际启用的汇总与区域策略。metadata 每步记录包含两个开关、`mask_rule`，以及解析后的 `aggregation`、`region_policy`、`softmax_scope` 和 `decision_threshold`。单类默认模式的阈值按样本计算，投票模式记录 `eta`；不使用标量阈值的模式记录 `null`。每组的三通道张量仍按 target、anchor、background 排列。
+逐步图和样本汇总图的标题注明实际启用的汇总与区域策略。metadata 每步记录包含两个开关、`mask_rule`，以及解析后的 `aggregation`、`region_policy`、`softmax_scope` 和 `decision_threshold`。单类默认模式的阈值按样本计算；软图平均的 `mean_target_max` 按样本、按 pair 保存 target 空间均值，图上同时标明与 `target > anchor`、`target > background` 取交集。投票模式记录 `eta`；交集投票的图注另标明逐层交集条件。不使用标量阈值的模式记录 `null`。每组的三通道张量仍按 target、anchor、background 排列。
 
 ```bash
 # CUDA 0：最基本配置，先运行 4 条 I2P，保存逐步诊断和样本汇总。
@@ -299,7 +324,7 @@ DiT/queryGraft/results/<model>/<task>/<case>/<method-with-start-time>/
 | `concept_scores_mean` | `[K,H,W,3]`，逐层 softmax 后的概念分数均值；顺序为 target、anchor、background |
 | `concept_logits_mean` | `[K,H,W,3]`，未 softmax 的原始 image/concept AV 点积分数均值 |
 | `localization_scores_mean` | `[K,H,W,3]`，仅所选定位层的软分数均值；默认模式的实际决策输入 |
-| `decision_threshold` | `[K]`，仅在使用标量阈值时保存：默认单类为 target 图的空间均值，投票模式为 `eta`；按严格大于比较 |
+| `decision_threshold` | `[K]`，仅在使用标量阈值时保存：默认单类及软图平均的 `mean_target_max` 为每组 target 图的空间均值，投票模式为 `eta`；按严格大于比较 |
 | `concept_argmax` | `[H,W]`，仅默认软图平均、多 target 模式保存；在全部 `3K` 概念通道中的获胜索引，`3k`／`3k+1`／`3k+2` 分别为第 `k` 组 target／anchor／background |
 | `edit_layer_indices` | `[E]`，编辑层的实际索引；`velocity` 为 `[-1]`，表示完整 Transformer 输出 |
 | `activation_before_rms`、`activation_after_rms`、`activation_delta_rms` | `[K,E]`，逐 pair、逐编辑层的 RMS |
@@ -322,9 +347,11 @@ DiT/queryGraft/results/<model>/<task>/<case>/<method-with-start-time>/
 
 原始 AV 点积分数使用不同概念范数的已知数值验证，覆盖 FP32／BF16、CFG、多 pair、两种掩码判据；`eta`／`rho` 的严格边界及空掩码跳过保持原检查。独立调制检查位于 `benchmark/tests/test_query_graft_concept_modulation.py`，覆盖 SD3、FLUX 双流／单流和嵌入式 guidance，并将 concept 残差状态与独立的原生 block 前向对照。
 
-软图平均与区域判据检查位于 `benchmark/tests/test_query_graft_layer_policy.py`：用已知数值区分四种开关组合，验证单类空间均值、多类全局竞争、并列分数、面积门控、关键层与诊断层分离，以及 CLI 配置保存。连同现有 queryGraft、独立调制、诊断、source、trace 和 velocity 检查，35 项全部通过。
+软图平均与区域判据检查位于 `benchmark/tests/test_query_graft_layer_policy.py`：用已知数值区分四种开关组合，验证单类空间均值、多类全局竞争、并列分数、面积门控、关键层与诊断层分离，以及 CLI 配置保存。连同现有 queryGraft、独立调制、诊断、source、trace、velocity 和 zero 检查，41 项全部通过。
 
 trace 决策检查位于 `benchmark/tests/test_query_graft_trace.py`，从保存的阈值或 argmax 索引复算候选掩码，并检查绘图实际使用的数组、关键定位层的汇总、未触发步骤的时间均值和关闭 trace 的行为。
+
+置零检查位于 `benchmark/tests/test_query_graft_zero.py`，覆盖 SD3／FLUX、四种表示、单层／多层、多 pair、CFG 负分支、掩码外值保留、空掩码跳过、source 编码与前向跳过、trace 的零激活统计，以及 CLI 默认值与显式开启的独立计划。
 
 逐步诊断已验证 8 组小型 SD3／FLUX、AV／residual、末层／全部编辑层组合：开启与关闭诊断的模型输出一致，前向次数一致；批量 CFG、多 pair、关键定位层下的全层诊断均值和数值文件均通过检查。真实小型 pipeline 的两步采样验证了每步 PNG／张量、最终 metadata，以及未触发时的零更新图；文本编码仍使用确定性替代输入。
 

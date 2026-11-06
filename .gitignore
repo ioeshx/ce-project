@@ -8,6 +8,8 @@ DiT/early_semantic/results/
 !/DiT/early_semantic/
 !DiT/attention_replacement/
 !DiT/queryGraft
+!/DiT/detectFix/
+/DiT/detectFix/results/
 
 # Python 缓存和虚拟环境
 __pycache__/

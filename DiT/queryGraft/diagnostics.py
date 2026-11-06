@@ -47,7 +47,7 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
     figure.suptitle(
         f"queryGraft | step {step:03d} | model timestep {info['timestep']:g} | "
         f"aggregation={aggregation} | policy={policy} | "
-        f"{limits} | {info['representation']}\n"
+        f"{limits} | {info['representation']} | update={info.get('update_rule', 'replace')}\n"
         f"Decision input: {len(info['localization_layers'])} selected blocks "
         f"of {len(info['diagnostic_layers'])} executed blocks; softmax={info['softmax_scope']}",
         fontsize=12)
@@ -56,13 +56,14 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
         applied = tensors["applied_mask"][pair]
         area = float(applied.float().mean())
         target, anchor = definition["target"], definition["anchor"]
+        destination = "zero" if info.get("update_rule") == "zero" else anchor
         if info["my_layer_aggre"]:
             decision_input = tensors["vote_fraction"][pair]
             input_title = "Decision input\nLayer-vote fraction"
         else:
             decision_input = tensors["localization_scores_mean"][pair, ..., 0]
             input_title = "Decision input\nMean soft maps: target channel"
-        titles = [f"{target} -> {anchor}\nApplied mask: {area:.1%}",
+        titles = [f"{target} -> {destination}\nApplied mask: {area:.1%}",
                   input_title,
                   f"Candidate mask: {float(tensors['mask'][pair].float().mean()):.1%}\nBefore area gate / overlap selection"]
         maps = [applied, decision_input, tensors["mask"][pair]]
@@ -75,6 +76,9 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
         if info["decision_threshold"] is not None:
             kind = "vote fraction" if info["my_layer_aggre"] else "target spatial mean"
             rule = f"Strict > {info['decision_threshold'][pair]:.6g} ({kind})"
+            if info["region_policy"] == "mean_target_max":
+                rule += ("\nPer layer: target > spatial mean\nAND target > anchor AND target > background"
+                         if info["my_layer_aggre"] else "\nAND target > anchor AND target > background")
         elif info["region_policy"] == "concept_argmax":
             rule = f"Global argmax over {3 * len(pairs)} concepts; target index={3 * pair}"
         else:
@@ -128,6 +132,7 @@ def save_step_diagnostics(directory, step, tensors, activation_sums, info):
 
 def save_sample_diagnostics(directory, tensors, pairs, step_count, *, mask_rule="target_max",
                             my_layer_aggre=False, my_layer_policy=False,
+                            update_rule="replace",
                             localization_layers=None, diagnostic_layers=None):
     """Summarize all sampling steps equally, including steps with no applied mask."""
     from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -146,14 +151,15 @@ def save_sample_diagnostics(directory, tensors, pairs, step_count, *, mask_rule=
              if localization_layers is not None else "")
     figure.suptitle(
         f"queryGraft | sample summary | mean over all {step_count} sampling steps | "
-        f"aggregation={aggregation}, policy={policy}\n"
+        f"aggregation={aggregation}, policy={policy}, update={update_rule}\n"
         f"{scope}"
         "Applied mask: time average, no new threshold; target score: selected-layer soft mean, then time mean",
         fontsize=12)
     for pair, definition in enumerate(pairs):
         applied = tensors["applied_mask_mean"][pair]
         scores = tensors["localization_scores_mean"][pair, ..., 0]
-        titles = [f"{definition['target']} -> {definition['anchor']}\nMean applied mask",
+        destination = "zero" if update_rule == "zero" else definition["anchor"]
+        titles = [f"{definition['target']} -> {destination}\nMean applied mask",
                   "Mean target soft score over selected layers and time" +
                   ("\nAuxiliary score; masks use layer votes" if my_layer_aggre else "")]
         for column, (data, title, cmap) in enumerate(zip((applied, scores), titles, ("Blues", "magma"))):

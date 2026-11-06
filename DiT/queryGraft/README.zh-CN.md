@@ -13,7 +13,7 @@
 | 概念读取范围 | image 与本组概念 token | `--concept-include-prompt` 显式加入 user prompt；原始 token 不能读取概念 token |
 | concept 调制条件 | pooled CLIP 输入置零，保留时间与 guidance | 复用 text 分支参数，单独计算门控、scale 与 shift |
 | 定位特征 | 同层原始 image AV 与 concept AV 点积 | 不做 L2 归一化 |
-| 区域判据 | 单 target：热图空间均值阈值；多 target：全部概念 argmax | `--my-layer-policy` 开启 `target_max`／`anchor_min` |
+| 区域判据 | 单 target：热图空间均值阈值；多 target：全部概念 argmax | `--my-layer-policy` 开启 `target_max`／`anchor_min`／`mean_target_max` |
 | 定位层集 | 全部具有概念读出路径的主 attention 层 | 与关键层子集比较 |
 | 层间汇总 | 各层 softmax 软分数图等权平均，再做区域判定 | `--my-layer-aggre` 开启二值掩码投票，使用 $\eta$ |
 | 面积阈值 | $\rho=0$，掩码非空即触发 | 对 $\rho$ 做消融 |
@@ -279,7 +279,19 @@ $$
 
 `target_max` 为该开关下的默认规则；其 target 并列最高时不选中。`anchor_min` 在 anchor 并列最低时不选中，target 与 background 并列高于 anchor 时仍选中。仅设置 `--mask-rule` 不会开启该策略。
 
-两个开关独立：仅开 `--my-layer-policy` 时，对平均软图应用式 (14b)／(14c)；仅开 `--my-layer-aggre` 时，各层先应用 ConceptAttention 的区域判据再投票。同时开启两者时，恢复此前“每层按原始点积分数比较 target/anchor/background，再按 `eta` 投票”的行为；单层内 softmax 不改变三个概念的分数顺序。多 pair 候选区域重叠时，投票模式按支持票比例选择，软图平均模式按平均 target 分数选择，平票按配置顺序选择。
+显式使用 `--my-layer-policy --mask-rule mean_target_max` 时，取空间均值以上区域与 target 最高分区域的交集：
+
+$$
+\mathcal P_{\rm mean\_target\_max}(H)(p)
+=\mathbf1\!\left[H_{\rm tar}(p)>\frac1{HW}\sum_{q=1}^{HW}H_{\rm tar}(q)\right]
+\land\mathbf1[H_{\rm tar}(p)>H_{\rm anc}(p)]
+\land\mathbf1[H_{\rm tar}(p)>H_{\rm bg}(p)].
+\tag{14d}
+$$
+
+默认仍先按式 (13) 平均所选层的 softmax 软图，再令 $H=\overline\pi_t$ 应用式 (14d)。均值按当前样本、当前步、当前 pair 的全部空间位置计算。多 pair 沿用自定义策略的组内三概念 softmax，各组独立取交集；不额外要求 target 在其他组的概念中获胜。该规则可以产生空掩码。
+
+两个开关独立：仅开 `--my-layer-policy` 时，对平均软图应用式 (14b)／(14c)／(14d)；仅开 `--my-layer-aggre` 时，各层先应用 ConceptAttention 的区域判据再投票。同时开启两者且使用 `target_max`／`anchor_min` 时，恢复此前“每层按原始点积分数比较 target/anchor/background，再按 `eta` 投票”的行为；单层内 softmax 不改变三个概念的分数顺序。`mean_target_max` 的空间阈值取决于分数尺度，因此投票模式在每层的 softmax 软图上先应用式 (14d)，再投票。多 pair 候选区域重叠时，投票模式按支持票比例选择，软图平均模式按平均 target 分数选择，平票按配置顺序选择。
 
 ## 6. 按 target 面积触发 anchor 前向
 
@@ -435,7 +447,7 @@ soft_sum[p,k] <- 0
         s[p,k] <- dot(float32(O_x[p,:]), float32(O_c[k,:]))
         pi[p,k] <- softmax_over_concepts(s[p,k])
         soft_sum[p,k] <- soft_sum[p,k] + pi[p,k]
-        m[p] <- selected_policy(pi)；自定义策略在每层比较原始 s
+        m[p] <- selected_policy(pi)；target_max/anchor_min 在每层比较原始 s
         votes[p] <- votes[p] + m[p]
 
     在最终层 image/concept AV 已得到、image 输出投影尚未执行时暂停
@@ -443,7 +455,7 @@ soft_sum[p,k] <- 0
 如果 my_layer_aggre：M[p] <- votes[p] / |L_q| > eta
 否则：M[p] <- selected_policy(soft_sum / |L_q|)
 默认 selected_policy：单 target 用空间均值阈值，多 target 用全部概念 argmax
-my_layer_policy=true 时：selected_policy 使用 target_max 或 anchor_min
+my_layer_policy=true 时：selected_policy 使用 target_max、anchor_min 或 mean_target_max
 r <- sum(M) / (H * W)
 g <- r > rho
 
@@ -565,7 +577,7 @@ $\{0,0.05,0.10,0.20,0.30,0.40\}$，最终实验网格可根据结果调整；这
 
 在当前严格不等号下，$\rho=0$ 表示只要存在 target 掩码位置便触发，$\rho=1$ 永不触发。比较时报告擦除效果、保留效果、触发率与额外 anchor 计算量，尤其观察小目标受面积阈值影响的情况。
 
-### 10.5 更新算子：硬替换、比例融合与缩放相加
+### 10.5 更新算子：硬替换、比例融合、缩放相加与置零
 
 统一令 $X$ 为当前被编辑的 user 表示、$A$ 为同位置的 anchor 表示、$M=\widehat M_t$。以下更新公式用于已触发分支，沿通道广播 $M$；未触发时直接令 $X'=X$，无需计算 $A$：
 
@@ -574,10 +586,15 @@ $\{0,0.05,0.10,0.20,0.30,0.40\}$，最终实验网格可根据结果调整；这
 | 硬替换（默认） | $X'=X+M\odot(A-X)$ | 不使用 $\lambda$ |
 | 比例融合 | $X'=X+\lambda M\odot(A-X)$ | $0\le\lambda\le1$ |
 | 缩放相加 | $X'=X+\lambda M\odot A$ | $\lambda\ge0$ |
+| 置零（显式 `--update-rule zero`） | $X'=\operatorname{where}(M,0,X)$ | 不使用 $A$ 或 $\lambda$ |
 
 比例融合的 $\lambda=1$ 与硬替换相同，$\lambda=0$ 不更新；缩放相加不会移除原有 $X$ 分量。若“相加”的向量是 $A-X$，该方法已经属于上表的比例融合，不另列为独立算子。
 
 融合与相加的 $\lambda$ 分别调参，并记录各自扫描值；硬替换作为无强度系数的基准。
+
+置零模式沿用相同掩码、面积门控和编辑层，只将 `--representation` 对应位置的选中 image 表示全部通道设为零。默认仍为硬替换；只有显式设置 `--update-rule zero` 才使用置零。该模式不编码 source 条件、不执行 source 前向，`strength` 与 source 参数不参与更新；anchor 概念仍参与掩码定位。末层／velocity 每步一次 user 前向，其他编辑层在触发时使用定位与编辑两次 user 前向。默认 AV 位置之后的投影、门控、残差和 MLP 继续执行；`residual` 的 SD3 `attn2` 处理仍遵循第 10.1 节的表示定义。
+
+trace 在选定位置统计置零前后的激活，执行区域的 `after_rms` 为零；metadata 记录 `update_rule=zero`，图中标注 `update=zero` 与 `target -> zero`。
 
 ### 10.6 跨层投票阈值 $\eta$
 
@@ -594,7 +611,7 @@ $\{0,0.05,0.10,0.20,0.30,0.40\}$，最终实验网格可根据结果调整；这
 | 定位层集 | $\mathcal L_q$ | 全部主 attention 层 | 消融轴 2 |
 | 跨层汇总 | `my_layer_aggre` / `--my-layer-aggre` | 默认关闭，软图平均；开启后投票 | 离散汇总规则 |
 | 区域判据 | `my_layer_policy` / `--my-layer-policy` | 默认关闭，ConceptAttention 单类／多类规则 | 离散定位规则 |
-| 自定义判据 | `mask_rule` / `--mask-rule` | 仅 `my_layer_policy=true` 时生效，`target_max` 或 `anchor_min` | 离散定位规则 |
+| 自定义判据 | `mask_rule` / `--mask-rule` | 仅 `my_layer_policy=true` 时生效，`target_max`、`anchor_min` 或 `mean_target_max` | 离散定位规则 |
 | 投票阈值 | $\eta$ / `--eta` | 仅 `my_layer_aggre=true` 时生效，$0$，严格大于 | 数值超参数，消融轴 6 |
 | 面积阈值 | $\rho$ / `--rho` | $0$，严格大于 | 数值超参数，消融轴 4 |
 | concept 调制 | $\kappa_{c,t}$ | pooled CLIP 输入置零，保留时间和 guidance | 复用 text 分支参数 |
@@ -648,7 +665,7 @@ U_{t,k}(p)=\frac1{|\mathcal L_q|}
 \tag{28}
 $$
 
-默认单类时，在图下标注本样本的空间均值阈值，按严格大于生成候选掩码；多类时，标明在全部 $3K$ 个概念上 argmax 及当前 target 的通道索引。开启 `--my-layer-policy` 时，标注实际的三概念比较规则。开启 `--my-layer-aggre` 时，第二图改为式 (14a) 的二值支持比例 $v_t$，阈值为 $\eta$。非投票模式不在标题中展示无效的 `eta`。
+默认单类时，在图下标注本样本的空间均值阈值，按严格大于生成候选掩码；多类时，标明在全部 $3K$ 个概念上 argmax 及当前 target 的通道索引。开启 `--my-layer-policy` 时，标注实际的三概念比较规则；`mean_target_max` 同时标注各 pair 的空间均值阈值，以及 `target > anchor`、`target > background` 的交集条件。开启 `--my-layer-aggre` 时，第二图改为式 (14a) 的二值支持比例 $v_t$，阈值为 $\eta$；若使用交集判据，图注另标明逐层 softmax 交集条件。非投票模式不在标题中展示无效的 `eta`。
 
 ### 13.3 候选掩码与复算数据
 
@@ -659,7 +676,7 @@ V_{t,k}(p)=M_{t,k}(p).
 \tag{29}
 $$
 
-该图与第一张执行掩码图对照，可区分区域判定、面积门控和重叠选择。`localization_scores_mean` 保存全部所选层的三通道均值；单类默认模式另存实际 `decision_threshold`，投票模式在同名字段记录 $\eta$。默认多类模式另存 `concept_argmax`，其索引顺序为 `[target_0,anchor_0,background_0,target_1,...]`，只有索引 $3k$ 对应第 $k$ 个 target。无标量阈值时，metadata 的 `decision_threshold` 为 `null`。
+该图与第一张执行掩码图对照，可区分区域判定、面积门控和重叠选择。`localization_scores_mean` 保存全部所选层的三通道均值；单类默认模式另存实际 `decision_threshold`，软图平均的 `mean_target_max` 在同名字段保存各 pair 的 target 空间均值，投票模式则记录 $\eta$。默认多类模式另存 `concept_argmax`，其索引顺序为 `[target_0,anchor_0,background_0,target_1,...]`，只有索引 $3k$ 对应第 $k$ 个 target。无标量阈值时，metadata 的 `decision_threshold` 为 `null`。
 
 全执行层辅助统计 `layer_mask_mean`、`concept_scores_mean`、`concept_logits_mean` 继续保存，供额外核查；它们不作为默认决策输入绘图。metadata 另记录实际的 `aggregation`、`region_policy` 和 `softmax_scope`。trace 不改变层选择、掩码计算或模型前向次数。
 
