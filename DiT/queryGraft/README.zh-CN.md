@@ -2,7 +2,7 @@
 
 本文记录 queryGraft 的方法定义与首版实验配置；实现入口与命令见 [运行说明](README.md)。下文核心算法定义一个 target–anchor 对，另加一个 background 概念；现有多 target benchmark 的逐 pair 扩展见运行说明。模型参数冻结，干预发生在推理过程中。
 
-核心流程是：在 user 前向中加入只读概念 token，利用模型自身的 attention 输出定位 target；跨层汇总得到当前采样步的空间掩码；达到面积阈值时，以同一当前 latent 下的 anchor 条件前向激活，替换目标区域内的 image attention 输出。
+核心流程是：先用只读概念 token 在 raw AV 空间定位 target，跨层汇总得到当前采样步的空间掩码；达到面积阈值时，从同一当前 latent 计算 anchor source，再重放完整 user 前向，在全部层以 anchor 的投影后文本贡献替换当前 user 的对应贡献。模型输出投影的 bias、图像 value 贡献及其余原生分支保留在 user 路径。
 
 ## 1. 当前默认配置
 
@@ -17,8 +17,8 @@
 | 定位层集 | 全部具有概念读出路径的主 attention 层 | 与关键层子集比较 |
 | 层间汇总 | 各层 softmax 软分数图等权平均，再做区域判定 | `--my-layer-aggre` 开启二值掩码投票，使用 $\eta$ |
 | 面积阈值 | $\rho=0$，掩码非空即触发 | 对 $\rho$ 做消融 |
-| 替换表示 | 原始 AV，位于输出投影之前 | 与 attention 残差更新后、整个 block 最终输出、最终 velocity 比较 |
-| 替换层集 | 模型最后一层的主 attention | 与全部层、关键层子集比较 |
+| 替换表示 | `text_output`：输出矩阵投影后的文本 value 贡献，不含 bias | 原始 AV、attention 残差更新后、整个 block 最终输出、最终 velocity |
+| 替换层集 | 模型全部层的主 attention；触发后重放完整 user 前向 | 可显式选择末层或关键层子集 |
 | 更新算子 | 硬替换 | 与比例融合、缩放相加比较 |
 | 干预采样步 | 每个采样步都重新定位并判定触发 | 采样配置独立记录 |
 | anchor 前向条件 | anchor 短语本身作为完整 prompt | 可选联合 user 条件、logits／Value 加权和激活外推 |
@@ -50,7 +50,9 @@
 | $O^x_{t,\ell},O^c_{t,\ell}$ | user 前向中的 image、concept 原始 AV，形状为 $N_x\times D_\ell$、$3\times D_\ell$ |
 | $O^a_{t,\ell}$ | anchor 前向在对应层的 image 原始 AV，形状为 $N_x\times D_\ell$ |
 | $\mathcal L_q$ | 用于计算定位掩码的层集，默认 $\{1,\ldots,L\}$ |
-| $\mathcal L_e$ | 执行激活替换的层集，默认 $\{L\}$ |
+| $\mathcal L_e$ | 执行激活替换的层集，默认 $\{1,\ldots,L\}$ |
+| $C^u_{t,\ell},C^a_{t,\ell}$ | user／anchor 的投影后文本贡献，不含输出投影 bias |
+| $Y^u_{t,\ell}$ | 当前 user 路径的完整输出投影结果，包含原生 bias 及 FLUX 单流 MLP 分量 |
 | $m_{t,\ell}(p),M_t(p)$ | 第 $\ell$ 层的 target 二值掩码、跨层汇总后的 target 二值掩码 |
 | $r_t,g_t$ | target 掩码面积比例、当前步是否触发替换的二值变量 |
 | $\eta$ | 仅 `--my-layer-aggre` 模式使用的跨层支持比例阈值，默认 $0$ |
@@ -319,8 +321,8 @@ $$
 默认 `--source-mode anchor` 下，当 $g_t=1$ 时，以 **anchor 短语本身**作为原生 prompt，在同一个 $x_t$ 和 $\tau_t$ 上计算一次 anchor 条件模型前向：
 
 $$
-\left\{O^a_{t,\ell}\right\}_{\ell\in\mathcal L_e}
-=\operatorname{CaptureAV}_{\mathcal L_e}
+\left\{C^a_{t,\ell}\right\}_{\ell\in\mathcal L_e}
+=\operatorname{CaptureTextOutput}_{\mathcal L_e}
 \left[F_\theta(x_t,\tau_t;\kappa_{a,t})\right].
 \tag{17}
 $$
@@ -329,7 +331,7 @@ $$
 
 该分支使用模型原生 text–image joint attention。文本条件中不加入 user prompt、target 或 background，也不附加定位概念 token；图像侧仍可读取当前 $x_t$ 的信息。因此，anchor 条件与 target 文本分离，并不意味着当前 image latent 已经没有 target 信息。
 
-提取的 source 必须与 user 被替换激活具有相同的层、attention 分支、空间 token 顺序和表示位置。该分支不推进 scheduler，不单独更新 latent。中间表示模式提取对应激活，`velocity` 则使用完整 source 前向的最终预测；source 已提取且不需要最终预测时，可以提前结束其余计算。
+默认 source 提取投影后的文本贡献；它必须与 user 被替换贡献具有相同的层、attention 分支、空间 token 顺序和表示位置。该分支不推进 scheduler，不单独更新 latent。中间表示模式提取对应激活，`velocity` 则使用完整 source 前向的最终预测；source 已提取且不需要最终预测时，可以提前结束其余计算。
 
 ### 7.1 可选的联合条件与 source 增强
 
@@ -360,124 +362,95 @@ $$
 
 $\lambda_s$ 对应 `--source-scale`，独立于最终执行融合的 `--strength`。多层配置的 $H^u$ 从同一步未编辑的定位前向捕获，不能使用已经经过前层替换的重放状态。命令与 I2P 评估方式见 [Source 条件与增强模式](README.md#source-条件与增强模式)。
 
-## 8. 默认在最终层执行 AV 硬替换
+## 8. 默认在所有层替换投影后的文本贡献
 
-默认 $\mathcal L_e=\{L\}$。将式 (16) 的空间掩码沿通道维广播：
+默认 `representation=text_output`、$\mathcal L_e=\{1,\ldots,L\}$。以下以单个 attention head 表示；真实实现对各 head 计算后拼接。令 $r\in\{u,a\}$ 为 user／anchor 分支：
 
 $$
-\widetilde O^x_{t,L}(p,:)
-=\begin{cases}
-O^x_{t,L}(p,:), & g_t=0,\\
-\left(1-M_t(p)\right)O^x_{t,L}(p,:)
-+M_t(p)O^a_{t,L}(p,:), & g_t=1.
-\end{cases}
+B^r_{\mathrm{text},t,\ell}
+=\operatorname{ConcatHeads}\left[
+\operatorname{softmax}\left(\frac{Q^r_{\mathrm{image}}(K^r_{\mathrm{joint}})^\top}{\sqrt{d_\ell}}\right)
+\begin{bmatrix}V^r_{\mathrm{text}}\\0_{\mathrm{image}}\end{bmatrix}
+\right],
+\qquad
+C^r_{t,\ell}=W^{\mathrm{attn}}_{O,\ell}B^r_{\mathrm{text},t,\ell}.
+\tag{18a}
+$$
+
+上式使用便于说明的 `[text,image]` 顺序；代码按模型原生顺序处理。所有图像与文本 keys 都保留，只有图像 values 置零，所以分母仍是原生 joint softmax。只读 concept token 不进入该计算。$W^{\mathrm{attn}}_O$ 不含 bias；FLUX 单流层取融合输出矩阵中属于 attention 的列，排除并行 MLP 对应的列。
+
+记 $Y^{u,\mathrm{edit}}_{t,\ell}$ 为重放过程中当前层的完整 user 输出投影，$C^{u,\mathrm{edit}}_{t,\ell}$ 为该次前向实时计算的文本贡献。硬替换执行：
+
+$$
+\widetilde Y^u_{t,\ell}
+=Y^{u,\mathrm{edit}}_{t,\ell}
++\widehat M_t\odot\left(C^a_{t,\ell}-C^{u,\mathrm{edit}}_{t,\ell}\right),
+\qquad \ell\in\mathcal L_e.
 \tag{18}
 $$
 
-未触发的分支直接返回原 AV，不需要计算或引用 $O^a_{t,L}$。
+当前层的 user 图像 value 贡献、投影 bias 和 FLUX 单流 MLP 分量保留；不会把整个投影输出替换成 source。$C^{u,\mathrm{edit}}$ 包含前面编辑层的影响，不能用定位前向缓存的旧值代替它。`extrapolate` 仅在构造 source 时使用未编辑 user 基准。
 
-然后使用 $\widetilde O^x_{t,L}$ 继续 **user 分支**的输出投影、门控、残差、MLP 与最终预测头。原始 user 残差和已计算的其他特征保留在 user 路径中；替换对象只是图像行的 AV。
-
-先得到干预后的 user 条件预测：
+逐层更新后继续执行原生 dropout、门控、残差、MLP 与最终预测头，得到 $\widetilde f_{u,t}$。常规 CFG 使用：
 
 $$
-\widetilde f_{u,t}
-=\operatorname{UserSuffix}_{t,L}
-\left(\widetilde O^x_{t,L};\mathcal R^u_{t,L}\right),
-\tag{19}
-$$
-
-再按模型原生 guidance 方式得到送入 scheduler 的预测。对常规 CFG：
-
-$$
-\widetilde y_t
-=f^-_t+w\left(\widetilde f_{u,t}-f^-_t\right).
-$$
-
-其中 $f^-_t$ 为相同 $x_t,\tau_t$ 下的原生负条件预测。没有外部 CFG 时，$\widetilde y_t=\widetilde f_{u,t}$；模型内嵌 guidance 已包含在原生网络条件中。最后执行：
-
-$$
-x_{t-1}=\operatorname{SchedulerStep}
-\left(x_t,\tau_t,\widetilde y_t\right).
+\widetilde y_t=f^-_t+w(\widetilde f_{u,t}-f^-_t),
+\qquad
+x_{t-1}=\operatorname{SchedulerStep}(x_t,\tau_t,\widetilde y_t).
 \tag{20}
 $$
 
-$\mathcal R^u_{t,L}$ 表示继续 user 计算所需的原生状态，例如残差、调制参数、text 输出，以及 FLUX 单流层并行的 MLP 特征。$\widetilde y_t$ 按模型定义可以是速度或噪声预测；式 (20) 调用原生 scheduler，不另设采样更新公式。
+SD3.5 只修改正条件分支，负条件分支不直接编辑；FLUX 保留原生内嵌 guidance。
 
-### 8.1 最终层暂停与前向次数
+### 8.1 定位、source 与完整 user 重放
 
-默认执行顺序为：
+1. 从当前 $x_t$ 完成带只读概念的 user 定位前向，按原始 AV 计算所有定位层分数。
+2. 形成本步固定的 $M_t,r_t,g_t$；未触发则直接使用该次原生预测。
+3. 触发时，对每个不同 anchor 从同一个原始 $x_t,\tau_t$ 执行 source 前向，收集各编辑层的 $C^a$。
+4. 从同一个原始 $x_t,\tau_t$、完整原始 user 条件重新前向，不附加 concept token，依次应用式 (18)。本步掩码固定，不在重放时重新定位。
+5. 只用重放后的预测推进一次 scheduler。
 
-1. user＋概念路径前向，逐层计算式 (9)–(12)，累计投票。
-2. 在最终层同时得到 image 与 concept AV 后，**在 user image AV 输出投影前暂停**。
-3. 利用全部定位层结果计算 $M_t,r_t,g_t$。
-4. 若触发，从原始当前 $x_t$ 计算 anchor source；随后应用式 (18)。
-5. 恢复待完成的 user suffix，并调用一次 scheduler。
-
-因此，默认每步需要一遍 user 主干计算；触发时增加一遍 anchor 主干计算。概念 query 带来额外 attention 计算，但不需要独立的完整概念模型前向。这里的“两次前向”依赖于暂停、缓存或等价的分段执行；不能在 user 输出已经完成后，仅改一个缓存的 AV 就视为已完成干预。
-
-若干预改为早期层或多层，同时继续使用所有层的最终投票掩码，则必须先完成定位，再从最早受影响的 user 计算位置重放相应网络；详见第 10.3 节。
+单 anchor 触发时为 3 次 Transformer 前向；多个不同 anchor 为 $2+K$ 次，$K$ 是触发的不同 anchor 数。未触发时只需 1 次。`text_output` 即使显式选末层也执行重放。`zero` 不计算 source，触发时共 2 次 user 前向。
 
 ### 8.2 模型原生接口
 
-- **SD3.5** 使用带有独立 image/text 投影和更新路径的 joint attention；默认替换主 attention 的图像 AV，在其输出投影之前操作。
-- **FLUX 双流层** 在 image attention 输出投影之前操作；概念沿用 text 侧路径。
-- **FLUX 单流层** 的 AV 与并行 MLP 特征拼接后进入融合投影；只替换图像行中的 AV 通道，随后沿用 user 的 MLP 特征、融合投影、门控和残差。
-
-为明确后续实现，本稿约定：SD3.5 原生 CFG 存在时，仅在正条件 user 路径定位与替换，负条件预测沿用原生结果，再按原生 CFG 组合。anchor source 提取其 anchor 正条件路径的 AV；这些原始 AV 不做 CFG 线性组合。该分支选择是模型接入约定，与六组消融设计分别记录。FLUX 默认沿用模型的内嵌 guidance；具体 guidance 数值与原生采样配置共同记录。
+- **SD3.5／FLUX 双流层**：在 image `to_out[0]` 矩阵投影之后、dropout／门控／残差之前添加文本贡献差。text 输出投影保持原生，SD3.5 的额外 image-only `attn2` 不直接编辑。
+- **FLUX 单流层**：在原生 attention＋MLP 融合 `proj_out` 之后、gate／residual 之前添加文本贡献差，只处理图像行。保留当前 user 的 MLP 分量和融合投影 bias。
 
 ## 9. 单采样步算法
 
 ```text
-输入：当前 x_t、原生时间 tau_t、完整 user 条件、概念初始表示 C^0
-参数：定位层集 L_q、编辑层集 L_e={L}、rho=0
-      my_layer_aggre=false、my_layer_policy=false；投票模式的 eta=0
+输入：当前 x_t、时间 tau_t、完整 user 条件、概念初始表示 C^0
+默认：representation=text_output；L_q=全部层；L_e=全部层；rho=0
 
-重置当前步概念状态 C <- C^0
-votes[p] <- 0
-soft_sum[p,k] <- 0
+执行完整 user + 只读概念定位前向：
+    每层按同层 image raw AV 与 concept raw AV 点积计算软图
+    仅用 L_q 内的层汇总；定位分数与原方法相同
+汇总软图（或显式开启二值投票），计算 M、面积 r 和触发条件 g
 
-执行 user 前向，并在所有携带概念 token 的层执行单向概念读取：
-    原始 text/image attention 只能读取原始 text/image
-    concept attention 默认只读取 image 和本组 concept
-    concept 调制单独使用 pooled CLIP 输入为零的条件，保留时间与 guidance
+如果未触发：直接使用定位前向预测
+否则：
+    每个触发的不同 anchor 从相同 x_t、tau_t 原生前向一次
+    在每个编辑层保存 C_anchor = linear(text_message_AV, W_attention, bias=None)
+    从相同 x_t、tau_t 重新执行完整 user 前向，不附加概念 token
+    对每个编辑层：
+        读取当前完整投影输出 Y_user 和当前投影后文本贡献 C_user
+        Y_user <- Y_user + M * (C_anchor - C_user)
+        继续原生门控、残差、MLP 等运算
+    使用此重放预测
 
-    对每个定位层 ell in L_q：
-        取同层 image raw AV O_x 与 concept raw AV O_c
-        s[p,k] <- dot(float32(O_x[p,:]), float32(O_c[k,:]))
-        pi[p,k] <- softmax_over_concepts(s[p,k])
-        soft_sum[p,k] <- soft_sum[p,k] + pi[p,k]
-        m[p] <- selected_policy(pi)；target_max/anchor_min 在每层比较原始 s
-        votes[p] <- votes[p] + m[p]
-
-    在最终层 image/concept AV 已得到、image 输出投影尚未执行时暂停
-
-如果 my_layer_aggre：M[p] <- votes[p] / |L_q| > eta
-否则：M[p] <- selected_policy(soft_sum / |L_q|)
-默认 selected_policy：单 target 用空间均值阈值，多 target 用全部概念 argmax
-my_layer_policy=true 时：selected_policy 使用 target_max、anchor_min 或 mean_target_max
-r <- sum(M) / (H * W)
-g <- r > rho
-
-如果 g：
-    以完整 anchor 短语及原生条件，从相同 x_t、tau_t 执行 anchor 前向
-    提取最终层同一位置的 image raw AV O_a
-    O_x[p,:] <- where(M[p], O_a[p,:], O_x[p,:])
-
-继续 user 的输出投影、门控、残差、MLP 与预测头
-如模型启用 CFG，按原生方式组合 user 正条件与负条件预测
-使用所得预测执行一次原生 scheduler step，得到 x_{t-1}
+按原生 CFG 组合；调用一次原生 scheduler 更新
 ```
 
-完整采样对 $t=T,\ldots,1$ 重复上述过程，最后执行原生图像解码。
+完整采样重复上述过程，最后执行原生图像解码。`blend`／`add`／`zero` 作用于投影后的文本贡献，再将其变化量加回完整输出，见第 10.5 节。
 
 ## 10. 六组保留的消融选择
 
 以下设计均保留为后续实验选项。默认配置是实验起点，不预先认定其为最优。
 
-### 10.1 替换表示：AV、attention 残差更新后、block 最终输出与 velocity
+### 10.1 替换表示：投影后文本贡献、AV、残差、block 输出与 velocity
 
-默认：使用式 (18) 的原始 AV。
+默认 `text_output` 使用式 (18)。显式 `--representation av` 时，恢复输出投影前完整 image AV 的旧更新方式。
 
 备选：在对应层的 attention 残差更新后替换 image 表示。对具有独立 attention 残差步骤的层，定义：
 
@@ -547,7 +520,7 @@ $$
 \tag{24}
 $$
 
-定位层集 $\mathcal L_q$ 与替换层集 $\mathcal L_e$ 是独立选择。多层编辑时，每个编辑层都使用**当前步固定的同一个 $\widehat M_t$**，但 source 必须来自该层自己的 anchor 激活，不能把最终层的 source 直接复制给其他层：
+默认替换层集为全部层。定位层集 $\mathcal L_q$ 与替换层集 $\mathcal L_e$ 是独立选择。多层编辑时，每个编辑层都使用**当前步固定的同一个 $\widehat M_t$**，但 source 必须来自该层自己的 anchor 激活，不能把最终层的 source 直接复制给其他层。默认投影后文本贡献使用式 (18)；以下式 (25) 描述显式选择旧 `av` 表示时的对应操作：
 
 $$
 \widetilde O^{x,\mathrm{edit}}_{t,\ell}
@@ -562,7 +535,7 @@ $$
 
 $O^{x,\mathrm{edit}}$ 是干预执行过程中当前 user 路径的 AV，已反映更早编辑层的影响；不是把第一次只读定位时缓存的 AV 覆盖回去。
 
-若掩码需要后面的层才能确定，则执行：只读 user 定位 → 按需 anchor source 前向 → 从最早编辑点恢复或重放 user 计算。掩码在该步的重放过程中固定，不边编辑边重新计算。一次定位 user 前向、一次 anchor 前向、一次完整 user 重放是直接实现方式；缓存早期状态可以缩短重放范围。比较这些方案时同时报告实际计算开销，默认最终层配置的两分支执行方式不能直接套用到多层编辑。
+若掩码需要后面的层才能确定，则执行：只读 user 定位 → 按需 anchor source 前向 → 从最早编辑点恢复或重放 user 计算。掩码在该步的重放过程中固定，不边编辑边重新计算。一次定位 user 前向、一次 anchor 前向、一次完整 user 重放是直接实现方式；缓存早期状态可以缩短重放范围。默认投影后文本贡献采用上述完整重放流程；显式旧末层 AV 配置仍保留暂停后恢复的两分支执行方式。
 
 ### 10.4 面积阈值 $\rho$
 
@@ -592,7 +565,7 @@ $\{0,0.05,0.10,0.20,0.30,0.40\}$，最终实验网格可根据结果调整；这
 
 融合与相加的 $\lambda$ 分别调参，并记录各自扫描值；硬替换作为无强度系数的基准。
 
-置零模式沿用相同掩码、面积门控和编辑层，只将 `--representation` 对应位置的选中 image 表示全部通道设为零。默认仍为硬替换；只有显式设置 `--update-rule zero` 才使用置零。该模式不编码 source 条件、不执行 source 前向，`strength` 与 source 参数不参与更新；anchor 概念仍参与掩码定位。末层／velocity 每步一次 user 前向，其他编辑层在触发时使用定位与编辑两次 user 前向。默认 AV 位置之后的投影、门控、残差和 MLP 继续执行；`residual` 的 SD3 `attn2` 处理仍遵循第 10.1 节的表示定义。
+置零模式沿用相同掩码、面积门控和编辑层，只将 `--representation` 对应位置的选中 image 表示全部通道设为零。默认仍为硬替换；只有显式设置 `--update-rule zero` 才使用置零。该模式不编码 source 条件、不执行 source 前向，`strength` 与 source 参数不参与更新；anchor 概念仍参与掩码定位。默认 `text_output` 将所选区域的文本贡献置零，再将差值加回完整输出，触发时使用定位与重放两次 user 前向。旧末层 AV／velocity 每步一次 user 前向。旧 AV 位置之后的投影、门控、残差和 MLP 继续执行；`residual` 的 SD3 `attn2` 处理仍遵循第 10.1 节的表示定义。
 
 trace 在选定位置统计置零前后的激活，执行区域的 `after_rms` 为零；metadata 记录 `update_rule=zero`，图中标注 `update=zero` 与 `target -> zero`。
 
@@ -616,8 +589,8 @@ trace 在选定位置统计置零前后的激活，执行区域的 `after_rms` �
 | 面积阈值 | $\rho$ / `--rho` | $0$，严格大于 | 数值超参数，消融轴 4 |
 | concept 调制 | $\kappa_{c,t}$ | pooled CLIP 输入置零，保留时间和 guidance | 复用 text 分支参数 |
 | 概念分数 | 原始 AV 点积 | FP32，image 与 concept 均不做 L2 归一化 | 固定的分数计算规则 |
-| 替换表示位置 | `representation_site` | `av_pre_projection` | 消融轴 1 |
-| 替换层集 | $\mathcal L_e$ | 最后一层主 attention | 消融轴 3 |
+| 替换表示位置 | `representation` | `text_output`，投影后的文本贡献 | 消融轴 1 |
+| 替换层集 | $\mathcal L_e$ | 全部层主 attention，触发时重放 user | 消融轴 3 |
 | 更新算子 | `update_rule` | `hard_replace` | 消融轴 5 |
 | 更新强度 | $\lambda$ | 硬替换不启用 | 融合、相加时的数值超参数 |
 | 干预步集 | $\mathcal T_e$ | $\{T,\ldots,1\}$ | 本文默认每步定位与判定 |
@@ -709,7 +682,7 @@ B_{t,k}=\max_{\Omega_{t,k}}|X'-X|.
 \tag{31}
 $$
 
-集合为空时统计值记为零，并显示未执行更新。多层汇总使用各层平方和与通道元素数计算，不直接平均各层 RMS；另存逐编辑层的相同指标与 token 数。默认 AV 模式的统计发生在输出投影之前，不能将它解释为最终速度预测的改变量。
+集合为空时统计值记为零，并显示未执行更新。多层汇总使用各层平方和与通道元素数计算，不直接平均各层 RMS；另存逐编辑层的相同指标与 token 数。默认 `text_output` 统计投影后的文本贡献，旧 `av` 统计投影前的完整 AV；两者都不能直接解释为最终速度预测的改变量。
 
 ### 13.5 单个样本跨时间步的汇总
 

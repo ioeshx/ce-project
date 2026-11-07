@@ -161,6 +161,8 @@ class LayerPolicySettingsTests(unittest.TestCase):
                 path = Path(output.getvalue().strip().split("[manifest] ")[-1])
                 manifest = load_manifest(path)
                 settings = manifest["config"]["adapter"]["query_graft"]
+                self.assertEqual(settings["representation"], "text_output")
+                self.assertEqual(settings["edit_layers"], "all")
                 self.assertIs(settings["my_layer_aggre"], aggre)
                 self.assertIs(settings["my_layer_policy"], policy)
                 names.add(manifest["method"])

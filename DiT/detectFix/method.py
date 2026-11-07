@@ -254,7 +254,8 @@ class DetectFix(DiTAdapter):
         finally:
             self.sampling_active, self.active, self.mode = False, False, "idle"
         for record, decisions in zip(records, self.decisions):
-            write_json(Path(record["image"]).with_suffix(".detectFix.json"), {
+            image = Path(record["image"])
+            write_json(image.parent / "record" / f"{image.stem}.detectFix.json", {
                 "record": record, "settings": self.settings, "sampling": sampling_config,
                 "localization_sites": self.sites, "steps": decisions, "batch_forward_calls": self.forward_calls})
         if self.diagnostics is not None:

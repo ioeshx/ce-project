@@ -1,8 +1,12 @@
 # queryGraft
 
-方法公式、符号与设计依据见 [方法定义](README.zh-CN.md)。`method.py` 集中模型接入与算法，`source.py` 提供 source token 分组和 attention 控制，`run.py` 提供命令行与 benchmark，`diagnostics.py` 负责逐步诊断图和数值保存；`run.sh` 提供默认实验入口。
+方法公式、符号与设计依据见 [方法定义](README.zh-CN.md)。`method.py` 集中模型接入与算法，`source.py` 提供 source token 分组和 attention 控制，`run.py` 提供命令行与 benchmark，`diagnostics.py` 负责逐步诊断图和数值保存；`scritps/run.sh` 提供默认实验入口。
 
-默认设置是：独立编码 target、anchor、background 并取各自第一个序列 token；直接用同层原始 image AV 与 concept AV 的点积定位，不做 L2 归一化；每层先在概念维 softmax，再对所选定位层的软分数图等权平均。只有一个 target 时，选取 target 热图严格高于其空间均值的位置；多个 target 时，每个位置选取全部概念中分数最高者，仅将获胜的 target 区域映射给对应 anchor。默认 `rho=0`，只要掩码非空，就使用相同当前 latent 的 anchor 条件激活，在最后一层原始 AV 处硬替换。
+默认设置是：独立编码 target、anchor、background 并取各自第一个序列 token；直接用同层原始 image AV 与 concept AV 的点积定位，不做 L2 归一化；每层先在概念维 softmax，再对所选定位层的软分数图等权平均。只有一个 target 时，选取 target 热图严格高于其空间均值的位置；多个 target 时，每个位置选取全部概念中分数最高者，仅将获胜的 target 区域映射给对应 anchor。默认 `rho=0`，掩码非空时，从相同当前 latent 计算 anchor source，然后重新执行完整 user 前向，在全部层替换输出投影后的文本贡献（`--representation text_output --edit-layers all`）。
+
+令 `C = W_out * ConcatHeads(A_image,text * V_text)`，其中 attention 分母保留全部原生 image/text keys，`W_out` 只取线性权重、不加 bias。每层的更新为 `Y_new = Y_user + M * (C_anchor - C_user_current)`；`C_user_current` 从重放前向的当前层计算，包含前面编辑层的影响。SD3.5／FLUX 双流层在 image 输出投影之后、dropout／门控／残差之前更新；FLUX 单流层在 attention＋MLP 融合投影之后，只加入由 attention 权重列计算的文本贡献差，保留 user 的并行 MLP 和投影 bias。SD3.5 的额外 image-only `attn2` 不直接编辑。
+
+每步依次执行：只读定位 → 每个触发的不同 anchor 各一次 source 前向 → 从原始当前 latent 重放 user 并逐层编辑 → 一次原生 scheduler 更新。单 anchor 触发时为 3 次 Transformer 前向；未触发时只执行定位前向。`text_output` 即使显式选择末层也使用重放流程。原有表示仍可通过 `--representation av/residual/block_output/velocity` 显式选择，旧 manifest 保留已保存设置。
 
 `--my-layer-aggre` 显式开启此前的逐层二值掩码投票，使用 `vote_fraction > eta`；`--my-layer-policy` 显式开启此前由 `--mask-rule` 选择的 target/anchor/background 判据。两个开关默认均关闭，配置键分别为 `adapter.query_graft.my_layer_aggre`、`my_layer_policy`。
 
@@ -42,7 +46,7 @@ python DiT/queryGraft/run.py benchmark --cases i2p --concept-include-prompt --dr
 python DiT/queryGraft/run.py benchmark --cases all --dry-run
 
 # 默认全部实验：I2P 擦除与 COCO 保留，以及 IP、style、object。
-bash DiT/queryGraft/run.sh
+bash DiT/queryGraft/scritps/run.sh
 
 # 单独选择实验组、模型；通用参数沿用 benchmark。
 python DiT/queryGraft/run.py benchmark --model flux1_dev --cases ip --offline
@@ -62,9 +66,9 @@ python DiT/queryGraft/run.py sample --model sd35_medium \
 
 | 设计项 | 参数 | 默认值 | 备选 |
 | --- | --- | --- | --- |
-| 替换表示 | `--representation` | `av` | `residual`、`block_output`、`velocity` |
+| 替换表示 | `--representation` | `text_output`，输出投影后的文本贡献 | `av`、`residual`、`block_output`、`velocity` |
 | 定位层集 | `--localization-layers` | `all` | 逗号分隔的 block 索引，例如 `0,3,6` |
-| 替换层集 | `--edit-layers` | `last` | `all` 或逗号分隔的 block 索引 |
+| 替换层集 | `--edit-layers` | `all` | `last` 或逗号分隔的 block 索引；`velocity` 默认且只允许 `last` |
 | 跨层汇总 | `--my-layer-aggre` | 关闭：软图平均 | 开启：逐层二值投票 |
 | 区域判据 | `--my-layer-policy` | 关闭：ConceptAttention 单类／多类规则 | 开启：使用 `--mask-rule` |
 | 自定义区域判据 | `--mask-rule` | `target_max`，仅 `--my-layer-policy` 开启时生效 | `anchor_min`、`mean_target_max`（空间均值与 target 最高分区域的交集） |
@@ -104,13 +108,13 @@ python DiT/queryGraft/run.py benchmark --model sd35_medium --cases i2p --tasks i
   --device cuda:0 --phase sample --trace
 ```
 
-`blend` 的更新为 `X + strength * M * (A - X)`；`add` 为 `X + strength * M * A`；`replace` 不使用 `strength`。最后一层 AV 替换可在当前 user 前向内取得掩码后按需计算 anchor source；多层替换使用固定的当前步掩码并重放 user 路径，实际前向成本随配置变化。
+`blend` 的更新为 `X + strength * M * (A - X)`；`add` 为 `X + strength * M * A`；`replace` 不使用 `strength`。`text_output` 中 `X/A` 指投影后的 user/source 文本贡献，更新的差值加回当前 user 完整投影输出；trace 同样统计这部分文本贡献。旧的末层 AV 替换仍可在当前 user 前向内取得掩码后按需计算 anchor source；默认投影后文本贡献及其他多层替换使用固定的当前步掩码并重放 user 路径。
 
-显式指定 `--update-rule zero` 时，更新为 `X' = where(M, 0, X)`：将实际执行掩码内所选表示的全部通道置零。默认仍为 `replace`。`zero` 支持 `av`／`residual`／`block_output`／`velocity`，沿用原有定位、面积门控、编辑层选择和 CFG 正条件分支约定，跳过 source 编码及前向；`--strength` 和 source 参数不参与更新。target／anchor／background 仍参与定位。最后一层或 velocity 每步只需一次 user 前向；其他编辑层配置在掩码触发时重放 user，总计两次前向。
+显式指定 `--update-rule zero` 时，更新为 `X' = where(M, 0, X)`。`text_output` 只移除投影后的文本贡献，完整投影输出更新为 `Y_new = Y_user - M * C_user_current`，保留其余分量。`zero` 也支持 `av`／`residual`／`block_output`／`velocity`，跳过 source 编码及前向；`--strength` 和 source 参数不参与更新。默认文本贡献模式在触发时执行定位与 user 重放两次前向；旧末层 AV 或 velocity 每步一次 user 前向。
 
-置零发生在 `--representation` 指定的位置；默认 `av` 是输出投影之前，后续投影、门控、残差和 MLP 继续执行。trace 的激活统计也在该位置计算，图中标注 `update=zero` 和 `target -> zero`。
+置零发生在 `--representation` 指定的位置；默认 `text_output` 是输出投影后的文本贡献，后续门控、残差和 MLP 继续执行。trace 的激活统计也在该位置计算，图中标注 `update=zero` 和 `target -> zero`。
 
-例如，在 I2P 上沿用默认定位及 AV 编辑位置，开启置零与 trace 后采样、评估：
+例如，在 I2P 上沿用默认定位及投影后文本贡献编辑位置，开启置零与 trace 后采样、评估：
 
 ```bash
 python DiT/queryGraft/run.py benchmark --cases i2p --tasks i2p \
@@ -123,7 +127,7 @@ python DiT/queryGraft/run.py benchmark --cases i2p --tasks i2p \
 
 `velocity` 替换完整 Transformer 的最终预测。在 SD3.5 中，位置是所有 blocks、最终 modulation、linear projection 和 unpatchify 之后、原生 CFG 之前。source 使用自己的完整输出头及 pooled condition；只替换 user 正条件分支，负条件 velocity 保持原生输出。定位仍使用 raw AV，token 网格中的每个选中位置覆盖对应 patch 内的全部 latent 空间位置与通道，不做平滑插值。FLUX 的最终 velocity 保留原生 packed 布局，在最终输出头之后、scheduler 之前替换，内嵌 guidance 保持原生设置。
 
-`velocity` 只有一个最终输出编辑位置，使用默认 `--edit-layers last`；`all` 或 block 索引不适用并会报错。每步只需一次 user 前向，以及每个触发的不同 anchor 各一次 source 前向，无需重放 user。它兼容 `anchor` 和下述四种 source 模式，以及 `replace`／`blend`／`add`；默认表示仍为 `av`。
+`velocity` 只有一个最终输出编辑位置；未指定编辑层时自动使用 `last`，显式 `all` 或 block 索引会报错。每步只需一次 user 前向，以及每个触发的不同 anchor 各一次 source 前向，无需重放 user。它兼容 `anchor` 和下述四种 source 模式，以及 `replace`／`blend`／`add`；默认表示为 `text_output`。
 
 ```bash
 # 定位仍使用全部层，只改变编辑层与融合强度。
@@ -166,7 +170,7 @@ python DiT/queryGraft/run.py benchmark --cases i2p \
 
 `logits`／`values` 在 source 分支的所有主 attention 层生效，空间区域使用当前 user 路径产生的最终执行掩码。当前层的 text query 与掩码外 image query 仍采用原生 attention 结果；后续层可能受到已修改 image 特征的间接影响。SD3 额外的 image-only `attn2` 保持原生计算。多个 pair 共用 anchor 时，source 前向复用，增强区域取这些 pair 最终执行区域的并集。
 
-`extrapolate` 的 `H_user` 始终取同一步、同层未编辑的 user 特征；多层重放时不会改用已受到前层干预的特征。它支持 `av`／`residual`／`block_output`／`velocity`；最后一种在完整输出上构造 `v_source = v_user + source_scale * (v_joint - v_user)`，随后才做掩码更新和原生 CFG。source 外推系数和最终 `--update-rule`／`--strength` 分别控制 source 构造和执行更新。联合条件按生成 batch 编码并缓存到 CPU，各模式仍只为每个触发的不同 anchor 增加一次主干前向。
+`extrapolate` 的 `H_user` 始终取同一步、同层未编辑的 user 特征；多层重放时不会改用已受到前层干预的特征。它支持 `text_output`／`av`／`residual`／`block_output`／`velocity`；`text_output` 使用定位前向中投影后的文本贡献作为外推基准。`velocity` 在完整输出上构造 `v_source = v_user + source_scale * (v_joint - v_user)`。source 外推系数和最终 `--update-rule`／`--strength` 分别控制 source 构造和执行更新。联合条件按生成 batch 编码并缓存到 CPU，各模式仍只为每个触发的不同 anchor 增加一次主干前向。
 
 以下四组命令只运行 I2P 采样并立即计算 NudeNet 指标。这里显式固定 anchor 为 `clothed`；加 `--max-records 4` 可先验证少量样本，加 `--trace` 保存逐步诊断，加 `--dry-run` 只预览配置。
 
@@ -344,6 +348,8 @@ DiT/queryGraft/results/<model>/<task>/<case>/<method-with-start-time>/
 ## 验证范围
 
 已在本地 Diffusers 0.41.0 下使用真实小型 SD3／FLUX Transformer 验证只读前向一致性、三类判定与跨层投票、面积阈值、两种替换表示、三种更新算子、单层／多层执行和多 pair source 复用。真实小型 pipeline、VAE 与 scheduler 的两步采样也已通过；其中语义文本编码使用确定性替代输入，用于验证计算与接口，不衡量擦除效果。
+
+默认投影后文本贡献检查位于 `benchmark/tests/test_query_graft_text_output.py`：使用显式 dense joint attention 独立复算文本贡献，检查 SD3／FLUX 全部层、输出投影 bias、单流并行 MLP、CFG 负分支与掩码外值保留，覆盖多 anchor、更新算子和 BF16。真实 FlowMatchEuler 调度器的三步小模型采样检查确认触发步骤定位／source／user 重放各一次，未触发步骤只有定位，每步 scheduler 仅更新一次，trace 保存全部编辑层的投影后文本贡献统计。source 回归也覆盖新表示的 joint／logits／values／extrapolate。
 
 原始 AV 点积分数使用不同概念范数的已知数值验证，覆盖 FP32／BF16、CFG、多 pair、两种掩码判据；`eta`／`rho` 的严格边界及空掩码跳过保持原检查。独立调制检查位于 `benchmark/tests/test_query_graft_concept_modulation.py`，覆盖 SD3、FLUX 双流／单流和嵌入式 guidance，并将 concept 残差状态与独立的原生 block 前向对照。
 

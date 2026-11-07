@@ -8,6 +8,26 @@ import torch.nn.functional as F
 SOURCE_MODES = ("anchor", "joint", "logits", "values", "extrapolate")
 
 
+def text_message_attention(query, key, value, attention_mask, *, text_count, flux, **controls):
+    """Read text-value contributions with the native joint softmax denominator.
+
+    Inputs contain only native image/prompt tokens, with concept tokens removed.
+    Source-only logit/value controls use the same operator as the full attention.
+    """
+    image_slice = slice(text_count, None) if flux else slice(None, key.shape[2] - text_count)
+    text_values = value.clone()
+    text_values[:, :, image_slice] = 0
+    if controls:
+        return controlled_attention(
+            query, key, text_values, attention_mask, text_count=text_count, flux=flux,
+            **controls)[:, :, image_slice]
+    image_mask = attention_mask
+    if image_mask is not None and image_mask.shape[-2] != 1:
+        image_mask = image_mask[..., image_slice, :]
+    return F.scaled_dot_product_attention(
+        query[:, :, image_slice], key, text_values, attn_mask=image_mask, dropout_p=0.0)
+
+
 def joint_prompts(prompts, anchor):
     return [f"{prompt.rstrip()}, {anchor}" for prompt in prompts]
 

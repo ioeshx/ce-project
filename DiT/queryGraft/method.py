@@ -12,7 +12,9 @@ import torch
 import torch.nn.functional as F
 
 from DiT.queryGraft.diagnostics import save_sample_diagnostics, save_step_diagnostics
-from DiT.queryGraft.source import SOURCE_MODES, controlled_attention, joint_prompts, token_groups
+from DiT.queryGraft.source import (
+    SOURCE_MODES, controlled_attention, joint_prompts, text_message_attention, token_groups,
+)
 from benchmark.common import ROOT, read_json, write_json
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.sampling_profile import initial_noise
@@ -22,10 +24,11 @@ DIRECTORY = Path(__file__).resolve().parent
 SUPPORTED_MODELS = ("sd35_medium", "flux1_dev")
 MASK_RULES = ("target_max", "anchor_min", "mean_target_max")
 UPDATE_RULES = ("replace", "blend", "add", "zero")
+REPRESENTATIONS = ("text_output", "av", "residual", "block_output", "velocity")
 DEFAULTS = dict(background="background", mask_rule="target_max", concept_include_prompt=False,
                 my_layer_aggre=False, my_layer_policy=False,
-                localization_layers="all", edit_layers="last",
-                representation="av", eta=0.0, rho=0.0, update_rule="replace", strength=1.0,
+                localization_layers="all", edit_layers="all",
+                representation="text_output", eta=0.0, rho=0.0, update_rule="replace", strength=1.0,
                 source_mode="anchor", source_user_weight=1.0, source_anchor_weight=1.0, source_scale=1.0,
                 trace=False, trace_root=None)
 
@@ -34,6 +37,10 @@ def resolve_settings(config, overrides=None):
     """Resolve and validate method configuration at the runner entry."""
     settings = {**copy.deepcopy(DEFAULTS),
                 **config["adapter"].get("query_graft", {}), **(overrides or {})}
+    if (settings["representation"] == "velocity"
+            and "edit_layers" not in config["adapter"].get("query_graft", {})
+            and "edit_layers" not in (overrides or {})):
+        settings["edit_layers"] = "last"
     anchors = read_json(ROOT / "configs/dit_target_anchor.json")
     anchors.update(settings.pop("anchor_overrides", {}))
     settings["pairs"] = settings.get("pairs") or [
@@ -65,8 +72,8 @@ def resolve_settings(config, overrides=None):
     for name in ("eta", "rho"):
         if not math.isfinite(settings[name]) or not 0 <= settings[name] <= 1:
             problems.append(f"{name} must lie in [0,1]")
-    if settings["representation"] not in {"av", "residual", "block_output", "velocity"}:
-        problems.append("representation must be av, residual, block_output or velocity")
+    if settings["representation"] not in REPRESENTATIONS:
+        problems.append(f"representation must be one of {REPRESENTATIONS}")
     if settings["representation"] == "velocity" and settings["edit_layers"] != "last":
         problems.append("velocity has one final Transformer output site; use edit_layers=last")
     if settings["source_mode"] not in SOURCE_MODES:
@@ -186,9 +193,28 @@ class QueryAttention:
             else:
                 output = F.scaled_dot_product_attention(query, key, value, attn_mask=attention_mask)
 
+        message_av = None
+        if (owner.settings.get("representation") == "text_output" and self.layer in owner.editors
+                and (owner.mode != "probe" or owner.settings["source_mode"] == "extrapolate")):
+            text_controls = {}
+            if owner.mode == "anchor" and owner.settings["source_mode"] in {"logits", "values"}:
+                user_tokens, anchor_tokens = owner.source_groups[owner.current_anchor]
+                text_controls = dict(
+                    user_tokens=user_tokens, anchor_tokens=anchor_tokens, region=owner.source_region,
+                    mode=owner.settings["source_mode"], user_weight=owner.settings["source_user_weight"],
+                    anchor_weight=owner.settings["source_anchor_weight"])
+            message_av = text_message_attention(
+                qb if reading else query, kb if reading else key, vb if reading else value,
+                base_mask if reading else attention_mask,
+                text_count=text_count, flux=owner.flux, **text_controls)
+            message_av = message_av.transpose(1, 2).flatten(2).to(query.dtype)
+
         output = output.transpose(1, 2).flatten(2).to(query.dtype)
         if self.single:
             image_start = text_count + (owner.concept_count if reading else 0)
+            if message_av is not None:
+                # The native single-stream block projects AV and parallel MLP together.
+                owner.single_text_messages[self.layer] = message_av
             image_av = owner.attention_output(self.layer, output[:, image_start:])
             return torch.cat((output[:, :image_start], image_av), dim=1)
 
@@ -199,7 +225,11 @@ class QueryAttention:
             nimage = hidden_states.shape[1]
             image_av, text_av = output[:, :nimage], output[:, nimage:]
         image_av = owner.attention_output(self.layer, image_av)
-        image_output = attn.to_out[1](attn.to_out[0](image_av.contiguous()))
+        image_output = attn.to_out[0](image_av.contiguous())
+        if message_av is not None:
+            message = F.linear(message_av, attn.to_out[0].weight, bias=None)
+            image_output = owner.projected_text_output(self.layer, image_output, message)
+        image_output = attn.to_out[1](image_output)
         if not attn.context_pre_only:
             text_av = attn.to_add_out(text_av.contiguous())
         return image_output, text_av
@@ -273,6 +303,7 @@ class QueryGraft(DiTAdapter):
         self.active, self.mode = False, "idle"
         self.handles, self.processors, self.block_forwards = [], [], []
         self.velocity = self.settings["representation"] == "velocity"
+        self.text_message = self.settings["representation"] == "text_output"
         self.zero_update = self.settings["update_rule"] == "zero"
         transformer = self.pipe.transformer
         blocks = [(f"transformer_blocks.{i}", block, False)
@@ -290,10 +321,11 @@ class QueryGraft(DiTAdapter):
                       for i in sorted(set(self.localizers) | (set() if self.velocity else set(self.editors)))]
         if self.velocity:
             self.sites.append({"layer": -1, "path": "output.sample", "single": False})
-        self.inline = self.velocity or self.editors == [count - 1]
+        self.inline = self.velocity or (not self.text_message and self.editors == [count - 1])
         self.last_layer = count - 1
         self.concept_count = 3 * len(self.settings["pairs"])
         self.dual_state = {}
+        self.single_text_messages = {}
         self.sample_trace_sums = {}
         self.handles.append(transformer.time_text_embed.register_forward_hook(self.concept_condition))
         for layer, (_, block, single) in enumerate(blocks):
@@ -306,7 +338,9 @@ class QueryGraft(DiTAdapter):
             normalizer = block.norm if single else block.norm1_context
             self.handles.append(normalizer.register_forward_hook(modulation.normalize))
             self.handles.append(block.attn.register_forward_hook(modulation.attention))
-            if self.settings["representation"] == "block_output" and layer in self.editors:
+            if self.text_message and single and layer in self.editors:
+                self.handles.append(block.proj_out.register_forward_hook(partial(self.single_text_output, layer)))
+            elif self.settings["representation"] == "block_output" and layer in self.editors:
                 self.handles.append(block.register_forward_hook(partial(self.block_output, layer)))
             elif self.settings["representation"] == "residual" and layer in self.editors:
                 if single:
@@ -604,6 +638,31 @@ class QueryGraft(DiTAdapter):
             return changed
         return image_av
 
+    def projected_text_output(self, layer, output, message):
+        """Replace projected text messages, retaining the current user output remainder."""
+        self.remember_user(layer, message)
+        if self.mode == "anchor":
+            self.sources[self.current_anchor][layer] = message.detach().cpu()
+        elif self.mode == "edit":
+            before = message[-self.batch:]
+            after = self.patch(layer, before)
+            changed = (output[-self.batch:].float() + (after.float() - before.float())).to(output.dtype)
+            result = output.clone()
+            mask = (self.winner >= 0).to(output.device)[..., None]
+            result[-self.batch:] = torch.where(mask, changed, output[-self.batch:])
+            return result
+        return output
+
+    def single_text_output(self, layer, module, args, output):
+        """Apply the text delta after FLUX's fused projection, before its gate/residual."""
+        if not self.active or layer not in self.single_text_messages:
+            return
+        text_av = self.single_text_messages.pop(layer)
+        message = F.linear(text_av, module.weight[:, :text_av.shape[-1]], bias=None)
+        image_start = self.text_count + (self.concept_count if self.mode in {"user", "probe"} else 0)
+        image = self.projected_text_output(layer, output[:, image_start:], message)
+        return torch.cat((output[:, :image_start], image), dim=1)
+
     def dual_attention(self, layer, kind, module, args, output):
         if self.active and (self.mode != "probe" or self.settings["source_mode"] == "extrapolate"):
             if kind == "gate":
@@ -672,6 +731,7 @@ class QueryGraft(DiTAdapter):
         self.diagnostic_mask_sum = self.diagnostic_score_sum = self.diagnostic_logit_sum = None
         self.diagnostic_layers, self.activation_sums = [], {}
         self.dual_state.clear()
+        self.single_text_messages.clear()
         self.forward_calls += 1
         self.mode = "user" if self.inline else "probe"
         output = self.native_forward(**self.with_concepts(self.input_call))
@@ -750,6 +810,7 @@ class QueryGraft(DiTAdapter):
         self.sources.clear()
         self.user_sources.clear()
         self.dual_state.clear()
+        self.single_text_messages.clear()
         return output
 
     def generate(self, records, sampling_config):

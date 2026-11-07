@@ -157,7 +157,7 @@ class SourceModeTests(unittest.TestCase):
 
     def test_neutral_weight_modes_equal_joint_and_weighted_modes_change_source(self):
         for flux in (False, True):
-            for representation in ("av", "residual", "block_output", "velocity"):
+            for representation in ("text_output", "av", "residual", "block_output", "velocity"):
                 for edit_layers in (("last",) if representation == "velocity" else ("last", "all")):
                     with self.subTest(flux=flux, representation=representation, edit_layers=edit_layers):
                         results = {}
@@ -189,7 +189,7 @@ class SourceModeTests(unittest.TestCase):
 
     def test_zero_extrapolation_matches_native_for_all_edit_sites(self):
         for flux in (False, True):
-            for representation in ("av", "residual", "block_output", "velocity"):
+            for representation in ("text_output", "av", "residual", "block_output", "velocity"):
                 for edit_layers in (("last",) if representation == "velocity" else ("last", "all")):
                     with self.subTest(flux=flux, representation=representation, edit_layers=edit_layers):
                         graft, _, call, _, _ = self.adapter(
@@ -201,7 +201,8 @@ class SourceModeTests(unittest.TestCase):
                             with self.force_mask(graft):
                                 actual = graft.forward(**call)[0]
                         torch.testing.assert_close(actual, native, rtol=1e-5, atol=1e-6)
-                        self.assertEqual(graft.forward_calls, 2 if edit_layers == "last" else 3)
+                        self.assertEqual(graft.forward_calls,
+                                         2 if edit_layers == "last" and representation != "text_output" else 3)
 
     def test_extrapolation_uses_original_user_states_during_multilayer_replay(self):
         for flux in (False, True):

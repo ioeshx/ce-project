@@ -1,5 +1,7 @@
 """Sample detectFix prompts or run the shared DiT benchmarks."""
 from __future__ import annotations
+import os
+os.environ["HF_ENDPOINT"]="https://hf-mirror.com"
 
 import argparse
 import copy

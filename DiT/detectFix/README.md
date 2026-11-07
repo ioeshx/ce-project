@@ -77,7 +77,7 @@ python DiT/detectFix/run.py evaluate --manifest /path/to/manifest.json
 
 方法配置存放在 `adapter.detect_fix`，插件入口为 `DiT.detectFix.method:DetectFix`。实验目录使用可读参数与起始时间区分，配置和清单保存实际设置；恢复已有清单时沿用其设置。
 
-每张图片旁保存同名 `.detectFix.json`，包含样本、方法设置、采样配置、`localization_sites` 和整个生成 batch 的 `batch_forward_calls`。逐步决策位于 `steps`，记录 `step_index`、`timestep`、`checked`、`target_area`、`selected_pair` 和实际使用的 `condition`。跳过检测时 `target_area` 为 `null`；`selected_pair=-1` 表示使用原始 prompt。可用它确认首次触发位置、anchor 持续使用情况，以及 `every_step` 是否切回原始 prompt。
+每个图片输出目录下使用独立的 `record/` 子目录保存同名 `.detectFix.json`。例如 `images/<setting>/sample.png` 的记录位于 `images/<setting>/record/sample.detectFix.json`，独立采样的 `images/sample.png` 对应 `images/record/sample.detectFix.json`。记录包含样本、方法设置、采样配置、`localization_sites` 和整个生成 batch 的 `batch_forward_calls`。逐步决策位于 `steps`，记录 `step_index`、`timestep`、`checked`、`target_area`、`selected_pair` 和实际使用的 `condition`。跳过检测时 `target_area` 为 `null`；`selected_pair=-1` 表示使用原始 prompt。可用它确认首次触发位置、anchor 持续使用情况，以及 `every_step` 是否切回原始 prompt。
 
 ## 诊断记录
 
@@ -128,4 +128,4 @@ traces/<setting>/
 | `mask_count` / `mean_mask_area` | 所有实际计算的 `(样本, 检测步, target)` 掩码数量及其面积占比均值，包含空掩码与未通过 `rho` 的掩码；未执行检测的步骤不参与。 |
 | `pairs` | 各 target/anchor 的掩码数量和平均面积占比。 |
 
-每个样本的 `metadata.json` 另保留 `checked_steps`、`mask_count`、`mask_area_sum` 和 `mask_area_mean`，便于复算。诊断不增加 Transformer 前向或 scheduler 更新次数，会增加 VAE 解码与图像写盘时间。不传 `--trace` 时关闭这组诊断，原有图片旁的 `.detectFix.json` 决策记录继续保留。
+每个样本的 `metadata.json` 另保留 `checked_steps`、`mask_count`、`mask_area_sum` 和 `mask_area_mean`，便于复算。诊断不增加 Transformer 前向或 scheduler 更新次数，会增加 VAE 解码与图像写盘时间。不传 `--trace` 时关闭这组诊断，`record/` 下的 `.detectFix.json` 决策记录继续保留。

@@ -1,9 +1,10 @@
 python /home/shx/code/ce-new/DiT/detectFix/run.py benchmark \
-  --cases i2p --tasks i2p --phase sample \
+  --cases all --phase run --trace \
   --rho 0.2 --detection-start-step 5 --detection-mode once > DiT/detectFix/logs/detect_once.log 2>&1
 
 python /home/shx/code/ce-new/DiT/detectFix/run.py benchmark \
-  --cases i2p --tasks i2p --phase sample \
+  --cases i2p --phase run --trace \
+  --device cuda:1 \
   --rho 0.2 --detection-start-step 5 --detection-mode every_step > DiT/detectFix/logs/detect_every_step.log 2>&1
 
 # python /home/shx/code/ce-new/DiT/queryGraft/run.py benchmark \

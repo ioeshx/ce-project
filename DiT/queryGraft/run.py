@@ -16,7 +16,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from benchmark.common import merge, write_json
-from DiT.queryGraft.method import DEFAULTS, MASK_RULES, SOURCE_MODES, SUPPORTED_MODELS, UPDATE_RULES, QueryGraft, resolve_settings
+from DiT.queryGraft.method import DEFAULTS, MASK_RULES, REPRESENTATIONS, SOURCE_MODES, SUPPORTED_MODELS, UPDATE_RULES, QueryGraft, resolve_settings
 
 DIRECTORY = Path(__file__).resolve().parent
 WORKSPACE = DIRECTORY.parents[1]
@@ -30,7 +30,7 @@ def main(argv=None):
     own.add_argument("--model", choices=SUPPORTED_MODELS,
                      help="Default: sd35_medium; existing manifests retain their saved model")
     own.add_argument("--localization-layers", help="all (default), or comma-separated 0-based block indices")
-    own.add_argument("--edit-layers", help="last (default), all, or comma-separated 0-based block indices; velocity requires last")
+    own.add_argument("--edit-layers", help="all (default), last, or comma-separated 0-based block indices; velocity defaults to/requires last")
     own.add_argument("--mask-rule", choices=MASK_RULES,
                      help="With --my-layer-policy: target_max (default) requires target > anchor and background; "
                           "anchor_min requires anchor < target and background; mean_target_max additionally "
@@ -43,8 +43,9 @@ def main(argv=None):
     own.add_argument("--concept-include-prompt", action=argparse.BooleanOptionalAction, default=None,
                      help="Include user prompt K/V in concept attention (default: off; concepts read only "
                           "image tokens and their own target/anchor/background group)")
-    own.add_argument("--representation", choices=("av", "residual", "block_output", "velocity"),
-                     help="av (default): before output projection; residual: after attention residual; "
+    own.add_argument("--representation", choices=REPRESENTATIONS,
+                     help="text_output (default): text-value contribution after the output projection, with user replay; "
+                          "av: before output projection; residual: after attention residual; "
                           "block_output: final block output after MLP and residual updates; "
                           "velocity: final Transformer prediction after the output head, before CFG")
     own.add_argument("--eta", type=float,
