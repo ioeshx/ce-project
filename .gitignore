@@ -9,6 +9,7 @@ DiT/early_semantic/results/
 !DiT/attention_replacement/
 !DiT/queryGraft
 !/DiT/detectFix/
+!/DiT/steer/
 /DiT/detectFix/results/
 
 # Python 缓存和虚拟环境

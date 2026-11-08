@@ -1,0 +1,214 @@
+"""Fit steering vectors and run I2P, IP, style and Object via the shared benchmark."""
+from __future__ import annotations
+import os
+os.environ["HF_ENDPOINT"]="https://hf-mirror.com"
+
+
+import argparse
+import math
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+WORKSPACE = Path(__file__).resolve().parents[2]
+DIRECTORY = Path(__file__).resolve().parent
+sys.path.insert(0, str(WORKSPACE))
+
+from benchmark.common import ROOT, configuration, file_digest, read_json
+from benchmark.data import prompt_records
+from benchmark.dit_cases import definitions, select_cases
+from benchmark.execution import cpu_parent, run_function
+from benchmark.model_profiles import profile, resolve_scheduler
+from benchmark.plugin_plans import plugin_plan
+
+
+def parser():
+    p = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    p.add_argument("--model", choices=("sd35_medium", "sd30_medium"), default="sd35_medium")
+    p.add_argument("--cases", default="all", help="all/i2p/ip/style/object, or comma-separated case IDs")
+    p.add_argument("--tasks", help="Optional filter: i2p,mscoco,instance,style,object")
+    p.add_argument("--phase", choices=("all", "fit", "prepare", "sample", "evaluate"), default="all")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--beta", type=float, default=-2.0, help="Signed coefficient: negative erases, positive amplifies")
+    p.add_argument("--clipping", action=argparse.BooleanOptionalAction, default=True,
+                   help="Only steer positive dot products (CASteer intermediate clipping)")
+    p.add_argument("--calibration-prompts", type=int, help="Pairs per concept; default human=210, other=50")
+    p.add_argument("--seed", type=int, default=0, help="Offline pair seed; benchmark uses each record's seed")
+    p.add_argument("--run-root", type=Path, default=DIRECTORY / "runs")
+    p.add_argument("--method", help="Result name; default includes beta and clipping")
+    p.add_argument("--base-model", help="Optional local Diffusers pipeline or matching Hub ID")
+    p.add_argument("--model-revision")
+    p.add_argument("--device", default="cuda:0")
+    p.add_argument("--cpu-offload", action=argparse.BooleanOptionalAction, default=None)
+    p.add_argument("--offline", action="store_true")
+    p.add_argument("--cpu-threads", type=int, default=4)
+    p.add_argument("--batch-size", type=int, default=1)
+    p.add_argument("--dtype", choices=("bfloat16", "float16", "float32"))
+    p.add_argument("--steps", type=int, help="Shared offline and benchmark denoising step count")
+    p.add_argument("--height", type=int)
+    p.add_argument("--width", type=int)
+    p.add_argument("--max-sequence-length", type=int)
+    p.add_argument("--metric-device")
+    p.add_argument("--metric-batch-size", type=int, default=32)
+    p.add_argument("--with-q16", action="store_true")
+    p.add_argument("--skip-vlm", action="store_true")
+    p.add_argument("--vlm-model")
+    p.add_argument("--vlm-device")
+    p.add_argument("--resnet-weights-path", type=Path)
+    p.add_argument("--q16-prompts", type=Path)
+    p.add_argument("--q16-clip-path", type=Path)
+    p.add_argument("--nudenet-weights", type=Path)
+    p.add_argument("--output-dir", type=Path, default=ROOT / "results")
+    p.add_argument("--original-dir", type=Path)
+    p.add_argument("--cache-dir", type=Path, default=ROOT / "cache")
+    p.add_argument("--max-records", type=int, help="Small validation subset, not the full benchmark")
+    return p
+
+
+def case_configs(args, case_id, case):
+    """Use benchmark targets, anchors, datasets, seeds and sampling unchanged."""
+    selected = profile(args.model)
+    anchors = read_json(ROOT / "configs/dit_target_anchor.json")
+    settings = {
+        "implementation": "steer-sd3-mean-difference-v1", "model_name": args.model,
+        "base_model": args.base_model or selected["base_model"], "model_revision": args.model_revision,
+        "group": case["group"], "targets": case["targets"],
+        "anchors": [anchors[target] for target in case["targets"]],
+        "seed": args.seed, "calibration_prompts": args.calibration_prompts,
+        "sources": {name: file_digest(DIRECTORY / name) for name in ("method.py", "imagenet_classes.txt")}}
+    configs = []
+    for task in case["tasks"]:
+        if args.tasks and task not in args.tasks:
+            continue
+        cfg = {
+            "model_name": args.model, "case_id": case_id, "method": args.method,
+            "base_model": settings["base_model"], "output_dir": str(args.output_dir),
+            "cache_dir": str(args.cache_dir),
+            "original_dir": str(args.original_dir or ROOT / "original" / args.model),
+            "adapter": {"kind": "plugin", "factory": "DiT.steer.method:SteerAdapter",
+                        "source_files": ["method.py", "run.py", "imagenet_classes.txt"],
+                        "checkpoint": str(args.run_root / args.model / case_id / "checkpoint"),
+                        "beta": args.beta, "clipping": args.clipping},
+            "sampling": {"device": args.device, "batch_size": args.batch_size,
+                         "cpu_offload": args.cpu_offload, "local_files_only": args.offline,
+                         "model_revision": args.model_revision},
+            "evaluation": {"device": args.metric_device or args.device,
+                           "batch_size": args.metric_batch_size, "local_files_only": args.offline}}
+        for key in ("dtype", "steps", "height", "width", "max_sequence_length"):
+            if getattr(args, key) is not None:
+                cfg["sampling"][key] = getattr(args, key)
+        for key in ("vlm_model", "vlm_device", "resnet_weights_path", "q16_prompts", "q16_clip_path", "nudenet_weights"):
+            if getattr(args, key) is not None:
+                cfg["evaluation"][key] = str(getattr(args, key))
+        if args.skip_vlm:
+            cfg["evaluation"]["vlm_enabled"] = False
+        if args.with_q16 and task == "i2p":
+            cfg["dataset"] = {"i2p_subset": "all"}
+            cfg["evaluation"]["q16_enabled"] = True
+        if args.max_records is not None:
+            cfg.setdefault("dataset", {})["max_records"] = args.max_records
+        configs.append(configuration(task=task, model=args.model, base=cfg))
+    if configs:
+        # Beta/clipping are inference settings: changing them reuses these means.
+        settings["sampling"] = {key: configs[0]["sampling"][key] for key in
+            ("dtype", "steps", "height", "width", "max_sequence_length", "guidance_scale", "negative_prompt")}
+        for cfg in configs:
+            cfg["erasure_parameters"] = {**settings, "beta": args.beta, "clipping": args.clipping}
+    return settings, configs
+
+
+def run(args, experiments, env):
+    env["PYTHONPATH"] = os.pathsep.join((str(WORKSPACE), env.get("PYTHONPATH", "")))
+    for case_id, settings, configs in experiments:
+        case_root = args.run_root / args.model / case_id
+        checkpoint = case_root / "checkpoint"
+        print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
+              f"beta={args.beta:g}, clipping={args.clipping}", flush=True)
+        if args.phase in {"all", "fit"}:
+            exists = (checkpoint / "metadata.json").is_file()
+            print(f"[fit:{'reuse' if exists else 'collect'}] {checkpoint}", flush=True)
+            if not args.dry_run and not exists:
+                run_function("DiT.steer.method:fit", {"checkpoint": str(checkpoint),
+                    "settings": settings, "config": configs[0]}, env=env, cwd=WORKSPACE,
+                    cpu_threads=args.cpu_threads)
+        if args.phase == "fit":
+            continue
+        for cfg in configs:
+            print(f"[{cfg['task']}] {args.record_counts[case_id, cfg['task']]} images", flush=True)
+            if args.dry_run:
+                directory = case_root / "plans" / args.method / f"{cfg['task']}-planned"
+                path, manifest = directory / "config.json", directory / "manifest.json"
+            else:
+                resolve_scheduler(cfg)
+                path, manifest = plugin_plan(case_root, "plans", cfg, phase=args.phase)
+            commands = []
+            prefix = [sys.executable, "-m", "benchmark"]
+            if args.phase in {"all", "prepare"}:
+                commands.append([*prefix, "prepare", "--config", str(path), "--manifest", str(manifest)])
+            if args.phase in {"all", "sample"}:
+                commands.append([*prefix, "sample", "--manifest", str(manifest), "--mode",
+                                 "image" if cfg["task"] == "i2p" else "both", "--cpu-threads", str(args.cpu_threads)])
+            if args.phase in {"all", "evaluate"}:
+                commands.append([*prefix, "evaluate", "--manifest", str(manifest), "--cpu-threads", str(args.cpu_threads)])
+            for command in commands:
+                print("[command] " + shlex.join(command), flush=True)
+                if not args.dry_run:
+                    subprocess.run(command, cwd=WORKSPACE, env=env, check=True)
+
+
+def main(argv=None):
+    p = parser()
+    args = p.parse_args(argv)
+    for name, value in vars(args).items():
+        if isinstance(value, Path):
+            setattr(args, name, value.expanduser().resolve())
+    for name in ("base_model", "vlm_model"):
+        value = getattr(args, name)
+        if value and (value.startswith((".", "/", "~")) or Path(value).exists()):
+            setattr(args, name, str(Path(value).expanduser().resolve()))
+    args.cpu_offload = args.device.startswith("cuda") if args.cpu_offload is None else args.cpu_offload
+    args.dtype = args.dtype or ("float32" if args.device == "cpu" else "bfloat16")
+    args.method = args.method or (f"Steer-{'erase' if args.beta < 0 else 'add'}-{abs(args.beta):g}-"
+                                  f"{'clip' if args.clipping else 'signed'}")
+    args.tasks = {task.strip() for task in args.tasks.split(",")} if args.tasks else None
+
+    # All method-parameter and existing-checkpoint checks live at this entry.
+    sizes = [args.cpu_threads, args.batch_size, args.metric_batch_size, args.calibration_prompts,
+             args.steps, args.height, args.width, args.max_sequence_length, args.max_records]
+    if any(value is not None and value <= 0 for value in sizes):
+        p.error("Counts, dimensions and sequence lengths must be positive.")
+    if not math.isfinite(args.beta) or not 0 <= args.seed < 2**32:
+        p.error("Use finite beta and a uint32 seed.")
+    if args.device == "cpu" and (args.dtype != "float32" or args.cpu_offload):
+        p.error("CPU execution uses float32 without CPU offload.")
+    cases = definitions()["cases"]
+    selected = select_cases(args.cases)
+    if args.calibration_prompts and any(args.calibration_prompts > (210 if cases[key]["group"] == "i2p" else 1000)
+                                        for key in selected):
+        p.error("Calibration templates provide at most 210 human pairs or 1000 other pairs.")
+    experiments = [(key, *case_configs(args, key, cases[key])) for key in selected]
+    experiments = [entry for entry in experiments if entry[2]]
+    available = {cfg["task"] for _, _, configs in experiments for cfg in configs}
+    if not experiments or args.tasks and args.tasks - available:
+        p.error("Requested tasks are absent from the selected cases.")
+    args.record_counts = {(key, cfg["task"]): len(prompt_records(cfg)[0])
+                          for key, _, configs in experiments for cfg in configs}
+    if not args.dry_run:
+        for case_id, settings, _ in experiments:
+            checkpoint = args.run_root / args.model / case_id / "checkpoint"
+            metadata = checkpoint / "metadata.json"
+            if metadata.is_file():
+                if read_json(metadata)["settings"] != settings:
+                    p.error(f"Offline settings changed; choose a new --run-root: {checkpoint}")
+                if not (checkpoint / "steering.pt").is_file():
+                    p.error(f"Missing offline vectors: {checkpoint / 'steering.pt'}")
+            elif args.phase not in {"all", "fit"}:
+                p.error(f"Run --phase fit first: {checkpoint}")
+    with cpu_parent(args, p) as env:
+        run(args, experiments, env)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
