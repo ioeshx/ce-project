@@ -77,6 +77,30 @@ bash benchmark/script/dit.sh --model flux1_dev --tasks mscoco --dry-run
 
 完整运行可追加 `--offline`。小规模验证可使用 `--max-records`：概念实验会均衡选取各概念，IP/style的FID至少每概念2张，建议 `--max-records 6`；Object至少10张。`--skip-vlm`显式关闭VLM并形成独立评测协议，不会伪造其结果。
 
+采样时先生成被擦除概念，再生成其他概念；多个目标均排在保留概念之前。全量 I2P 先生成 sexual 类别。方法的 `both` 模式先生成方法图，再生成原模型参考图，便于立即查看擦除效果。排序只作用于采样队列，清单顺序、样本 ID、seed 和已有缓存身份保持不变。
+
+`--subset-eval` 开启按任务取子集，默认数量如下；不开启时，所有 `--*-test-num` 都不生效，沿用完整评测配置。
+
+| 参数 | 默认值 | 选择规则 |
+|---|---:|---|
+| `--i2p-test-num` | 20 | 当前 I2P 测试集的前 N 条；默认先筛 sexual，`--with-q16` 时取全量集的前 N 条 |
+| `--mscoco-test-num` | 20 | 前 N 条 caption |
+| `--ip-test-num` | 5 | 每个概念的前 N 个模板，保留全部配置 seed |
+| `--style-test-num` | 5 | 每个风格的前 N 个模板，保留全部配置 seed |
+| `--object-test-num` | 5 | 每个概念的前 N 张，按原 seed 顺序选择 |
+
+默认子集的 IP 每个概念 20 张（5×4），style 每个概念 15 张（5×3），Object 每个概念 5 张。超过数据量时使用全部可用样本。原行号、ID 和 seed 保留，子集会保存到配置与清单；若同时指定 `--max-records`，会在子集上进一步截取。
+
+```bash
+# 默认子集
+bash benchmark/script/dit.sh --model sd35_medium --cases all --subset-eval
+# 分别指定数量；prepare/sample/evaluate 分阶段运行时保持相同参数
+bash benchmark/script/dit.sh --model sd35_medium --cases all --subset-eval \
+  --i2p-test-num 30 --mscoco-test-num 40 --ip-test-num 3 --style-test-num 4 --object-test-num 8
+```
+
+这些参数也适用于 `python -m benchmark prepare/sample/run`；已有清单直接采样和评测时使用清单中保存的子集。
+
 ## 方法接入与显式anchor
 
 单个case可直接指定检查点：

@@ -29,6 +29,11 @@ def prompt_records(config):
         if opts["limit_prompts"] <= 0:
             raise ValueError("limit_prompts must be positive.")
         indexed = indexed[:opts["limit_prompts"]]
+    if opts.get("limit_prompts_per_concept") is not None:
+        groups = {}
+        for entry in indexed:
+            groups.setdefault(concept_key(entry[1]["concept"]), []).append(entry)
+        indexed = [entry for group in groups.values() for entry in group[:opts["limit_prompts_per_concept"]]]
     records = []
     for index, row in indexed:
         prompt = row.get("prompt", row.get("text"))
@@ -55,6 +60,11 @@ def prompt_records(config):
                 record["source_sampling"] = {k: row[k] for k in
                     ("sd_seed", "sd_guidance_scale", "sd_image_width", "sd_image_height", "sd_model")}
             records.append(record)
+    if opts.get("limit_images_per_concept") is not None:
+        groups = {}
+        for record in records:
+            groups.setdefault(concept_key(record["concept"]), []).append(record)
+        records = [record for group in groups.values() for record in group[:opts["limit_images_per_concept"]]]
     if opts.get("max_records") is not None:
         if opts["max_records"] <= 0:
             raise ValueError("max_records must be positive.")

@@ -309,6 +309,23 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --cases object --offline
 `--skip-vlm` 关闭 IP/style 的 VLM，`--with-q16` 将 I2P 改为全量 4,703 条并增加 Q16。
 `--tasks mscoco` 可以只运行 nudity 产物的 COCO 保留评测。
 
+采样时优先生成被擦除概念，再生成保留概念；方法图先于原模型参考图生成。
+`--subset-eval` 开启快速子集：I2P、COCO 默认各取前 20 条；IP、style 每个概念取前 5 个模板，
+保留各模板的全部 seed；Object 每个概念取前 5 张。因此 IP 每个 case 共 60 张、style 共 45 张、Object 共 50 张。
+I2P 默认从 sexual 测试集取前 N 条，`--with-q16` 时从全量测试集取前 N 条。
+
+```bash
+# 使用默认子集
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --subset-eval --offline
+# 按任务分别指定数量
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --subset-eval \
+  --i2p-test-num 20 --mscoco-test-num 20 --ip-test-num 5 --style-test-num 5 --object-test-num 5 --offline
+```
+
+只有开启 `--subset-eval` 后，五个 `--*-test-num` 才生效；否则沿用完整评测配置。
+子集保留原 prompt、样本 ID 和 seed，不影响离线向量构造数量，仍可复用相同配置的离线向量。
+分阶段运行时使用相同的子集参数；`--max-records` 若同时指定，会在子集上进一步截取。
+
 分阶段与调整强度：
 
 ```bash

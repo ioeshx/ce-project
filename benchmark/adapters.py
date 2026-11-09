@@ -9,7 +9,7 @@ import tempfile
 import time
 from typing import Protocol
 
-from .common import locked, read_json, write_json
+from .common import concept_key, locked, read_json, write_json
 from .data import valid_image
 from .execution import runtime_device
 
@@ -172,6 +172,9 @@ def sample_manifest(manifest, mode="both", *, manifest_path=None):
         raise ValueError("Existing-image adapter does not generate images.")
     validation_seconds = time.perf_counter() - started
     modes = ["reference", "image"] if mode == "both" else [mode]
+    if mode == "both" and config["adapter"]["kind"] != "original":
+        modes = ["image", "reference"]
+    targets = {concept_key(target) for target in manifest["targets"]}
     phases = []
     for field in modes:
         # Serializes shared original fills; lock released even if generation fails.
@@ -193,6 +196,11 @@ def sample_manifest(manifest, mode="both", *, manifest_path=None):
                     return im.size == (config["sampling"]["width"], config["sampling"]["height"])
             checking = time.perf_counter()
             missing = [r for r in manifest["records"] if not complete(r)]
+            # Prioritize erased concepts without changing sample IDs or cache identities.
+            if manifest["task"] == "i2p":
+                missing.sort(key=lambda row: "sexual" not in row["categories"])
+            else:
+                missing.sort(key=lambda row: concept_key(row["concept"]) not in targets)
             phase["image_check_seconds"] = time.perf_counter() - checking
             phase["reused_images"] = len(manifest["records"]) - len(missing)
             print(f"[sample:{field}] {len(missing)} missing/corrupt of {len(manifest['records'])}", flush=True)

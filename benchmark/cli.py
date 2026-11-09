@@ -10,6 +10,31 @@ import sys
 from .common import ROOT, TASKS, configuration, merge, read_json
 
 
+SUBSET_EVAL_DEFAULTS = {"i2p": 20, "mscoco": 20, "ip": 5, "style": 5, "object": 5}
+
+
+def add_subset_eval_arguments(p):
+    p.add_argument("--subset-eval", action="store_true", help="使用小规模评测子集；启用各任务的 --*-test-num")
+    for task, count in SUBSET_EVAL_DEFAULTS.items():
+        unit = {"ip": "每个概念的前N个模板", "style": "每个概念的前N个模板",
+                "object": "每个概念的前N张"}.get(task, "前N条提示")
+        p.add_argument(f"--{task}-test-num", type=int, default=count,
+                       help=f"{unit}，默认{count}；仅 --subset-eval 时生效")
+
+
+def subset_eval_dataset(args, config):
+    """Translate CLI subset sizes into the dataset options saved in each plan."""
+    if not getattr(args, "subset_eval", False):
+        return {}
+    task = config["task"]
+    name = "ip" if task == "instance" else task
+    count = getattr(args, f"{name}_test_num")
+    field = ("limit_prompts_per_concept" if task in {"instance", "style"} else
+             "limit_images_per_concept" if task == "object" else "limit_prompts")
+    limit = config["dataset"].get(field)
+    return {field: count if limit is None else min(count, limit)}
+
+
 def parser():
     p = argparse.ArgumentParser(prog="python -m benchmark", description="统一概念擦除采样、评测与结果展示")
     sub = p.add_subparsers(dest="command", required=True)
@@ -67,6 +92,7 @@ def parser():
             q.add_argument("--limit-prompts", type=int)
             q.add_argument("--max-records", type=int, help="显式缩小评测集用于冒烟测试，改变协议指纹")
             q.add_argument("--seeds", help="逗号分隔的instance/style种子")
+            add_subset_eval_arguments(q)
         if name in {"sample", "run"}:
             q.add_argument("--mode", choices=("both", "reference", "image"), default=None)
     q = sub.add_parser("dit", parents=[commands["run"]], add_help=False,
@@ -136,6 +162,7 @@ def get_config(args, manifest=None):
             config["dataset"][key] = getattr(args, key)
     if getattr(args, "seeds", None):
         config["dataset"]["seeds"] = [int(x.strip()) for x in args.seeds.split(",")]
+    config["dataset"].update(subset_eval_dataset(args, config))
     for arg, key in (("adapter", "kind"), ("checkpoint", "checkpoint"), ("model_path", "model_path"), ("factory", "factory")):
         if getattr(args, arg, None):
             config["adapter"][key] = getattr(args, arg)
@@ -148,6 +175,9 @@ def get_config(args, manifest=None):
 def main(argv=None):
     p = parser()
     args = p.parse_args(argv)
+    if getattr(args, "subset_eval", False) and any(
+            getattr(args, f"{task}_test_num") <= 0 for task in SUBSET_EVAL_DEFAULTS):
+        p.error("--*-test-num must be positive when --subset-eval is enabled.")
     # The wrapper enters its own checkout; explicit CLI paths still belong to
     # the invoking directory. Persisted paths use benchmark/ as their base.
     caller = Path(os.environ.get("BENCHMARK_CALLER_DIR", Path.cwd()))

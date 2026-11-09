@@ -16,6 +16,7 @@ DIRECTORY = Path(__file__).resolve().parent
 sys.path.insert(0, str(WORKSPACE))
 
 from benchmark.common import ROOT, configuration, file_digest, locked, read_json, slug
+from benchmark.cli import SUBSET_EVAL_DEFAULTS, add_subset_eval_arguments, subset_eval_dataset
 from benchmark.data import prompt_records
 from benchmark.dit_cases import definitions, select_cases
 from benchmark.execution import cpu_parent, run_function
@@ -81,6 +82,7 @@ def parser():
     p.add_argument("--original-dir", type=Path)
     p.add_argument("--cache-dir", type=Path, default=ROOT / "cache")
     p.add_argument("--max-records", type=int, help="Small validation subset, not the full benchmark")
+    add_subset_eval_arguments(p)
     return p
 
 
@@ -145,7 +147,9 @@ def case_configs(args, case_id, case):
             cfg["evaluation"]["q16_enabled"] = True
         if args.max_records is not None:
             cfg.setdefault("dataset", {})["max_records"] = args.max_records
-        configs.append(configuration(task=task, model=args.model, base=cfg))
+        cfg = configuration(task=task, model=args.model, base=cfg)
+        cfg["dataset"].update(subset_eval_dataset(args, cfg))
+        configs.append(cfg)
     if configs:
         # Beta/clipping are inference settings: changing them reuses these means.
         settings["sampling"] = {key: configs[0]["sampling"][key] for key in
@@ -264,6 +268,8 @@ def main(argv=None):
     sizes = [args.cpu_threads, args.batch_size, args.metric_batch_size, args.calibration_prompts,
              args.steps, args.height, args.width, args.max_sequence_length, args.max_records,
              args.robust_groups, args.robust_max_iter, args.pca_rank]
+    if args.subset_eval:
+        sizes.extend(getattr(args, f"{task}_test_num") for task in SUBSET_EVAL_DEFAULTS)
     if any(value is not None and value <= 0 for value in sizes):
         p.error("Counts, dimensions and sequence lengths must be positive.")
     if not math.isfinite(args.beta) or not 0 <= args.seed < 2**32:
