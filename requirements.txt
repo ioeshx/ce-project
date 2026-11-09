@@ -4,3 +4,5 @@ sentencepiece
 accelerate
 peft
 safetensors
+# packaging
+# ninja

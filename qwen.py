@@ -1,4 +1,5 @@
 import os
+os.environ["HF_ENDPOINT"]="https://hf-mirror.com"
 
 import torch
 from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
@@ -12,7 +13,7 @@ from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 model = Qwen3VLForConditionalGeneration.from_pretrained(
     "Qwen/Qwen3-VL-8B-Instruct",
     dtype=torch.bfloat16,
-    attn_implementation="flash_attention_2",
+    # attn_implementation="flash_attention_2",
     device_map="auto",
 )
 

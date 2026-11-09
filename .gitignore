@@ -13,6 +13,8 @@ DiT/early_semantic/results/
 /DiT/steer/results/
 /DiT/detectFix/results/
 
+**results/
+
 # Python 缓存和虚拟环境
 __pycache__/
 *.py[cod]
