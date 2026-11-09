@@ -7,7 +7,8 @@ import json
 import math
 from pathlib import Path
 
-from .common import atomic_text, locked, read_result_csv, write_csv
+from .common import atomic_text, concept_key, digest, locked, read_result_csv, write_csv
+from .sampling_profile import canonical_protocol
 
 
 def read_rows(root, task):
@@ -40,6 +41,38 @@ def groups(rows):
     for row in rows:
         grouped[row["protocol_id"]].append(row)
     return sorted(grouped.items())
+
+
+def canonical_result(root, row):
+    """Rebuild comparison identity from saved protocol fields, preserving scores."""
+    from .paths import BASE_FIELD, portable
+
+    sampling = canonical_protocol(json.loads(row["sampling"]))
+    protocol = {"task": row["task"], "model": row["base_model"], "sampling": sampling,
+                "targets": sorted(concept_key(t) for t in json.loads(row["targets"])),
+                "dataset_sha256": row["dataset_sha256"], "evaluator": json.loads(row["evaluation"])}
+    if row.get("case_id"):
+        protocol["case_id"] = row["case_id"]
+    protocol = portable(protocol, Path(root) / f"{row['task']}-metric.csv")
+    protocol.pop(BASE_FIELD, None)
+    return {**row, "sampling": json.dumps(sampling, sort_keys=True), "protocol_id": digest(protocol)}
+
+
+def refresh(root, task):
+    """Regroup existing metrics and redraw reports; never sample or evaluate."""
+    path = Path(root) / f"{task}-metric.csv"
+    with locked(path.with_suffix(".lock")):
+        rows = read_rows(root, task)
+        normalized = [canonical_result(root, row) for row in rows]
+        changed = sum(a != b for a, b in zip(rows, normalized))
+        if changed:
+            write_csv(path, normalized, portable=True)
+    with locked(Path(root) / f"{task}-presentation.lock"):
+        report(root, task)
+        from .plotting import plot
+        plot(root, task)
+    print(f"[refresh] {path}: {changed}/{len(rows)} protocol rows updated")
+    return changed
 
 
 def fmt(value):
@@ -118,6 +151,7 @@ def report(root, task):
 def publish(root, task, row):
     from .model_profiles import model_name
     row.setdefault("model_name", model_name(row.get("base_model")))
+    row = canonical_result(root, row)
     upsert(root, task, row)
     # Concurrent evaluators render from the newest complete CSV snapshot.
     with locked(Path(root) / f"{task}-presentation.lock"):

@@ -14,7 +14,7 @@ def parser():
     p = argparse.ArgumentParser(prog="python -m benchmark", description="统一概念擦除采样、评测与结果展示")
     sub = p.add_subparsers(dest="command", required=True)
     commands = {}
-    for name in ("prepare", "sample", "evaluate", "run", "report", "plot"):
+    for name in ("prepare", "sample", "evaluate", "run", "report", "plot", "refresh"):
         q = sub.add_parser(name)
         commands[name] = q
         q.add_argument("--config", type=Path, help="JSON/YAML；路径相对于当前工作目录")
@@ -22,7 +22,7 @@ def parser():
         from .model_profiles import MODEL_IDS
         q.add_argument("--model", choices=tuple(MODEL_IDS), help="模型配置名；默认sd14或JSON中的model_name")
         q.add_argument("--output-dir", type=Path)
-        if name in {"report", "plot"}:
+        if name in {"report", "plot", "refresh"}:
             continue
         q.add_argument("--manifest", type=Path, help="prepare输出清单；其他命令输入清单")
         q.add_argument("--method", help="结果CSV中唯一的方法名；同名成功结果覆盖旧行")
@@ -195,10 +195,13 @@ def main(argv=None):
         config = get_config(args, manifest)
         if manifest and config["task"] != manifest["task"]:
             raise ValueError("Task disagrees with the image manifest.")
-        if args.command in {"report", "plot"}:
+        if args.command in {"report", "plot", "refresh"}:
             if args.command == "report":
                 from .results import report
                 report(config["output_dir"], config["task"])
+            elif args.command == "refresh":
+                from .results import refresh
+                refresh(config["output_dir"], config["task"])
             else:
                 from .plotting import plot
                 plot(config["output_dir"], config["task"])

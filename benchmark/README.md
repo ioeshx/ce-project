@@ -270,6 +270,15 @@ class Adapter:
 
 ## 输出、覆盖规则和图表
 
+已有指标的协议分组与展示可直接刷新，以下命令只读取汇总 CSV，不加载生成或评价模型：
+
+```bash
+python -m benchmark refresh --model sd35_medium --task i2p
+```
+
+刷新会统一空 `model_revision` 的表示，并更新协议标识、汇总文本和对比图；
+指标数值、评测时间和历史评测明细保持原样。明确指定的模型版本仍属于独立协议。
+
 默认 `benchmark/results/<model_name>/` 下生成，SD1.4使用`sd14`：
 
 ```text

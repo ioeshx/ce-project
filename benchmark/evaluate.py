@@ -13,6 +13,7 @@ from . import __version__
 from .common import configuration, concept_key, digest, slug, write_csv, write_json
 from .data import load_manifest, validate_manifest
 from .layout import feature_directory, method_directory, unique_directory, timestamp
+from .sampling_profile import canonical_protocol
 
 
 def versions(task):
@@ -193,7 +194,8 @@ def evaluate(path, config=None, method=None, targets=None):
             for row, record in zip(data, manifest["records"]):
                 row["imagenet_id"] = record["imagenet_id"]
         evaluator = {"version": __version__, "definitions": provenance, "packages": versions(task)}
-        protocol = {"task": task, "model": manifest["base_model"], "sampling": manifest["sampling"],
+        sampling = canonical_protocol(manifest["sampling"])
+        protocol = {"task": task, "model": manifest["base_model"], "sampling": sampling,
                     "targets": sorted(concept_key(t) for t in manifest["targets"]),
                     "dataset_sha256": digest(data), "evaluator": evaluator}
         if manifest.get("case_id"):
@@ -206,7 +208,7 @@ def evaluate(path, config=None, method=None, targets=None):
         row = {"method": manifest["method"], "task": task, "targets": json.dumps(manifest["targets"], ensure_ascii=False),
                "model_name": config["model_name"],
                "base_model": manifest["base_model"], "n": len(data), "protocol_id": digest(portable_protocol),
-               "dataset_sha256": protocol["dataset_sha256"], "sampling": json.dumps(manifest["sampling"], sort_keys=True),
+               "dataset_sha256": protocol["dataset_sha256"], "sampling": json.dumps(sampling, sort_keys=True),
                "evaluator_version": __version__, "evaluation": json.dumps(evaluator, sort_keys=True),
                "adapter": json.dumps(manifest.get("adapter_identity", {}), sort_keys=True),
                "updated_at": updated, "manifest": str(Path(path).resolve()), "details_dir": str(destination), **metrics}

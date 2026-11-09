@@ -15,12 +15,14 @@ WORKSPACE = Path(__file__).resolve().parents[2]
 DIRECTORY = Path(__file__).resolve().parent
 sys.path.insert(0, str(WORKSPACE))
 
-from benchmark.common import ROOT, configuration, file_digest, read_json
+from benchmark.common import ROOT, configuration, file_digest, locked, read_json
 from benchmark.data import prompt_records
 from benchmark.dit_cases import definitions, select_cases
 from benchmark.execution import cpu_parent, run_function
+from benchmark.layout import registered_directory, sampling_label
 from benchmark.model_profiles import profile, resolve_scheduler
 from benchmark.plugin_plans import plugin_plan
+from DiT.steer.method import prompt_pairs
 
 
 def parser():
@@ -33,6 +35,10 @@ def parser():
     p.add_argument("--beta", type=float, default=-2.0, help="Signed coefficient: negative erases, positive amplifies")
     p.add_argument("--clipping", action=argparse.BooleanOptionalAction, default=True,
                    help="Only steer positive dot products (CASteer intermediate clipping)")
+    p.add_argument("--steer-target", choices=("text_value", "text_to_image"), default="text_to_image",
+                   help="text_value: V_text before attention; text_to_image: projected A_image,text V_text")
+    p.add_argument("--average-patches", action=argparse.BooleanOptionalAction, default=True,
+                   help="Average positions (default); --no-average-patches keeps a direction per position")
     p.add_argument("--calibration-prompts", type=int, help="Pairs per concept; default human=210, other=50")
     p.add_argument("--seed", type=int, default=0, help="Offline pair seed; benchmark uses each record's seed")
     p.add_argument("--run-root", type=Path, default=DIRECTORY / "runs")
@@ -60,6 +66,8 @@ def parser():
     p.add_argument("--q16-clip-path", type=Path)
     p.add_argument("--nudenet-weights", type=Path)
     p.add_argument("--output-dir", type=Path, default=ROOT / "results")
+    p.add_argument("--image-output-dir", type=Path, default=DIRECTORY / "results",
+                   help="Generated images; metrics remain under --output-dir")
     p.add_argument("--original-dir", type=Path)
     p.add_argument("--cache-dir", type=Path, default=ROOT / "cache")
     p.add_argument("--max-records", type=int, help="Small validation subset, not the full benchmark")
@@ -70,8 +78,11 @@ def case_configs(args, case_id, case):
     """Use benchmark targets, anchors, datasets, seeds and sampling unchanged."""
     selected = profile(args.model)
     anchors = read_json(ROOT / "configs/dit_target_anchor.json")
+    variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
+    checkpoint = args.run_root / args.model / case_id / variant / "checkpoint"
     settings = {
-        "implementation": "steer-sd3-mean-difference-v1", "model_name": args.model,
+        "implementation": "steer-sd3-mean-difference-v2", "model_name": args.model,
+        "steer_target": args.steer_target, "average_patches": args.average_patches,
         "base_model": args.base_model or selected["base_model"], "model_revision": args.model_revision,
         "group": case["group"], "targets": case["targets"],
         "anchors": [anchors[target] for target in case["targets"]],
@@ -84,12 +95,13 @@ def case_configs(args, case_id, case):
         cfg = {
             "model_name": args.model, "case_id": case_id, "method": args.method,
             "base_model": settings["base_model"], "output_dir": str(args.output_dir),
+            "image_output_dir": str(args.image_output_dir),
             "cache_dir": str(args.cache_dir),
             "original_dir": str(args.original_dir or ROOT / "original" / args.model),
             "adapter": {"kind": "plugin", "factory": "DiT.steer.method:SteerAdapter",
                         "source_files": ["method.py", "run.py", "imagenet_classes.txt"],
-                        "checkpoint": str(args.run_root / args.model / case_id / "checkpoint"),
-                        "beta": args.beta, "clipping": args.clipping},
+                        "checkpoint": str(checkpoint), "steer_target": args.steer_target,
+                        "average_patches": args.average_patches, "beta": args.beta, "clipping": args.clipping},
             "sampling": {"device": args.device, "batch_size": args.batch_size,
                          "cpu_offload": args.cpu_offload, "local_files_only": args.offline,
                          "model_revision": args.model_revision},
@@ -118,20 +130,50 @@ def case_configs(args, case_id, case):
     return settings, configs
 
 
+def offline_identity(settings, sampling, pairs):
+    """Compare effective fit inputs, independently of inference and file layout.
+
+    v1 collected the same text-to-image means as v2's default mode. Source
+    digests remain provenance; the implementation version identifies the offline
+    algorithm, so editing online steering or comments does not invalidate it.
+    """
+    identity = {key: value for key, value in settings.items()
+                if key not in {"sources", "calibration_prompts", "sampling"}}
+    if identity["implementation"] == "steer-sd3-mean-difference-v1":
+        identity["implementation"] = "steer-sd3-mean-difference-v2"
+    identity["model_revision"] = identity.get("model_revision") or None
+    identity.setdefault("steer_target", "text_to_image")
+    identity.setdefault("average_patches", True)
+    identity["prompt_pairs"] = pairs
+    identity["sampling"] = {key: sampling[key] for key in
+        ("dtype", "steps", "height", "width", "max_sequence_length", "guidance_scale", "negative_prompt", "scheduler")}
+    # Diffusers version annotations do not change the native scheduler settings.
+    identity["sampling"]["scheduler_config"] = {
+        key: value for key, value in sampling.get("scheduler_config", {}).items() if not key.startswith("_")}
+    return identity
+
+
 def run(args, experiments, env):
     env["PYTHONPATH"] = os.pathsep.join((str(WORKSPACE), env.get("PYTHONPATH", "")))
     for case_id, settings, configs in experiments:
-        case_root = args.run_root / args.model / case_id
-        checkpoint = case_root / "checkpoint"
+        checkpoint = Path(configs[0]["adapter"]["checkpoint"])
+        case_root = checkpoint.parent
         print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
+              f"target={args.steer_target}, average_patches={args.average_patches}, "
               f"beta={args.beta:g}, clipping={args.clipping}", flush=True)
         if args.phase in {"all", "fit"}:
-            exists = (checkpoint / "metadata.json").is_file()
-            print(f"[fit:{'reuse' if exists else 'collect'}] {checkpoint}", flush=True)
-            if not args.dry_run and not exists:
-                run_function("DiT.steer.method:fit", {"checkpoint": str(checkpoint),
-                    "settings": settings, "config": configs[0]}, env=env, cwd=WORKSPACE,
-                    cpu_threads=args.cpu_threads)
+            if args.dry_run:
+                exists = (checkpoint / "metadata.json").is_file() and (checkpoint / "steering.pt").is_file()
+                print(f"[fit:{'reuse' if exists else 'collect'}] {checkpoint}", flush=True)
+            else:
+                # A second process using this configuration waits for its vector.
+                with locked(checkpoint.parent / ".fit.lock"):
+                    exists = (checkpoint / "metadata.json").is_file() and (checkpoint / "steering.pt").is_file()
+                    print(f"[fit:{'reuse' if exists else 'collect'}] {checkpoint}", flush=True)
+                    if not exists:
+                        run_function("DiT.steer.method:fit", {"checkpoint": str(checkpoint),
+                            "settings": settings, "config": configs[0]}, env=env, cwd=WORKSPACE,
+                            cpu_threads=args.cpu_threads)
         if args.phase == "fit":
             continue
         for cfg in configs:
@@ -169,7 +211,9 @@ def main(argv=None):
             setattr(args, name, str(Path(value).expanduser().resolve()))
     args.cpu_offload = args.device.startswith("cuda") if args.cpu_offload is None else args.cpu_offload
     args.dtype = args.dtype or ("float32" if args.device == "cpu" else "bfloat16")
-    args.method = args.method or (f"Steer-{'erase' if args.beta < 0 else 'add'}-{abs(args.beta):g}-"
+    args.model_revision = args.model_revision or None
+    args.method = args.method or (f"Steer-{args.steer_target}-{'mean' if args.average_patches else 'per-position'}-"
+                                  f"{'erase' if args.beta < 0 else 'add'}-{abs(args.beta):g}-"
                                   f"{'clip' if args.clipping else 'signed'}")
     args.tasks = {task.strip() for task in args.tasks.split(",")} if args.tasks else None
 
@@ -194,17 +238,41 @@ def main(argv=None):
         p.error("Requested tasks are absent from the selected cases.")
     args.record_counts = {(key, cfg["task"]): len(prompt_records(cfg)[0])
                           for key, _, configs in experiments for cfg in configs}
-    if not args.dry_run:
-        for case_id, settings, _ in experiments:
-            checkpoint = args.run_root / args.model / case_id / "checkpoint"
-            metadata = checkpoint / "metadata.json"
-            if metadata.is_file():
-                if read_json(metadata)["settings"] != settings:
-                    p.error(f"Offline settings changed; choose a new --run-root: {checkpoint}")
-                if not (checkpoint / "steering.pt").is_file():
-                    p.error(f"Missing offline vectors: {checkpoint / 'steering.pt'}")
-            elif args.phase not in {"all", "fit"}:
-                p.error(f"Run --phase fit first: {checkpoint}")
+    for case_id, settings, configs in experiments:
+        sampling = configs[0]["sampling"]
+        if not args.dry_run:
+            resolve_scheduler(configs[0])
+        pairs = [{"target": target, "anchor": anchor,
+                  "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts)}
+                 for target, anchor in zip(settings["targets"], settings["anchors"])]
+        identity = offline_identity(settings, sampling, pairs)
+        case_root = args.run_root / args.model / case_id
+        checkpoint = None
+        # Include both legacy checkpoints and every saved configuration variant.
+        for metadata in sorted(case_root.glob("**/checkpoint/metadata.json")):
+            if not (metadata.parent / "steering.pt").is_file():
+                continue
+            stored = read_json(metadata)
+            previous = offline_identity(stored["settings"], stored["sampling"], stored["prompt_pairs"])
+            if args.dry_run:
+                # Preview without loading even the model's scheduler config.
+                previous["sampling"]["scheduler_config"] = identity["sampling"]["scheduler_config"]
+            if previous == identity:
+                checkpoint = metadata.parent
+                break
+        if checkpoint is None:
+            if not args.dry_run and args.phase not in {"all", "fit"}:
+                p.error(f"No matching offline vector; run --phase fit with these settings first: {case_root}")
+            variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
+            parent = case_root / variant / "offline"
+            label = f"{sampling_label(sampling)}-pairs{len(pairs[0]['pairs'])}-seed{args.seed}"
+            directory = (parent / f"{label}-planned" if args.dry_run else
+                         registered_directory(parent, label, identity))
+            checkpoint = directory / "checkpoint"
+        for cfg in configs:
+            cfg["adapter"]["checkpoint"] = str(checkpoint)
+            if not args.dry_run:
+                cfg["sampling"]["scheduler_config"] = sampling["scheduler_config"]
     with cpu_parent(args, p) as env:
         run(args, experiments, env)
     return 0

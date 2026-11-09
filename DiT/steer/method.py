@@ -1,4 +1,4 @@
-"""Offline mean-difference steering on SD3 joint-attention text contributions."""
+"""Offline steering of SD3 text values or projected text-to-image contributions."""
 from __future__ import annotations
 
 import copy
@@ -13,9 +13,9 @@ from benchmark.sampling_profile import initial_noise
 
 
 def construct_vectors(positive_means, negative_means):
-    """[concept, step, layer, channel]: average first, subtract, then normalize."""
+    """Subtract prompt means and normalize channels; keep optional positions."""
     difference = positive_means - negative_means
-    return F.normalize(difference, dim=-1, eps=1e-8)
+    return difference.div_(difference.norm(dim=-1, keepdim=True).clamp_min_(1e-8))
 
 
 def steer_output(output, vectors, beta=-2.0, clipping=True):
@@ -55,19 +55,22 @@ def prompt_pairs(group, target, anchor, count=None):
 class SD3Steering:
     """Own the hooks and per-step state shared by collection and intervention.
 
-    We extract W_out * Attention(Q_image, [K_image, K_text], [0, V_text]).
-    Keeping image keys preserves the native JOINT softmax denominator. Native
-    attention still computes its full output; only our steering delta is added.
+    text_value edits V_text at add_v_proj, before attention reads it.
+    text_to_image edits only W_out * A_image,text * V_text, retaining the native
+    joint softmax denominator, image-value contribution and projection bias.
     """
 
-    def __init__(self, transformer, steps, *, cfg, vectors=None, beta=-2.0, clipping=True):
+    def __init__(self, transformer, steps, *, cfg, vectors=None, beta=-2.0, clipping=True,
+                 steer_target="text_to_image", average_patches=True):
         self.vectors, self.beta, self.clipping = vectors, beta, clipping
         self.cfg = cfg
+        self.steer_target, self.average_patches = steer_target, average_patches
         self.step, self.samples = -1, 0
         self.handles = [transformer.register_forward_pre_hook(self._next_step)]
         layers = transformer.transformer_blocks
-        channels = layers[0].attn.to_out[0].out_features
-        self.sums = torch.zeros(steps, len(layers), channels) if vectors is None else None
+        self.steps, self.layer_count = steps, len(layers)
+        # Position count comes from the actual V_text or image-patch tensor.
+        self.sums = None
         for index, block in enumerate(layers):
             self._register_block(block.attn, index)
 
@@ -77,6 +80,13 @@ class SD3Steering:
             self.samples += 1
 
     def _register_block(self, attn, layer):
+        if self.steer_target == "text_value":
+            def steer_values(module, args, output):
+                return self._collect_or_steer(output, layer)
+
+            self.handles.append(attn.add_v_proj.register_forward_hook(steer_values))
+            return
+
         # One closure per block keeps its cross contribution until to_out runs.
         state = {}
 
@@ -100,22 +110,32 @@ class SD3Steering:
             cross = F.scaled_dot_product_attention(query, key, value, dropout_p=0.0)
             state["cross"] = cross.transpose(1, 2).reshape(batch, -1, heads * head_dim)
 
-        def collect_or_steer(module, args, output):
+        def steer_contribution(module, args, output):
             # Exclude projection bias: it belongs to the full native output.
             cross = F.linear(state.pop("cross"), module.weight, bias=None)
-            conditional = slice(cross.shape[0] // 2, None) if self.cfg else slice(None)
-            current = cross[conditional]
+            updated = self._collect_or_steer(cross, layer)
             if self.vectors is None:
-                self.sums[self.step, layer] += current.float().mean(dim=(0, 1)).cpu()
                 return output
-            updated = steer_output(current, self.vectors[:, self.step, layer], self.beta, self.clipping)
-            delta = updated.float() - current.float()
-            result = output.clone()
-            result[conditional] += delta.to(output.dtype)
-            return result
+            return output + (updated.float() - cross.float()).to(output.dtype)
 
         self.handles.append(attn.register_forward_pre_hook(extract, with_kwargs=True))
-        self.handles.append(attn.to_out[0].register_forward_hook(collect_or_steer))
+        self.handles.append(attn.to_out[0].register_forward_hook(steer_contribution))
+
+    def _collect_or_steer(self, features, layer):
+        """features: [batch, positions, channels]; vectors may retain positions."""
+        conditional = slice(features.shape[0] // 2, None) if self.cfg else slice(None)
+        current = features[conditional]
+        if self.vectors is None:
+            statistic = current.float().mean(dim=0)  # Always average samples.
+            if self.average_patches:
+                statistic = statistic.mean(dim=0)
+            if self.sums is None:
+                self.sums = torch.zeros(self.steps, self.layer_count, *statistic.shape, dtype=torch.float32)
+            self.sums[self.step, layer] += statistic.cpu()
+            return features
+        updated = features.clone()
+        updated[conditional] = steer_output(current, self.vectors[:, self.step, layer], self.beta, self.clipping)
+        return updated
 
     def reset(self):
         """Start another sampling call; keep accumulated offline statistics."""
@@ -148,7 +168,8 @@ def fit(checkpoint, settings, config):
             pairs = prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"])
             pairs_by_concept.append({"target": target, "anchor": anchor, "pairs": pairs})
             for side in ("positive", "negative"):
-                hooks = SD3Steering(pipe.transformer, opts["steps"], cfg=opts["guidance_scale"] > 1)
+                hooks = SD3Steering(pipe.transformer, opts["steps"], cfg=opts["guidance_scale"] > 1,
+                    steer_target=settings["steer_target"], average_patches=settings["average_patches"])
                 try:
                     for index, pair in enumerate(pairs):
                         hooks.reset()
@@ -163,15 +184,19 @@ def fit(checkpoint, settings, config):
                     means[side].append(hooks.sums / hooks.samples)
                 finally:
                     hooks.close()
-        positive, negative = (torch.stack(means[side]) for side in ("positive", "negative"))
+        positive = torch.stack(means.pop("positive"))
+        negative = torch.stack(means.pop("negative"))
         checkpoint = Path(checkpoint)
         checkpoint.mkdir(parents=True, exist_ok=True)
         torch.save({"vectors": construct_vectors(positive, negative),
                     "positive_means": positive, "negative_means": negative}, checkpoint / "steering.pt")
         write_json(checkpoint / "metadata.json", {
             "settings": settings, "sampling": opts, "prompt_pairs": pairs_by_concept,
-            "shape": "concept, step, layer, channel", "timesteps": pipe.scheduler.timesteps.cpu().tolist(),
-            "intervention": "projected text-value contribution to image tokens, joint softmax retained"})
+            "shape": ("concept, step, layer, channel" if settings["average_patches"] else
+                      "concept, step, layer, position, channel"),
+            "position_axis": "text token" if settings["steer_target"] == "text_value" else "image patch",
+            "timesteps": pipe.scheduler.timesteps.cpu().tolist(),
+            "intervention": settings["steer_target"]})
     finally:
         sampler.close()
 
@@ -187,7 +212,9 @@ class SteerAdapter:
         state = torch.load(Path(spec["checkpoint"]) / "steering.pt", map_location="cpu", weights_only=True)
         self.hooks = SD3Steering(self.sampler.pipe.transformer, config["sampling"]["steps"],
             cfg=config["sampling"]["guidance_scale"] > 1, vectors=state["vectors"],
-            beta=spec["beta"], clipping=spec["clipping"])
+            beta=spec["beta"], clipping=spec["clipping"],
+            steer_target=spec.get("steer_target", "text_to_image"),
+            average_patches=spec.get("average_patches", True))
 
     def generate(self, records, sampling_config):
         self.hooks.reset()

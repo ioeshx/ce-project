@@ -1,4 +1,4 @@
-"""Single source of truth for SD1.4 sampling and legacy cache compatibility."""
+"""Shared sampling identities, SD1.4 defaults and legacy cache compatibility."""
 from __future__ import annotations
 
 import copy
@@ -39,19 +39,20 @@ def make_scheduler(config, name=None):
 def canonical_protocol(sampling):
     """Keep historical protocols intact; normalize the declared shared profile.
 
-    Half-precision deployment does not use TF32. None revision and the TF32
-    bookkeeping fields have no effect there and must not split legacy caches.
+    Missing, null and empty model revisions all mean the default revision.
+    Half-precision deployment does not use TF32; its bookkeeping fields must
+    not split legacy SD1.4 caches.
     Unknown substantive overrides remain in the key.
     """
     result = {k: copy.deepcopy(v) for k, v in sampling.items()
               if k not in {"device", "batch_size", "local_files_only", "cpu_offload", "device_map", "max_memory", "gpu_memory_reserve_gib"}}
     if "device" in sampling and "execution_backend" in result:
         result["execution_backend"] = str(sampling["device"]).split(":", 1)[0]
+    if result.get("model_revision") in (None, ""):
+        result.pop("model_revision", None)
     if (result.get("scheduler") in DPM_NAMES
             and result.get("noise") == PROFILE["noise"]):
         result["scheduler"] = PROFILE["scheduler"]
-        if result.get("model_revision") is None:
-            result.pop("model_revision", None)
         if result.get("dtype") == "float16":
             result.pop("float32_matmul_precision", None)
             result.pop("allow_tf32", None)
