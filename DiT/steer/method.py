@@ -7,15 +7,81 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from benchmark.common import write_json
+from benchmark.common import read_json, slug, write_json
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.sampling_profile import initial_noise
 
 
-def construct_vectors(positive_means, negative_means):
-    """Subtract prompt means and normalize channels; keep optional positions."""
+def construct_vectors(positive_means, negative_means, *, differences=None, construction=None, seed=0):
+    """Construct unit directions; differences has shape [pairs, ..., channels].
+
+    PCA uses uncentered differences: centering would remove their shared offset.
+    All operations act independently at each layer, step and optional position.
+    """
+    construction = construction or {"method": "mean", "normalize_differences": False}
+    method = construction["method"]
     difference = positive_means - negative_means
-    return difference.div_(difference.norm(dim=-1, keepdim=True).clamp_min_(1e-8))
+    if method == "mean" and not construction["normalize_differences"]:
+        return difference.div_(difference.norm(dim=-1, keepdim=True).clamp_min_(1e-8))
+
+    samples = differences.float()
+    if construction["normalize_differences"]:
+        samples = F.normalize(samples, dim=-1, eps=1e-8)
+        difference = samples.mean(dim=0)
+
+    if method == "mean":
+        direction = difference
+    elif method == "robust":
+        # Median of means: the same seeded partition is used at every position.
+        order = torch.randperm(len(samples), generator=torch.Generator().manual_seed(seed))
+        groups = torch.tensor_split(order, construction["groups"])
+        group_means = torch.stack([samples[index].mean(dim=0) for index in groups])
+        direction = group_means.mean(dim=0)
+        active = torch.ones(direction.shape[:-1], dtype=torch.bool, device=direction.device)
+        for _ in range(construction["max_iter"]):
+            distance = (group_means - direction).norm(dim=-1, keepdim=True).clamp_min(1e-8)
+            weights = distance.reciprocal()
+            updated = (weights * group_means).sum(dim=0) / weights.sum(dim=0)
+            converged = ((updated - direction).norm(dim=-1) <=
+                         construction["tol"] * direction.norm(dim=-1).clamp_min(1.0))
+            direction = torch.where(active.unsqueeze(-1), updated, direction)
+            active = active & ~converged
+            if not active.any():
+                break
+    else:
+        # [..., pairs, channels] -> channel directions, ordered by singular value.
+        _, singular_values, vh = torch.linalg.svd(samples.movedim(0, -2), full_matrices=False)
+        if method == "pca":
+            direction = vh[..., 0, :]
+            sign = torch.where((direction * difference).sum(dim=-1, keepdim=True) < 0, -1.0, 1.0)
+            direction = direction * sign * (singular_values[..., :1] > 1e-8)
+        else:  # pca-filter: project the mean onto the leading k channel directions.
+            basis = vh[..., :construction["rank"], :]
+            coordinates = (basis * difference.unsqueeze(-2)).sum(dim=-1, keepdim=True)
+            direction = (coordinates * basis).sum(dim=-2)
+    return F.normalize(direction, dim=-1, eps=1e-8)
+
+
+def construct_from_pairs(positive, negative, directory, pairs_by_concept, construction, seed):
+    """Read saved differences in bounded chunks, including per-position tensors."""
+    vectors = torch.empty_like(positive)
+    channels = positive.shape[-1]
+    for concept, entry in enumerate(pairs_by_concept):
+        samples = [torch.load(Path(directory) / slug(entry["target"]) / f"pair-{index + 1:04d}.pt",
+                              map_location="cpu", weights_only=True, mmap=True).reshape(-1, channels)
+                   for index in range(len(entry["pairs"]))]
+        output = vectors[concept].reshape(-1, channels)
+        positive_flat = positive[concept].reshape(-1, channels)
+        negative_flat = negative[concept].reshape(-1, channels)
+        # About 32 MB of input differences per chunk, independent of patch count.
+        chunk_size = max(1, 8_000_000 // (len(samples) * channels))
+        for start in range(0, len(output), chunk_size):
+            end = start + chunk_size
+            differences = torch.stack([sample[start:end] for sample in samples])
+            output[start:end] = construct_vectors(positive_flat[start:end], negative_flat[start:end],
+                differences=differences, construction=construction, seed=seed)
+        print(f"[construct:{entry['target']}] {construction}", flush=True)
+    return vectors
 
 
 def steer_output(output, vectors, beta=-2.0, clipping=True):
@@ -34,7 +100,7 @@ def steer_output(output, vectors, beta=-2.0, clipping=True):
 
 
 def prompt_pairs(group, target, anchor, count=None):
-    """CASteer's original paired templates, with the benchmark's target anchors."""
+    """Paired templates; an empty anchor leaves only the shared context."""
     if group == "i2p":
         people = ["a girl", "a boy", "two men", "two women", "two people", "a man", "a woman",
                   "an old man", "an old woman", "boys", "girls", "men", "women", "group of people", "a human"]
@@ -42,11 +108,12 @@ def prompt_pairs(group, target, anchor, count=None):
                   "realism", "colorful background", "on a beach", "playing guitar", "enjoying nature",
                   "smiling", "in a futuristic spaceship", "with kittens"]
         stems = [f"{person} {scene}" for person in people for scene in scenes]
-        pairs = [{"positive": f"{stem}, {target}", "negative": f"{stem}, {anchor}"} for stem in stems]
+        pairs = [{"positive": f"{stem}, {target}", "negative": f"{stem}, {anchor}" if anchor else stem.rstrip()}
+                 for stem in stems]
     else:
         classes = Path(__file__).with_name("imagenet_classes.txt").read_text().splitlines()
         suffix = f", {target} style" if group == "style" else f" with {target}"
-        negative_suffix = f", {anchor} style" if group == "style" else f" with {anchor}"
+        negative_suffix = (f", {anchor} style" if group == "style" else f" with {anchor}") if anchor else ""
         pairs = [{"positive": name + suffix, "negative": name + negative_suffix} for name in classes]
         count = count or 50
     return pairs[:count]
@@ -137,9 +204,11 @@ class SD3Steering:
         updated[conditional] = steer_output(current, self.vectors[:, self.step, layer], self.beta, self.clipping)
         return updated
 
-    def reset(self):
-        """Start another sampling call; keep accumulated offline statistics."""
+    def reset(self, *, clear_statistics=False):
+        """Start another sampling call; optionally clear collected statistics."""
         self.step = -1
+        if clear_statistics:
+            self.sums, self.samples = None, 0
 
     def close(self):
         for handle in self.handles:
@@ -148,12 +217,31 @@ class SD3Steering:
 
 
 @torch.inference_mode()
-def fit(checkpoint, settings, config):
-    """Collect unmodified positive/negative trajectories and save compact means.
+def fit(checkpoint, settings, config, statistics_checkpoint=None):
+    """Collect means and optional pair differences, or reconstruct cached data.
 
     Native sampling stops at latents: fitting neither decodes images nor uses
     an output classifier. The same noise seed is used on both sides of a pair.
     """
+    checkpoint = Path(checkpoint)
+    checkpoint.mkdir(parents=True, exist_ok=True)
+    construction = settings.get("construction", {"method": "mean", "normalize_differences": False})
+    paired = construction["method"] != "mean" or construction["normalize_differences"]
+    if statistics_checkpoint is not None:
+        # Reconstruct another direction without loading a diffusion model.
+        source = Path(statistics_checkpoint)
+        state = torch.load(source / "steering.pt", map_location="cpu", weights_only=True, mmap=True)
+        metadata = read_json(source / "metadata.json")
+        positive, negative = state["positive_means"], state["negative_means"]
+        vectors = (construct_from_pairs(positive, negative, metadata["paired_differences"],
+                    metadata["prompt_pairs"], construction, settings["seed"]) if paired else
+                   construct_vectors(positive, negative))
+        torch.save({"vectors": vectors, "positive_means": positive, "negative_means": negative},
+                   checkpoint / "steering.pt")
+        metadata.update(settings=settings, statistics_checkpoint=str(source))
+        write_json(checkpoint / "metadata.json", metadata)
+        return
+
     torch.manual_seed(settings["seed"])
     config = copy.deepcopy(config)
     config["adapter"] = {"kind": "original"}
@@ -167,12 +255,16 @@ def fit(checkpoint, settings, config):
         for target, anchor in zip(settings["targets"], settings["anchors"]):
             pairs = prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"])
             pairs_by_concept.append({"target": target, "anchor": anchor, "pairs": pairs})
+            pair_directory = checkpoint / "paired_differences" / slug(target)
+            if paired:
+                pair_directory.mkdir(parents=True, exist_ok=True)
             for side in ("positive", "negative"):
                 hooks = SD3Steering(pipe.transformer, opts["steps"], cfg=opts["guidance_scale"] > 1,
                     steer_target=settings["steer_target"], average_patches=settings["average_patches"])
                 try:
+                    total = None
                     for index, pair in enumerate(pairs):
-                        hooks.reset()
+                        hooks.reset(clear_statistics=paired)
                         latent = initial_noise(shape, settings["seed"], dtype=sampler.dtype, device="cpu")
                         pipe(prompt=[pair[side]], negative_prompt=[opts.get("negative_prompt") or ""],
                              latents=latent.unsqueeze(0).to(sampler.device),
@@ -180,15 +272,30 @@ def fit(checkpoint, settings, config):
                              height=opts["height"], width=opts["width"], num_inference_steps=opts["steps"],
                              guidance_scale=opts["guidance_scale"], max_sequence_length=opts["max_sequence_length"],
                              output_type="latent")
+                        if paired:
+                            if total is None:
+                                total = hooks.sums.clone()
+                            else:
+                                total += hooks.sums
+                            positive_path = pair_directory / f"positive-{index + 1:04d}.pt"
+                            if side == "positive":
+                                torch.save(hooks.sums, positive_path)
+                            else:
+                                positive_sample = torch.load(positive_path, map_location="cpu", weights_only=True, mmap=True)
+                                torch.save(positive_sample - hooks.sums, pair_directory / f"pair-{index + 1:04d}.pt")
+                                del positive_sample
+                                positive_path.unlink()
                         print(f"[fit:{target}:{side}] {index + 1}/{len(pairs)}", flush=True)
-                    means[side].append(hooks.sums / hooks.samples)
+                    means[side].append(total / len(pairs) if paired else hooks.sums / hooks.samples)
                 finally:
                     hooks.close()
+                del hooks, total
         positive = torch.stack(means.pop("positive"))
         negative = torch.stack(means.pop("negative"))
-        checkpoint = Path(checkpoint)
-        checkpoint.mkdir(parents=True, exist_ok=True)
-        torch.save({"vectors": construct_vectors(positive, negative),
+        vectors = (construct_from_pairs(positive, negative, checkpoint / "paired_differences",
+                    pairs_by_concept, construction, settings["seed"]) if paired else
+                   construct_vectors(positive, negative))
+        torch.save({"vectors": vectors,
                     "positive_means": positive, "negative_means": negative}, checkpoint / "steering.pt")
         write_json(checkpoint / "metadata.json", {
             "settings": settings, "sampling": opts, "prompt_pairs": pairs_by_concept,
@@ -196,6 +303,7 @@ def fit(checkpoint, settings, config):
                       "concept, step, layer, position, channel"),
             "position_axis": "text token" if settings["steer_target"] == "text_value" else "image patch",
             "timesteps": pipe.scheduler.timesteps.cpu().tolist(),
+            **({"paired_differences": str(checkpoint / "paired_differences")} if paired else {}),
             "intervention": settings["steer_target"]})
     finally:
         sampler.close()

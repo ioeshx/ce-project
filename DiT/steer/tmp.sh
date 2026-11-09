@@ -1,3 +1,8 @@
+bash /home/shx/code/ce-new/DiT/steer/run.sh \
+  --cases ip,style,object \
+  --target-anchor-config ce-new/DiT/steer/conf.json \
+  --offline
+
 # cuda:0：I2P、style
 # --offline
 bash /home/shx/code/ce-new/DiT/steer/run.sh \
@@ -9,5 +14,9 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh \
 
 
 bash /home/shx/code/ce-new/DiT/steer/run.sh \
-  --cases all --device cuda:0 --offline \
-  --steer-target text_value --average-patches > DiT/steer/logs/all_target_text_value.log 2>&1
+  --cases i2p,style --device cuda:0 --offline \
+  --steer-target text_value --average-patches > DiT/steer/logs/i2p_style_target_textValue.log 2>&1
+
+bash /home/shx/code/ce-new/DiT/steer/run.sh \
+  --cases ip,object --device cuda:1 --offline \
+  --steer-target text_value --average-patches > DiT/steer/logs/ip_object_target_textValue.log 2>&1

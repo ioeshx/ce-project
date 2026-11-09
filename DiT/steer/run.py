@@ -15,7 +15,7 @@ WORKSPACE = Path(__file__).resolve().parents[2]
 DIRECTORY = Path(__file__).resolve().parent
 sys.path.insert(0, str(WORKSPACE))
 
-from benchmark.common import ROOT, configuration, file_digest, locked, read_json
+from benchmark.common import ROOT, configuration, file_digest, locked, read_json, slug
 from benchmark.data import prompt_records
 from benchmark.dit_cases import definitions, select_cases
 from benchmark.execution import cpu_parent, run_function
@@ -39,7 +39,17 @@ def parser():
                    help="text_value: V_text before attention; text_to_image: projected A_image,text V_text")
     p.add_argument("--average-patches", action=argparse.BooleanOptionalAction, default=True,
                    help="Average positions (default); --no-average-patches keeps a direction per position")
+    p.add_argument("--vector-method", choices=("mean", "robust", "pca", "pca-filter"), default="mean",
+                   help="Offline aggregation: mean, median of means, first uncentered PC, or rank-k filtered mean")
+    p.add_argument("--normalize-differences", action="store_true",
+                   help="Normalize each prompt-pair difference before aggregation/PCA")
+    p.add_argument("--robust-groups", type=int, help="Groups for robust median of means; default min(5, pair count)")
+    p.add_argument("--robust-max-iter", type=int, default=100, help="Geometric median iteration limit")
+    p.add_argument("--robust-tol", type=float, default=1e-5, help="Geometric median relative stopping tolerance")
+    p.add_argument("--pca-rank", type=int, default=4, help="Number of components retained by pca-filter")
     p.add_argument("--calibration-prompts", type=int, help="Pairs per concept; default human=210, other=50")
+    p.add_argument("--target-anchor-config", type=Path,
+                   help="Offline target-to-anchor JSON (flat mapping or concept_pair); default: benchmark/configs/dit_target_anchor.json")
     p.add_argument("--seed", type=int, default=0, help="Offline pair seed; benchmark uses each record's seed")
     p.add_argument("--run-root", type=Path, default=DIRECTORY / "runs")
     p.add_argument("--method", help="Result name; default includes beta and clipping")
@@ -74,15 +84,30 @@ def parser():
     return p
 
 
+def load_target_anchors(path, targets):
+    """Read offline anchors, accepting the local conf.json and benchmark formats."""
+    value = read_json(path)
+    anchors = value.get("concept_pair", value) if isinstance(value, dict) else value
+    if not isinstance(anchors, dict):
+        raise ValueError(f"{path}: expected a target-to-anchor mapping or a concept_pair mapping.")
+    for target in targets:
+        if target not in anchors:
+            raise ValueError(f"{path}: missing anchor for target {target!r}.")
+        if not isinstance(anchors[target], str):
+            raise ValueError(f"{path}: anchor for {target!r} must be a string (empty string is allowed).")
+    return anchors
+
+
 def case_configs(args, case_id, case):
-    """Use benchmark targets, anchors, datasets, seeds and sampling unchanged."""
+    """Customize offline anchors while preserving benchmark targets and protocol."""
     selected = profile(args.model)
-    anchors = read_json(ROOT / "configs/dit_target_anchor.json")
+    anchors = load_target_anchors(args.target_anchor_config or ROOT / "configs/dit_target_anchor.json", case["targets"])
     variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
     checkpoint = args.run_root / args.model / case_id / variant / "checkpoint"
     settings = {
         "implementation": "steer-sd3-mean-difference-v2", "model_name": args.model,
         "steer_target": args.steer_target, "average_patches": args.average_patches,
+        "construction": args.construction,
         "base_model": args.base_model or selected["base_model"], "model_revision": args.model_revision,
         "group": case["group"], "targets": case["targets"],
         "anchors": [anchors[target] for target in case["targets"]],
@@ -144,6 +169,7 @@ def offline_identity(settings, sampling, pairs):
     identity["model_revision"] = identity.get("model_revision") or None
     identity.setdefault("steer_target", "text_to_image")
     identity.setdefault("average_patches", True)
+    identity.setdefault("construction", {"method": "mean", "normalize_differences": False})
     identity["prompt_pairs"] = pairs
     identity["sampling"] = {key: sampling[key] for key in
         ("dtype", "steps", "height", "width", "max_sequence_length", "guidance_scale", "negative_prompt", "scheduler")}
@@ -160,19 +186,22 @@ def run(args, experiments, env):
         case_root = checkpoint.parent
         print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
               f"target={args.steer_target}, average_patches={args.average_patches}, "
-              f"beta={args.beta:g}, clipping={args.clipping}", flush=True)
+              f"construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}", flush=True)
         if args.phase in {"all", "fit"}:
             if args.dry_run:
                 exists = (checkpoint / "metadata.json").is_file() and (checkpoint / "steering.pt").is_file()
-                print(f"[fit:{'reuse' if exists else 'collect'}] {checkpoint}", flush=True)
+                action = "reuse" if exists else "reconstruct" if args.statistics_sources[case_id] else "collect"
+                print(f"[fit:{action}] {checkpoint}", flush=True)
             else:
                 # A second process using this configuration waits for its vector.
                 with locked(checkpoint.parent / ".fit.lock"):
                     exists = (checkpoint / "metadata.json").is_file() and (checkpoint / "steering.pt").is_file()
-                    print(f"[fit:{'reuse' if exists else 'collect'}] {checkpoint}", flush=True)
+                    action = "reuse" if exists else "reconstruct" if args.statistics_sources[case_id] else "collect"
+                    print(f"[fit:{action}] {checkpoint}", flush=True)
                     if not exists:
                         run_function("DiT.steer.method:fit", {"checkpoint": str(checkpoint),
-                            "settings": settings, "config": configs[0]}, env=env, cwd=WORKSPACE,
+                            "settings": settings, "config": configs[0],
+                            "statistics_checkpoint": args.statistics_sources[case_id]}, env=env, cwd=WORKSPACE,
                             cpu_threads=args.cpu_threads)
         if args.phase == "fit":
             continue
@@ -212,18 +241,35 @@ def main(argv=None):
     args.cpu_offload = args.device.startswith("cuda") if args.cpu_offload is None else args.cpu_offload
     args.dtype = args.dtype or ("float32" if args.device == "cpu" else "bfloat16")
     args.model_revision = args.model_revision or None
+    args.construction = {"method": args.vector_method, "normalize_differences": args.normalize_differences}
+    args.construction_label = "" if args.vector_method == "mean" else args.vector_method
+    if args.vector_method == "robust":
+        groups = args.robust_groups if args.robust_groups is not None else min(5, args.calibration_prompts or 50)
+        args.construction.update(groups=groups, max_iter=args.robust_max_iter, tol=args.robust_tol)
+        args.construction_label += f"-g{groups}-i{args.robust_max_iter}-tol{args.robust_tol:g}"
+    if args.vector_method == "pca-filter":
+        args.construction["rank"] = args.pca_rank
+        args.construction_label += f"-k{args.pca_rank}"
+    if args.normalize_differences:
+        args.construction_label += "-unit-diff"
+    args.construction_label = args.construction_label.strip("-")
     args.method = args.method or (f"Steer-{args.steer_target}-{'mean' if args.average_patches else 'per-position'}-"
+                                  f"{args.construction_label + '-' if args.construction_label else ''}"
                                   f"{'erase' if args.beta < 0 else 'add'}-{abs(args.beta):g}-"
-                                  f"{'clip' if args.clipping else 'signed'}")
+                                  f"{'clip' if args.clipping else 'signed'}"
+                                  f"{'-anchors-' + slug(args.target_anchor_config.stem) if args.target_anchor_config else ''}")
     args.tasks = {task.strip() for task in args.tasks.split(",")} if args.tasks else None
 
     # All method-parameter and existing-checkpoint checks live at this entry.
     sizes = [args.cpu_threads, args.batch_size, args.metric_batch_size, args.calibration_prompts,
-             args.steps, args.height, args.width, args.max_sequence_length, args.max_records]
+             args.steps, args.height, args.width, args.max_sequence_length, args.max_records,
+             args.robust_groups, args.robust_max_iter, args.pca_rank]
     if any(value is not None and value <= 0 for value in sizes):
         p.error("Counts, dimensions and sequence lengths must be positive.")
     if not math.isfinite(args.beta) or not 0 <= args.seed < 2**32:
         p.error("Use finite beta and a uint32 seed.")
+    if not math.isfinite(args.robust_tol) or args.robust_tol <= 0:
+        p.error("--robust-tol must be finite and positive.")
     if args.device == "cpu" and (args.dtype != "float32" or args.cpu_offload):
         p.error("CPU execution uses float32 without CPU offload.")
     cases = definitions()["cases"]
@@ -231,13 +277,17 @@ def main(argv=None):
     if args.calibration_prompts and any(args.calibration_prompts > (210 if cases[key]["group"] == "i2p" else 1000)
                                         for key in selected):
         p.error("Calibration templates provide at most 210 human pairs or 1000 other pairs.")
-    experiments = [(key, *case_configs(args, key, cases[key])) for key in selected]
+    try:
+        experiments = [(key, *case_configs(args, key, cases[key])) for key in selected]
+    except (OSError, ValueError) as exc:
+        p.error(str(exc))
     experiments = [entry for entry in experiments if entry[2]]
     available = {cfg["task"] for _, _, configs in experiments for cfg in configs}
     if not experiments or args.tasks and args.tasks - available:
         p.error("Requested tasks are absent from the selected cases.")
     args.record_counts = {(key, cfg["task"]): len(prompt_records(cfg)[0])
                           for key, _, configs in experiments for cfg in configs}
+    args.statistics_sources = {}
     for case_id, settings, configs in experiments:
         sampling = configs[0]["sampling"]
         if not args.dry_run:
@@ -245,9 +295,16 @@ def main(argv=None):
         pairs = [{"target": target, "anchor": anchor,
                   "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts)}
                  for target, anchor in zip(settings["targets"], settings["anchors"])]
+        pair_count = len(pairs[0]["pairs"])
+        if args.vector_method == "robust" and settings["construction"]["groups"] > pair_count:
+            p.error(f"--robust-groups cannot exceed the number of prompt pairs ({pair_count}).")
+        if args.vector_method == "pca-filter" and args.pca_rank > pair_count:
+            p.error(f"--pca-rank cannot exceed the number of prompt pairs ({pair_count}).")
         identity = offline_identity(settings, sampling, pairs)
+        collection_identity = {key: value for key, value in identity.items() if key != "construction"}
         case_root = args.run_root / args.model / case_id
         checkpoint = None
+        args.statistics_sources[case_id] = None
         # Include both legacy checkpoints and every saved configuration variant.
         for metadata in sorted(case_root.glob("**/checkpoint/metadata.json")):
             if not (metadata.parent / "steering.pt").is_file():
@@ -260,12 +317,18 @@ def main(argv=None):
             if previous == identity:
                 checkpoint = metadata.parent
                 break
+            if (args.statistics_sources[case_id] is None and stored.get("paired_differences")
+                    and Path(stored["paired_differences"]).is_dir()
+                    and {key: value for key, value in previous.items() if key != "construction"} == collection_identity):
+                args.statistics_sources[case_id] = str(metadata.parent)
         if checkpoint is None:
             if not args.dry_run and args.phase not in {"all", "fit"}:
                 p.error(f"No matching offline vector; run --phase fit with these settings first: {case_root}")
             variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
             parent = case_root / variant / "offline"
             label = f"{sampling_label(sampling)}-pairs{len(pairs[0]['pairs'])}-seed{args.seed}"
+            if args.construction_label:
+                label += f"-{args.construction_label}"
             directory = (parent / f"{label}-planned" if args.dry_run else
                          registered_directory(parent, label, identity))
             checkpoint = directory / "checkpoint"

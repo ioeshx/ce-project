@@ -16,11 +16,11 @@
 
 后续修改构造方法，直接编辑 `construct_vectors()`；修改向量使用方式，编辑
 `steer_output()`。收集位置与统计维度在 `SD3Steering` 中，提示词在 `prompt_pairs()` 中。
-目前实现均值差，不预置其他候选算法。
+默认使用均值差；可显式选择稳健聚合、差分归一化及两种 PCA 构造。
 
 ## 可选配置
 
-两个开关相互独立，默认保持原来的计算位置和位置平均方式：
+目标位置和位置平均方式独立于后面的向量构造选项：
 
 | 参数 | 含义 |
 |---|---|
@@ -47,6 +47,107 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target text_value --no-avera
 
 以上命令只展示计划；实际运行时移除 `--dry-run`，按需添加 `--cases`、`--device`、`--offline`。
 
+## 向量构造：四种可选改进
+
+所有公式均针对一个 concept、layer、timestep，以及不平均时的一个位置独立计算。
+第 $j$ 对 prompt 的特征为 $h_j^+,h_j^-\in\mathbb R^C$，差分为
+$d_j=h_j^+-h_j^-$。定义 $\operatorname{unit}(x)=x/\max(\|x\|_2,10^{-8})$。
+位置平均模式先对每个 prompt 的位置求均值，再做上述差分及后续操作。
+默认向量仍是 $\operatorname{unit}(\mu)$，其中
+$\mu=\operatorname{mean}(h^+)-\operatorname{mean}(h^-)$。
+
+| 参数 | 默认 | 作用 |
+|---|---|---|
+| `--vector-method mean` | 开启 | 对差分求均值 |
+| `--vector-method robust` | 关闭 | 分组均值的几何中位数 |
+| `--normalize-differences` | 关闭 | 每对差分先按 channel 归一化，可与所有构造方式组合 |
+| `--vector-method pca` | 关闭 | 未中心化差分的第一主方向 |
+| `--vector-method pca-filter` | 关闭 | 用前 k 个主方向过滤均值差 |
+
+四种 `vector-method` 互斥；归一化开关独立。以下用 $x_j$ 表示参与聚合的差分：
+默认 $x_j=d_j$；启用归一化后 $x_j=\operatorname{unit}(d_j)$。
+记 $\bar x=N^{-1}\sum_j x_j$。
+
+### 1. 稳健统计：median of means
+
+使用 `--seed` 生成一个固定的 prompt 对随机排列，再分成 G 组 $I_g$，各组大小相差至多 1。
+同一划分用于所有 layer、timestep 和位置。先求组均值，再求它们的几何中位数：
+
+$$
+m_g=\frac{1}{|I_g|}\sum_{j\in I_g}x_j,\qquad
+q^*=\arg\min_q\sum_{g=1}^{G}\|q-m_g\|_2,\qquad s=\operatorname{unit}(q^*).
+$$
+
+代码用 Weiszfeld 迭代近似求解。初始化 $q^{(0)}=G^{-1}\sum_g m_g$，随后：
+
+$$
+w_g^{(r)}=\frac{1}{\max(\|q^{(r)}-m_g\|_2,10^{-8})},\qquad
+q^{(r+1)}=\frac{\sum_g w_g^{(r)}m_g}{\sum_g w_g^{(r)}}.
+$$
+
+当更新距离不大于 `tol × max(1, ||q||)` 时停止，否则达到迭代上限后返回。
+`--robust-groups` 默认 `min(5, N)`，不能大于 N；`--robust-max-iter` 默认 100，
+`--robust-tol` 默认 `1e-5`。G=1 退化为均值；G=N 对逐对差分直接求几何中位数。
+少数异常组的影响会减弱，多数组共同带有的偏差仍会保留。
+
+### 2. 先归一化差分再聚合
+
+单独添加 `--normalize-differences`，保留默认 `mean`：
+
+$$
+s=\operatorname{unit}\left(\frac1N\sum_{j=1}^N
+\frac{d_j}{\max(\|d_j\|_2,10^{-8})}\right).
+$$
+
+它让差分主要按方向参与平均，减少大幅值样本的主导作用。
+开启该开关后，robust、PCA 的输入也使用 $x_j$。
+
+### 3. 从多对差分提取第一主方向
+
+把每个 $x_j^\top$ 放在矩阵 X 的一行，直接做薄 SVD：
+
+$$
+X=U\Sigma V^\top,\qquad
+s=\begin{cases}v_1,&v_1^\top\bar x\ge0,\\-v_1,&v_1^\top\bar x<0.\end{cases}
+$$
+
+`--vector-method pca` 使用这个方向。**不减去差分均值**，因为共同概念偏移正包含在均值中。
+符号与均值差对齐，使 CASteer 的正点积门控始终沿同一概念朝向工作。
+没有非零差分信号时返回零向量。
+
+### 4. 用前 k 个主方向过滤均值差
+
+仍使用上面的未中心化 SVD，保留 $V_k=[v_1,\ldots,v_k]$，计算：
+
+$$
+\tilde\mu=V_kV_k^\top\bar x,\qquad s=\operatorname{unit}(\tilde\mu).
+$$
+
+`--vector-method pca-filter --pca-rank 4` 使用这个构造，默认 k=4，不能大于 N。
+未启用差分归一化时，过滤的就是原始均值差；与归一化组合时，过滤的是归一化差分的均值。
+通道数少于 k 时使用全部可用方向。k=1 且均值投影非零时，方向与第三种方法一致；
+保留全部差分方向会基本恢复原均值差。
+最终仍输出一个向量，线上投影机制不变。
+
+```bash
+# 1. 稳健聚合
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip_pikachu --steer-target text_value \
+  --vector-method robust --robust-groups 5 --offline
+# 2. 每对差分归一化后求均值
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip_pikachu --steer-target text_value \
+  --normalize-differences --offline
+# 3. 第一主方向
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip_pikachu --steer-target text_value \
+  --vector-method pca --offline
+# 4. 前四个主方向过滤均值差
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip_pikachu --steer-target text_value \
+  --vector-method pca-filter --pca-rank 4 --offline
+```
+
+添加 `--phase fit` 只构造向量；添加 `--dry-run` 只查看计划。
+上述配置同样支持两个 steer target、两种位置平均方式及全部四组 benchmark。
+不平均位置时，在每个位置分别应用同一公式；不会把位置和通道拼成一个向量。
+
 ## 1. 离线统计
 
 沿用迁移版定义：提取 joint attention 中**文本 Value 对图像 token 的贡献**：
@@ -69,6 +170,41 @@ style 为 `ImageNet 类名, concept style`，默认各 50 对；I2P 为 15 类�
 正负两侧使用相同 seed、相同初始噪声、相同原生调度器；统计时保留未干预轨迹。
 执行所有去噪步，但 `output_type="latent"` 跳过 VAE 图像解码；不调用外部检测器或评价指标。
 
+### 自定义 target / anchor 对照
+
+`--target-anchor-config /path/to/config.json` 只覆盖离线构造负样本时的 anchor。
+不指定时仍读取公共 `benchmark/configs/dit_target_anchor.json`。
+支持公共配置的平铺 `{ "target": "anchor" }` 格式，以及本目录 `conf.json` 的
+`{ "concept_pair": { "target": "anchor" } }` 格式；文件必须包含所选 case 的全部 target，
+anchor 必须是字符串，允许空字符串。擦除 target 仍由 benchmark case 定义。
+
+本目录 `conf.json` 设置 `nudity → clothed`，其余 target 的 anchor 均为空字符串。
+空 anchor 表示负 prompt 只保留共享上下文，同时去掉 `with` 或 `, … style` 后缀：
+
+| 分组 | 正 prompt 示例 | 使用 conf.json 的负 prompt |
+|---|---|---|
+| I2P | `a woman on a beach, nudity` | `a woman on a beach, clothed` |
+| IP | `tench with Pikachu` | `tench` |
+| style | `tench, Van Gogh style` | `tench` |
+| Object | `tench with church` | `tench` |
+
+空的是 anchor，负 prompt 仍保留 ImageNet 类名；不会将整条负 prompt 设为空。
+该设置不修改 CFG 的 `negative_prompt`，也不修改 benchmark 的评测 prompt、seed、
+采样协议、擦除/保留划分或指标计算。方法输出随 steering 向量变化。
+
+```bash
+# 自定义 anchor；可加 --phase fit 只统计向量，或 --dry-run 查看计划
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all \
+  --target-anchor-config /home/shx/code/ce-new/DiT/steer/conf.json --offline
+```
+
+自定义文件的默认结果名追加 `-anchors-<文件名去扩展名>`，例如 `-anchors-conf`，
+便于与默认 anchor 的指标并列比较；`--method` 仍可显式指定结果名。
+修改同一个文件继续做其他对照时，使用不同 `--method` 保存各组指标。
+缓存按实际 anchor 和正负 prompt 匹配，不同文件路径但相同有效配置可复用；
+IP/style/Object 的空 anchor 不会命中原 anchor 的向量或逐对差分缓存，
+I2P 的 anchor 未改变时仍可复用已有向量。
+
 离线向量按配置缓存。每次运行先在当前 `--run-root` 的对应 model/case 下查找完整匹配的
 `metadata.json` 和 `steering.pt`，命中后直接复用；配置变化时自动另存，切回旧配置会再次命中。
 新配置保存到可读目录：
@@ -80,11 +216,25 @@ runs/<model>/<case>/<steer_target>-<mean 或 per-position>/offline/
   metadata.json  # 参数、实际 prompt pairs、timesteps、采样配置
 ```
 
+新构造配置会在目录标签、默认结果名和缓存配置中标明，例如 `pca-filter-k4`、
+`robust-g5-i100-tol1e-05`、`unit-diff`。不传新参数时保持原结果名，并继续复用旧均值向量。
+
+启用任一改进后，首次统计另外保存
+`checkpoint/paired_differences/<concept>/pair-0001.pt`，每个文件是一个 prompt 对的
+`[step, layer, channel]` 或 `[step, layer, position, channel]` 差分。
+后续改变构造方法、归一化开关、分组参数或 PCA rank 时，会查找相同采样配置的这些差分，
+打印 `[fit:reconstruct]`，直接重算向量，不加载 DiT 或重新采样。
+匹配的最终向量仍打印 `[fit:reuse]`。
+旧均值缓存没有逐对差分，因此第一次启用这些方法需要补做一次离线统计。
+逐对差分使用 CPU FP32 保存，重构时按块读取；不平均位置时磁盘占用会显著增加。
+例如 50 对、40 步、24 层、1536 通道的差分，平均模式约 281 MiB；
+保留 1024 个位置则约 281 GiB，另需保存最终向量及正负均值。
+
 平均模式的三个张量维度均为 `[concept, step, layer, channel]`；
 不平均模式为 `[concept, step, layer, position, channel]`。
 metadata 记录目标位置、是否平均以及位置轴对应 text token 还是 image patch。
 因此后续可以从已保存均值重新构造方向。缓存匹配包括离线算法版本、模型及 revision、
-目标和 anchor、实际正负提示词、seed、目标位置、是否平均、dtype、步数、分辨率、
+目标和 anchor、实际正负提示词、seed、目标位置、是否平均、向量构造选项、dtype、步数、分辨率、
 文本长度、CFG、负提示词和原生 scheduler 配置。省略提示词数量与显式指定默认数量等价，
 空 revision 与未指定 revision 等价。
 
@@ -198,6 +348,12 @@ done
 本仓库 `baseline/CASteer/DIT_BENCHMARK_ADAPTATION.md`。
 
 ## 已完成的验证
+
+四种新构造及差分归一化通过数值验证，覆盖异常样本、PCA 不中心化与符号、
+全 rank 投影、零差分和逐位置一致性。小型原生 SD3 覆盖两个目标位置 × 两种平均方式，
+逐对差分保存、全部构造、从缓存重构且不加载模型、batch=2 向量加载采样和 hook 清理。
+默认统计的正负均值与新逐对采集逐元素一致；旧版五组默认向量继续命中缓存。
+本次未运行正式模型实验。
 
 新增两种目标 × 两种平均方式均通过小型原生 SD3 验证：
 离线统计、位置维度、正负均值保存、向量加载、双目标与 batch=2 采样。
