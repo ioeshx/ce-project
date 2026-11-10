@@ -13,6 +13,8 @@
 | `run.py` | 参数入口与 fit → prepare → sample → evaluate 编排 |
 | `run.sh` | 转发命令行参数 |
 | `imagenet_classes.txt` | 从 CASteer 复制的 ImageNet 类名，保持原配对模板 |
+| `prompts/subject.json` | 第 2 种：以目标为主体的短模板 |
+| `prompts/matched.json` | 第 3 种：共享具体内容的对照模板 |
 | `README.md` | 算法定义与运行方法 |
 
 后续修改构造方法，直接编辑 `construct_vectors()`；修改向量使用方式，编辑
@@ -237,7 +239,7 @@ vector = normalize(positive_mean - negative_mean, over channels)
 这是 `text_to_image` 模式。`text_value` 模式在相同层、时间步直接收集
 `V_text = add_v_proj(text_hidden_states)`。两种模式都在同一位置构造、应用方向。
 
-提示词模板与 CASteer 一致：IP/Object 为 `ImageNet 类名 with concept`，
+默认 `--prompt-mode casteer`，提示词模板与 CASteer 一致：IP/Object 为 `ImageNet 类名 with concept`，
 style 为 `ImageNet 类名, concept style`，默认各 50 对；I2P 为 15 类人物 × 14 类场景，
 共 210 对。默认负 prompt 只保留共享上下文；nudity 的负 prompt 额外包含 `clothed`。
 正负两侧使用相同 seed、相同初始噪声、相同原生调度器；统计时保留未干预轨迹。
@@ -288,6 +290,77 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all \
 默认 IP/style/Object 不会命中旧的非空 anchor 向量或逐对差分缓存；
 I2P 的 anchor 未改变时、以及已有空 anchor 配置与默认提示词一致时，仍可复用。
 开关不同但实际 anchor 和提示词相同，也可复用同一份离线统计。
+
+### 三种可选提示词构造
+
+`--prompt-mode` 与 `--use-anchor` 独立。前者决定模板，后者决定负侧是否填入配置中的
+anchor；默认负侧只保留上下文，nudity 仍使用 `clothed`。
+
+| 模式 | 默认对数 | 正 prompt 示例 | 默认负 prompt |
+|---|---:|---|---|
+| `casteer`（默认） | I2P 210，其他 50 | `tench with Pikachu` | `tench` |
+| `bare`：纯概念词 | 1 | `Pikachu` | 空字符串 |
+| `subject`：以目标为主体的短模板 | 8 | `a photo of Pikachu` | `a photo` |
+| `matched`：共享具体内容的对照 | 8 | `a scene in a park, with Pikachu as the main subject` | `a scene in a park` |
+
+开启 `--use-anchor` 时，以上后三行的负侧分别变为 `Cartoon Character`、
+`a photo of Cartoon Character`、`a scene in a park, with Cartoon Character as the main subject`。
+纯概念词模式直接使用 target/anchor 原文；例如 style 为 `Van Gogh` / 空字符串，
+nudity 为 `nudity` / `clothed`。只有 `bare` 的空 anchor 会使整条负 prompt 为空。
+
+**第 2 种使用 8 个短模板。** 每对使用相同框架，只添加或替换概念：
+
+| 分组 | 8 个基础框架（按顺序） | 正侧追加；anchor 非空时负侧同样追加 |
+|---|---|---|
+| IP/Object | `a photo`、`an image`、`a picture`、`a close-up`、`a full view`、`a front view`、`a side view`、`a centered view` | ` of {concept}` |
+| style | `a painting`、`an artwork`、`an image`、`a picture`、`an illustration`、`a detailed painting`、`a small painting`、`a large painting` | ` in the style of {concept}` |
+| I2P | `a photo of a person`、`an image of a person`、`a picture of a person`、`a portrait of a person`、`a close-up of a person`、`a full view of a person`、`a front view of a person`、`a side view of a person` | `, {concept}` |
+
+例如 style 是 `a painting in the style of Van Gogh` / `a painting`；
+I2P 是 `a photo of a person, nudity` / `a photo of a person, clothed`。
+空 anchor 时删除整个后缀，避免留下没有宾语的 `of` 或 `in the style of`。
+
+**第 3 种使用 8 个具体内容模板。** 每对共享场景或绘画主体：
+
+| 分组 | 8 个基础内容（按顺序） | 正侧追加；anchor 非空时负侧同样追加 |
+|---|---|---|
+| IP/Object | `a scene in a park`、`a scene on a city street`、`a scene beside a lake`、`a scene near a forest`、`a scene at the beach`、`a scene in a garden`、`a scene with distant mountains`、`a scene against a plain background` | `, with {concept} as the main subject` |
+| style | `a landscape painting with mountains and a river`、`a portrait painting of a person`、`a still-life painting of fruit on a table`、`a painting of a city street`、`a painting of a garden with flowers`、`a painting of a forest path`、`a painting of a beach and the sea`、`a painting of a room with a window` | ` in the style of {concept}` |
+| I2P | `a person standing in a room`、`a person sitting on a chair`、`a person walking on a beach`、`a person standing in a garden`、`a person beside a window`、`a person in a studio`、`a person near a swimming pool`、`a person against a plain background` | `, {concept}` |
+
+例如 style 是 `a landscape painting with mountains and a river in the style of Van Gogh` /
+`a landscape painting with mountains and a river`。IP/Object 显式把 target 作为主体，
+不再沿用 ImageNet 类名作为另一个主体。“共享内容”指提示词中的基础内容相同；
+正负轨迹使用相同初始噪声，但不保证其中的图像布局完全一致。
+
+第 2、3 种模板分别保存在 `prompts/subject.json` 和 `prompts/matched.json`，
+直接修改 JSON 即可调整。文件按 `ip_object`（IP/Object 共用）、`style`、`i2p` 分组，
+每组的 `contexts` 保存共享上下文，`suffix` 保存带 `{concept}` 占位符的概念后缀。
+正侧将 `{concept}` 填为 target，负侧仅在 anchor 非空时填为 anchor；否则只用上下文。
+`prompt_pairs()` 负责读取和组合。实际正负提示词参与缓存匹配，修改有效模板后会匹配新配置；
+只改变 JSON 排版不会触发重新统计。这些模板用于对照实验，效果由后续实验判断。
+
+```bash
+# 1. 纯概念词；添加 --use-anchor 可启用 target/anchor 对照
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode bare --offline
+# 2. 以目标为主体的短模板
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode subject --offline
+# 3. 共享具体内容的概念对照
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode matched --offline
+```
+
+`--calibration-prompts N` 选取模板顺序中的前 N 对。新模式省略该参数时分别使用
+1/8/8 对；超过模板总数会在入口报错，不重复相同提示词凑数量。
+纯概念词只有一对、一个固定 seed，适合先用默认均值差做对照。
+单对数据不能提供 PCA、稳健统计所需的多对变化；默认 `pca-filter --pca-rank 4`
+因此不适用于 `bare`，如需检查单方向退化情形应显式设 `--pca-rank 1`。
+`bare` 的自动 robust 分组数为 1，此时稳健聚合也退化为该单对差分。
+
+新模式在默认结果名及新离线目录标签中追加 `-prompts-bare`、`-prompts-subject` 或
+`-prompts-matched`。缓存包含模式与实际正负提示词，不会在不同模式之间混用；
+旧 metadata 未记录模式时按 `casteer` 处理，继续复用配置一致的旧向量。
+两种 steering 位置、两种位置平均方式以及现有四类向量构造都可与这些模式组合使用，
+PCA rank 与 robust 分组数仍须不超过实际对数。benchmark 评测提示词与采样协议不变。
 
 离线向量按配置缓存。每次运行先在当前 `--run-root` 的对应 model/case 下查找完整匹配的
 `metadata.json` 和 `steering.pt`，命中后直接复用；配置变化时自动另存，切回旧配置会再次命中。

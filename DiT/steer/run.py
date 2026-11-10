@@ -54,7 +54,10 @@ def parser():
     p.add_argument("--robust-max-iter", type=int, default=100, help="Geometric median iteration limit")
     p.add_argument("--robust-tol", type=float, default=1e-5, help="Geometric median relative stopping tolerance")
     p.add_argument("--pca-rank", type=int, default=4, help="Number of components retained by pca-filter")
-    p.add_argument("--calibration-prompts", type=int, help="Pairs per concept; default human=210, other=50")
+    p.add_argument("--prompt-mode", choices=("casteer", "bare", "subject", "matched"), default="casteer",
+                   help="Offline prompts: CASteer contexts (default), literal concepts, short subject wrappers, or shared scene content")
+    p.add_argument("--calibration-prompts", type=int,
+                   help="Use the first N pairs; defaults: casteer human=210/other=50, bare=1, subject/matched=8")
     p.add_argument("--use-anchor", action="store_true",
                    help="Append configured anchors to offline negative prompts; default: context only, except nudity -> clothed")
     p.add_argument("--target-anchor-config", type=Path,
@@ -114,6 +117,9 @@ def case_configs(args, case_id, case):
     anchors = (load_target_anchors(args.target_anchor_config or ROOT / "configs/dit_target_anchor.json", case["targets"])
                if args.use_anchor else
                {target: "clothed" if target == "nudity" else "" for target in case["targets"]})
+    source_files = ["method.py", "imagenet_classes.txt"]
+    if args.prompt_mode in {"subject", "matched"}:
+        source_files.append(f"prompts/{args.prompt_mode}.json")
     variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
     checkpoint = args.run_root / args.model / case_id / variant / "checkpoint"
     settings = {
@@ -123,8 +129,8 @@ def case_configs(args, case_id, case):
         "base_model": args.base_model or selected["base_model"], "model_revision": args.model_revision,
         "group": case["group"], "targets": case["targets"],
         "anchors": [anchors[target] for target in case["targets"]],
-        "seed": args.seed, "calibration_prompts": args.calibration_prompts,
-        "sources": {name: file_digest(DIRECTORY / name) for name in ("method.py", "imagenet_classes.txt")}}
+        "seed": args.seed, "calibration_prompts": args.calibration_prompts, "prompt_mode": args.prompt_mode,
+        "sources": {name: file_digest(DIRECTORY / name) for name in source_files}}
     configs = []
     for task in case["tasks"]:
         if args.tasks and task not in args.tasks:
@@ -187,6 +193,7 @@ def offline_identity(settings, sampling, pairs):
     identity.setdefault("steer_target", "text_to_image")
     identity.setdefault("average_patches", True)
     identity.setdefault("construction", {"method": "mean", "normalize_differences": False})
+    identity.setdefault("prompt_mode", "casteer")
     identity["prompt_pairs"] = pairs
     identity["sampling"] = {key: sampling[key] for key in
         ("dtype", "steps", "height", "width", "max_sequence_length", "guidance_scale", "negative_prompt", "scheduler")}
@@ -203,7 +210,7 @@ def run(args, experiments, env):
         case_root = checkpoint.parent
         print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
               f"target={args.steer_target}, average_patches={args.average_patches}, "
-              f"construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}, "
+              f"prompts={args.prompt_mode}, construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}, "
               f"score_gate={args.score_gate}, noise={args.steer_noise}, trace_score={args.trace_score}", flush=True)
         if args.steer_noise:
             print(f"[fit:skip] Gaussian noise ({args.steer_noise}), seed={args.seed}; no offline vectors", flush=True)
@@ -265,7 +272,8 @@ def main(argv=None):
     args.construction = {"method": args.vector_method, "normalize_differences": args.normalize_differences}
     args.construction_label = "" if args.vector_method == "mean" else args.vector_method
     if args.vector_method == "robust":
-        groups = args.robust_groups if args.robust_groups is not None else min(5, args.calibration_prompts or 50)
+        groups = (args.robust_groups if args.robust_groups is not None else
+                  min(5, args.calibration_prompts or (1 if args.prompt_mode == "bare" else 50)))
         args.construction.update(groups=groups, max_iter=args.robust_max_iter, tol=args.robust_tol)
         args.construction_label += f"-g{groups}-i{args.robust_max_iter}-tol{args.robust_tol:g}"
     if args.vector_method == "pca-filter":
@@ -280,6 +288,7 @@ def main(argv=None):
                                   f"{('clip' if args.clipping else 'signed') if args.score_gate else 'no-score-gate'}"
                                   f"{'-anchors' if args.use_anchor else '-context'}"
                                   f"{'-' + slug(args.target_anchor_config.stem) if args.use_anchor and args.target_anchor_config else ''}"
+                                  f"{'-prompts-' + args.prompt_mode if args.prompt_mode != 'casteer' else ''}"
                                   f"{'-noise-' + args.steer_noise + '-seed' + str(args.seed) if args.steer_noise else ''}")
     args.tasks = {task.strip() for task in args.tasks.split(",")} if args.tasks else None
 
@@ -299,9 +308,6 @@ def main(argv=None):
         p.error("CPU execution uses float32 without CPU offload.")
     cases = definitions()["cases"]
     selected = select_cases(args.cases)
-    if args.calibration_prompts and any(args.calibration_prompts > (210 if cases[key]["group"] == "i2p" else 1000)
-                                        for key in selected):
-        p.error("Calibration templates provide at most 210 human pairs or 1000 other pairs.")
     try:
         experiments = [(key, *case_configs(args, key, cases[key])) for key in selected]
     except (OSError, ValueError) as exc:
@@ -336,9 +342,12 @@ def main(argv=None):
                     cfg["sampling"]["scheduler_config"] = sampling["scheduler_config"]
             continue
         pairs = [{"target": target, "anchor": anchor,
-                  "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts)}
+                  "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts, mode=args.prompt_mode)}
                  for target, anchor in zip(settings["targets"], settings["anchors"])]
         pair_count = len(pairs[0]["pairs"])
+        if args.calibration_prompts and args.calibration_prompts > pair_count:
+            p.error(f"{case_id}: --prompt-mode {args.prompt_mode} provides at most {pair_count} pairs; "
+                    "reduce --calibration-prompts or omit it. Identical pairs are not repeated.")
         if args.vector_method == "robust" and settings["construction"]["groups"] > pair_count:
             p.error(f"--robust-groups cannot exceed the number of prompt pairs ({pair_count}).")
         if args.vector_method == "pca-filter" and args.pca_rank > pair_count:
@@ -370,6 +379,8 @@ def main(argv=None):
             variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
             parent = case_root / variant / "offline"
             label = f"{sampling_label(sampling)}-pairs{len(pairs[0]['pairs'])}-seed{args.seed}"
+            if args.prompt_mode != "casteer":
+                label += f"-prompts-{args.prompt_mode}"
             if args.construction_label:
                 label += f"-{args.construction_label}"
             directory = (parent / f"{label}-planned" if args.dry_run else

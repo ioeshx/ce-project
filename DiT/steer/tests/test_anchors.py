@@ -19,7 +19,8 @@ class AnchorTests(unittest.TestCase):
 
     def pairs(self, settings):
         return [{"target": target, "anchor": anchor,
-                 "pairs": run.prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"])}
+                 "pairs": run.prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"],
+                                           mode=settings.get("prompt_mode", "casteer"))}
                 for target, anchor in zip(settings["targets"], settings["anchors"])]
 
     def test_custom_anchors_preserve_all_benchmark_records_and_protocols(self):
@@ -81,6 +82,62 @@ class AnchorTests(unittest.TestCase):
                          [{"positive": "a girl , nudity", "negative": "a girl , clothed"}])
         self.assertEqual(run.prompt_pairs("i2p", "nudity", "", 1)[0]["negative"], "a girl")
 
+    def test_bare_subject_and_matched_templates(self):
+        concepts = [("ip", "Pikachu", "Cartoon Character"), ("object", "church", "Building"),
+                    ("style", "Van Gogh", "Artist Style"), ("i2p", "nudity", "clothed")]
+        for group, target, anchor in concepts:
+            with self.subTest(group=group):
+                self.assertEqual(run.prompt_pairs(group, target, anchor, mode="bare"),
+                                 [{"positive": target, "negative": anchor}])
+                self.assertEqual(run.prompt_pairs(group, target, "", mode="bare")[0]["negative"], "")
+                for mode in ("subject", "matched"):
+                    pairs = run.prompt_pairs(group, target, anchor, mode=mode)
+                    empty = run.prompt_pairs(group, target, "", mode=mode)
+                    self.assertEqual(len(pairs), 8)
+                    self.assertEqual(len({tuple(pair.values()) for pair in pairs}), 8)
+                    self.assertEqual(run.prompt_pairs(group, target, anchor, 3, mode=mode), pairs[:3])
+                    for pair, without_anchor in zip(pairs, empty):
+                        self.assertEqual(pair["positive"].replace(target, anchor), pair["negative"])
+                        self.assertEqual(pair["positive"], without_anchor["positive"])
+                        self.assertTrue(pair["positive"].startswith(without_anchor["negative"]))
+                        self.assertNotIn(target, without_anchor["negative"])
+                        self.assertNotIn(anchor, without_anchor["negative"])
+        self.assertEqual(run.prompt_pairs("ip", "Pikachu", "", 1, mode="subject"),
+                         [{"positive": "a photo of Pikachu", "negative": "a photo"}])
+        self.assertEqual(run.prompt_pairs("object", "church", "Building", 1, mode="matched"),
+                         [{"positive": "a scene in a park, with church as the main subject",
+                           "negative": "a scene in a park, with Building as the main subject"}])
+        self.assertEqual(run.prompt_pairs("style", "Van Gogh", "", 1, mode="matched"),
+                         [{"positive": "a landscape painting with mountains and a river in the style of Van Gogh",
+                           "negative": "a landscape painting with mountains and a river"}])
+
+    def test_prompt_modes_preserve_benchmark_and_validate_pair_counts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "runs"
+            _, defaults = self.preview(root)
+            for mode, count in (("bare", 1), ("subject", 8), ("matched", 8)):
+                args, experiments = self.preview(root, "--prompt-mode", mode)
+                self.assertTrue(args.method.endswith(f"-prompts-{mode}"))
+                for (case_id, original, configs), (other_id, settings, mode_configs) in zip(defaults, experiments):
+                    with self.subTest(mode=mode, case=case_id):
+                        self.assertEqual(case_id, other_id)
+                        self.assertEqual(settings["anchors"], original["anchors"])
+                        self.assertEqual(settings["prompt_mode"], mode)
+                        self.assertTrue(all(len(entry["pairs"]) == count for entry in self.pairs(settings)))
+                        for before, after in zip(configs, mode_configs):
+                            for field in ("dataset", "sampling", "evaluation", "targets"):
+                                self.assertEqual(before[field], after[field])
+                            self.assertIn(f"prompts-{mode}", after["adapter"]["checkpoint"])
+            _, robust = self.preview(root, "--cases", "ip_pikachu", "--prompt-mode", "bare", "--vector-method", "robust")
+            self.assertEqual(robust[0][1]["construction"]["groups"], 1)
+            for mode, count in (("bare", 2), ("subject", 9), ("matched", 9)):
+                with self.subTest(mode=mode), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    self.preview(root, "--cases", "ip_pikachu", "--prompt-mode", mode,
+                                 "--calibration-prompts", str(count))
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.preview(root, "--cases", "ip_pikachu", "--prompt-mode", "bare", "--vector-method", "pca-filter")
+            self.assertFalse(root.exists())
+
     def test_switching_anchors_collects_once_and_reuses_matching_checkpoint(self):
         with tempfile.TemporaryDirectory() as temp:
             calls = []
@@ -99,9 +156,24 @@ class AnchorTests(unittest.TestCase):
             with patch.object(run, "run_function", side_effect=fake_fit), \
                  patch.object(run, "resolve_scheduler", side_effect=lambda cfg: cfg["sampling"].update(scheduler_config={})), \
                  contextlib.redirect_stdout(io.StringIO()):
-                for extra in ([], anchored, [], anchored, custom):
+                variants = [[], anchored, [], anchored, custom]
+                for mode in ("bare", "subject", "matched"):
+                    variants.extend([["--prompt-mode", mode], ["--prompt-mode", mode]])
+                for extra in variants:
                     self.assertEqual(run.main(base + extra), 0)
-            self.assertEqual(len(calls), 2)
+                templates = read_json(run.DIRECTORY / "prompts/subject.json")
+                templates["ip_object"]["contexts"][0] = "a studio photo"
+                with patch("DiT.steer.method.read_json", return_value=templates):
+                    for _ in range(2):
+                        self.assertEqual(run.main(base + ["--prompt-mode", "subject"]), 0)
+                self.assertEqual(run.main(base + ["--prompt-mode", "subject"]), 0)
+                # Metadata created before prompt modes existed is still reusable.
+                metadata = Path(calls[0]["checkpoint"]) / "metadata.json"
+                legacy = read_json(metadata)
+                legacy["settings"].pop("prompt_mode")
+                write_json(metadata, legacy)
+                self.assertEqual(run.main(base), 0)
+            self.assertEqual(len(calls), 6)
             self.assertNotEqual(calls[0]["checkpoint"], calls[1]["checkpoint"])
             saved = read_json(Path(calls[0]["checkpoint"]) / "metadata.json")
             self.assertEqual(saved["prompt_pairs"][0]["pairs"][0]["negative"], "tench")

@@ -1,11 +1,21 @@
+# prompt-mode bare,subject,matched
 DiT/steer/run.sh \
-  --cases ip,style,object \
-  --device cuda:0 \
-  --steer-noise all \
+  --cases all \
+  --device cuda:1 \
+  --prompt-mode subject \
   --subset-eval \
   --i2p-test-num 10 --mscoco-test-num 10 \
   --ip-test-num 2 --style-test-num 2 --object-test-num 2 \
-  --offline > DiT/steer/logs/steer_noise.log 2>&1
+  --offline > DiT/steer/logs/prompt_mode_subject.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:0 \
+  --prompt-mode bare \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 2 --style-test-num 2 --object-test-num 2 \
+  --offline > DiT/steer/logs/prompt_mode_bare.log 2>&1
 
 DiT/steer/run.sh \
   --cases ip,style,object \

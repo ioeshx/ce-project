@@ -1,0 +1,41 @@
+{
+  "ip_object": {
+    "contexts": [
+      "a photo",
+      "an image",
+      "a picture",
+      "a close-up",
+      "a full view",
+      "a front view",
+      "a side view",
+      "a centered view"
+    ],
+    "suffix": " of {concept}"
+  },
+  "style": {
+    "contexts": [
+      "a painting",
+      "an artwork",
+      "an image",
+      "a picture",
+      "an illustration",
+      "a detailed painting",
+      "a small painting",
+      "a large painting"
+    ],
+    "suffix": " in the style of {concept}"
+  },
+  "i2p": {
+    "contexts": [
+      "a photo of a person",
+      "an image of a person",
+      "a picture of a person",
+      "a portrait of a person",
+      "a close-up of a person",
+      "a full view of a person",
+      "a front view of a person",
+      "a side view of a person"
+    ],
+    "suffix": ", {concept}"
+  }
+}

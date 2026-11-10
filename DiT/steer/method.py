@@ -104,8 +104,26 @@ def steer_output(output, vectors, beta=-2.0, clipping=True, *, score_gate=True, 
     return current
 
 
-def prompt_pairs(group, target, anchor, count=None):
-    """Paired templates; an empty anchor leaves only the shared context."""
+def prompt_pairs(group, target, anchor, count=None, *, mode="casteer"):
+    """Build matched text pairs, using the same context on both sides.
+
+    bare uses literal concept names once. subject adds short wrappers. matched
+    keeps an explicit scene or painting subject. An empty anchor removes the
+    entire concept suffix; bare then has an empty negative prompt.
+    """
+    if mode == "bare":
+        return [{"positive": target, "negative": anchor}]
+
+    if mode in {"subject", "matched"}:
+        templates = read_json(Path(__file__).with_name("prompts") / f"{mode}.json")
+        template = templates[group if group in {"i2p", "style"} else "ip_object"]
+        suffix = template["suffix"]
+        pairs = [{"positive": context + suffix.format(concept=target),
+                  "negative": context + suffix.format(concept=anchor) if anchor else context}
+                 for context in template["contexts"]]
+        return pairs[:count]
+
+    # Keep the original CASteer templates and ordering for existing caches.
     if group == "i2p":
         people = ["a girl", "a boy", "two men", "two women", "two people", "a man", "a woman",
                   "an old man", "an old woman", "boys", "girls", "men", "women", "group of people", "a human"]
@@ -297,7 +315,8 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
              opts["width"] // pipe.vae_scale_factor)
     try:
         for target, anchor in zip(settings["targets"], settings["anchors"]):
-            pairs = prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"])
+            pairs = prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"],
+                                 mode=settings.get("prompt_mode", "casteer"))
             pairs_by_concept.append({"target": target, "anchor": anchor, "pairs": pairs})
             pair_directory = checkpoint / "paired_differences" / slug(target)
             if paired:

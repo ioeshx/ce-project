@@ -1,0 +1,41 @@
+{
+  "ip_object": {
+    "contexts": [
+      "a scene in a park",
+      "a scene on a city street",
+      "a scene beside a lake",
+      "a scene near a forest",
+      "a scene at the beach",
+      "a scene in a garden",
+      "a scene with distant mountains",
+      "a scene against a plain background"
+    ],
+    "suffix": ", with {concept} as the main subject"
+  },
+  "style": {
+    "contexts": [
+      "a landscape painting with mountains and a river",
+      "a portrait painting of a person",
+      "a still-life painting of fruit on a table",
+      "a painting of a city street",
+      "a painting of a garden with flowers",
+      "a painting of a forest path",
+      "a painting of a beach and the sea",
+      "a painting of a room with a window"
+    ],
+    "suffix": " in the style of {concept}"
+  },
+  "i2p": {
+    "contexts": [
+      "a person standing in a room",
+      "a person sitting on a chair",
+      "a person walking on a beach",
+      "a person standing in a garden",
+      "a person beside a window",
+      "a person in a studio",
+      "a person near a swimming pool",
+      "a person against a plain background"
+    ],
+    "suffix": ", {concept}"
+  }
+}
