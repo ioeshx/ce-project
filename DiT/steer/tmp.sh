@@ -1,3 +1,77 @@
+DiT/steer/run.sh \
+  --cases ip,style,object \
+  --device cuda:0 \
+  --steer-noise all \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 2 --style-test-num 2 --object-test-num 2 \
+  --offline > DiT/steer/logs/steer_noise.log 2>&1
+
+DiT/steer/run.sh \
+  --cases ip,style,object \
+  --device cuda:0 \
+  --no-score-gate \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 2 --style-test-num 2 --object-test-num 2 \
+  --offline > DiT/steer/logs/no_score_gate.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:1 \
+  --no-clipping \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
+  --offline > DiT/steer/logs/no_clipping.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:0 \
+  --vector-method pca \
+  --subset-eval \
+  --i2p-test-num 100 --mscoco-test-num 100 \
+  --ip-test-num 10 --style-test-num 10 --object-test-num 10 \
+  --offline > DiT/steer/logs/pca.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:1 \
+  --vector-method pca-filter --pca-rank 4 \
+  --subset-eval \
+  --i2p-test-num 100 --mscoco-test-num 100 \
+  --ip-test-num 10 --style-test-num 10 --object-test-num 10 \
+  --offline > DiT/steer/logs/pca_filter_rank_4.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:0 \
+  --vector-method mean --normalize-differences \
+  --subset-eval \
+  --i2p-test-num 100 --mscoco-test-num 100 \
+  --ip-test-num 10 --style-test-num 10 --object-test-num 10 \
+  --offline > DiT/steer/logs/normalize_diff.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:0 \
+  --vector-method robust --robust-groups 5 \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 100 \
+  --ip-test-num 10 --style-test-num 10 --object-test-num 10 \
+  --offline > DiT/steer/logs/robust_group_5.log 2>&1
+
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:0 \
+  --vector-method robust --robust-groups 5 \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
+  --offline > DiT/steer/logs/robust_group_5.log 2>&1
+
+
 bash /home/shx/code/ce-new/DiT/steer/run.sh \
   --cases ip,style,object \
   --target-anchor-config ce-new/DiT/steer/conf.json \

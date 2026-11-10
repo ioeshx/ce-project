@@ -25,14 +25,21 @@ class AnchorTests(unittest.TestCase):
     def test_custom_anchors_preserve_all_benchmark_records_and_protocols(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "runs"
-            original_args, original = self.preview(root)
-            custom_args, custom = self.preview(root, "--target-anchor-config", str(run.DIRECTORY / "conf.json"))
+            default_args, defaults = self.preview(root)
+            original_args, original = self.preview(root, "--use-anchor")
+            custom_args, custom = self.preview(root, "--use-anchor", "--target-anchor-config", str(run.DIRECTORY / "conf.json"))
+            ignored_args, ignored = self.preview(root, "--target-anchor-config", str(Path(temp) / "unused.json"))
+            self.assertTrue(default_args.method.endswith("-context"))
+            self.assertTrue(original_args.method.endswith("-anchors"))
+            self.assertEqual(ignored_args.method, default_args.method)
+            self.assertEqual(ignored, defaults)
             self.assertNotEqual(original_args.method, custom_args.method)
             self.assertTrue(custom_args.method.endswith("-anchors-conf"))
-            for (case_id, before, configs), (other_id, after, custom_configs) in zip(original, custom):
+            for (case_id, before, configs), (other_id, after, custom_configs), (_, default, _) in zip(original, custom, defaults):
                 with self.subTest(case=case_id):
                     self.assertEqual(case_id, other_id)
                     expected = ["clothed"] if before["group"] == "i2p" else [""] * len(before["targets"])
+                    self.assertEqual(default["anchors"], expected)
                     self.assertEqual(after["anchors"], expected)
                     for a, b in zip(configs, custom_configs):
                         for field in ("dataset", "sampling", "evaluation", "targets"):
@@ -87,15 +94,16 @@ class AnchorTests(unittest.TestCase):
                     "sampling": kwargs["config"]["sampling"], "prompt_pairs": self.pairs(kwargs["settings"])})
 
             base = ["--cases", "ip_pikachu", "--phase", "fit", "--device", "cpu", "--run-root", temp]
-            custom = ["--target-anchor-config", str(run.DIRECTORY / "conf.json")]
+            anchored = ["--use-anchor"]
+            custom = ["--use-anchor", "--target-anchor-config", str(run.DIRECTORY / "conf.json")]
             with patch.object(run, "run_function", side_effect=fake_fit), \
                  patch.object(run, "resolve_scheduler", side_effect=lambda cfg: cfg["sampling"].update(scheduler_config={})), \
                  contextlib.redirect_stdout(io.StringIO()):
-                for extra in ([], custom, [], custom):
+                for extra in ([], anchored, [], anchored, custom):
                     self.assertEqual(run.main(base + extra), 0)
             self.assertEqual(len(calls), 2)
             self.assertNotEqual(calls[0]["checkpoint"], calls[1]["checkpoint"])
-            saved = read_json(Path(calls[1]["checkpoint"]) / "metadata.json")
+            saved = read_json(Path(calls[0]["checkpoint"]) / "metadata.json")
             self.assertEqual(saved["prompt_pairs"][0]["pairs"][0]["negative"], "tench")
             self.assertTrue(all(call["statistics_checkpoint"] is None for call in calls))
 

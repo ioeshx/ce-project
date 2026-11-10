@@ -9,6 +9,7 @@
 | 文件 | 内容 |
 |---|---|
 | `method.py` | 向量构造、投影干预、SD3 hooks、离线统计、benchmark adapter |
+| `diagnostics.py` | 按评测概念汇总原始 score、保存二维分数图和统计表 |
 | `run.py` | 参数入口与 fit → prepare → sample → evaluate 编排 |
 | `run.sh` | 转发命令行参数 |
 | `imagenet_classes.txt` | 从 CASteer 复制的 ImageNet 类名，保持原配对模板 |
@@ -46,6 +47,78 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target text_value --no-avera
 ```
 
 以上命令只展示计划；实际运行时移除 `--dry-run`，按需添加 `--cases`、`--device`、`--offline`。
+
+## Score 与随机方向对照
+
+默认仍计算每个位置的 `score = sum(output * vector, channel)`，
+使用 `output += beta * max(score, 0) * vector`；`--no-clipping` 改用有符号 score。
+联合擦除按目标顺序依次应用，后一个目标的 score 使用前一个目标干预后的 output。
+
+`--no-score-gate` 将 score 系数固定为 1，直接执行 `output += beta * vector`。
+向量仍是原来的方向，不将向量设成全 1；此模式完全跳过点积计算，clipping 不再参与。
+
+`--steer-noise all` 和 `--steer-noise every` 用随机方向替换离线向量，直接跳过 fit，
+也不读取 `steering.pt`。从独立 RNG 抽取标准高斯噪声，再按 channel 归一化为单位长度，
+使方向长度与离线向量一致；`--seed` 控制这个随机对照，不改变 benchmark 的图片 seed。
+
+- `all`：每个评测类别有自己的固定噪声，同类的所有 prompt、seed、层和时间步复用它。
+  IP 的 Snoopy、Pikachu、Mickey 各不相同；style、Object 同理。I2P 和 MS-COCO 各自作为一组。
+- `every`：每个样本在每次 steering hook（每层、每步）重新抽取噪声。
+  按样本使用独立随机流，因此更改 batch size 或断点补采样不会改变该样本的随机对照。
+
+位置平均模式让各位置共用方向；`--no-average-patches` 为各位置抽取各自的方向。
+联合擦除时，每个擦除目标仍有一条独立随机方向，按原目标顺序应用。
+
+```bash
+# 学习向量，直接加 beta * vector
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --subset-eval --no-score-gate --offline
+# 每个评测类别固定噪声，保留原 score gate
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --subset-eval --steer-noise all --offline
+# 每次 steering 重抽噪声；可与 --no-score-gate 组合
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --subset-eval --steer-noise every --no-score-gate --offline
+```
+
+默认结果名会标注 `no-score-gate`、`noise-all-seed0` 或 `noise-every-seed0`，
+这些选项也会进入方法图与计划的缓存身份。改变 gate 或噪声模式会生成对应的独立图集。
+学习向量模式改变 gate 不需要重新 fit；噪声模式不需要离线向量。
+
+## Score 追踪
+
+Score 追踪默认关闭，只有显式传入 `--trace-score` 才开启；使用 score gate 本身不会开启追踪。
+`--no-score-gate` 会同时关闭追踪，因为该模式不计算点积。
+追踪只读取真实 steering 位置的 conditional CFG 分支，不额外运行模型或评价器。
+`text_to_image` 记录投影后的文本到图像贡献与向量的点积；`text_value` 记录文本 Value 与向量的点积。
+
+每个方法图目录下保存 `score-traces/`：
+
+```text
+score-traces/
+  concept-means.csv         # 各评测概念、各擦除方向的总体平均值
+  step-layer-means.csv      # 逐时间步、逐层的平均值
+  summary.json             # 参数、统计口径与样本数
+  pikachu/                 # IP/style/Object 每个评测概念一组；I2P/COCO 分别为 i2p/mscoco
+    scores.pt              # 对样本平均后的全部原始 score，保留每层、每步和每个位置
+    Pikachu-overview.png    # step × layer 的 raw score、实际 gate、正分数比例，以及位置均值
+    Pikachu-positions.png   # 最多 4 个时间步 × 4 层的位置图预览；完整数据在 scores.pt
+```
+
+二维 patch 图来自沿 channel 求和后的点积，保留正负值，不在保存前裁剪。
+图像模式下 `score_mean` 为 `[擦除目标, step, layer, y, x]`；
+文本模式为 `[擦除目标, step, layer, token]`，绘图按 token 位置展示，不将文本 token 解释成图像网格。
+各 prompt 的文本只按位置索引平均，不做词义对齐。PNG 对同一实验的各类别使用相同色标。
+
+I2P 对所有采样统一求平均，COCO 单独求平均；IP、style、Object 分别对各个评测概念求平均。
+每张样本权重相同，按批持久化，断点补采样按 `sample_id` 去重，不会重复计入。
+缓存命中而没有生成的图片不新增 score；原模型参考图也不计入方法的追踪。
+`gate_mean` 与 `positive_fraction` 在逐样本裁剪、判断符号后再平均，
+因此不会用“平均 score 的正负”代替真实 gate 的开启比例。
+
+例如读取一个具体位置图：
+
+```python
+state = torch.load("/实际方法图目录/score-traces/pikachu/scores.pt", weights_only=True)
+score_map = state["score_mean"][0, 10, 5]  # 第一个擦除目标、step 10、layer 5 的二维图
+```
 
 ## 向量构造：四种可选改进
 
@@ -166,44 +239,55 @@ vector = normalize(positive_mean - negative_mean, over channels)
 
 提示词模板与 CASteer 一致：IP/Object 为 `ImageNet 类名 with concept`，
 style 为 `ImageNet 类名, concept style`，默认各 50 对；I2P 为 15 类人物 × 14 类场景，
-共 210 对。负侧概念读取公共 `benchmark/configs/dit_target_anchor.json`。
+共 210 对。默认负 prompt 只保留共享上下文；nudity 的负 prompt 额外包含 `clothed`。
 正负两侧使用相同 seed、相同初始噪声、相同原生调度器；统计时保留未干预轨迹。
 执行所有去噪步，但 `output_type="latent"` 跳过 VAE 图像解码；不调用外部检测器或评价指标。
 
 ### 自定义 target / anchor 对照
 
-`--target-anchor-config /path/to/config.json` 只覆盖离线构造负样本时的 anchor。
-不指定时仍读取公共 `benchmark/configs/dit_target_anchor.json`。
-支持公共配置的平铺 `{ "target": "anchor" }` 格式，以及本目录 `conf.json` 的
-`{ "concept_pair": { "target": "anchor" } }` 格式；文件必须包含所选 case 的全部 target，
-anchor 必须是字符串，允许空字符串。擦除 target 仍由 benchmark case 定义。
+默认使用“上下文 + target / 原上下文”，仅 nudity 使用“上下文 + clothed”作为负 prompt：
 
-本目录 `conf.json` 设置 `nudity → clothed`，其余 target 的 anchor 均为空字符串。
-空 anchor 表示负 prompt 只保留共享上下文，同时去掉 `with` 或 `, … style` 后缀：
-
-| 分组 | 正 prompt 示例 | 使用 conf.json 的负 prompt |
+| 分组 | 正 prompt 示例 | 默认负 prompt |
 |---|---|---|
 | I2P | `a woman on a beach, nudity` | `a woman on a beach, clothed` |
 | IP | `tench with Pikachu` | `tench` |
 | style | `tench, Van Gogh style` | `tench` |
 | Object | `tench with church` | `tench` |
 
-空的是 anchor，负 prompt 仍保留 ImageNet 类名；不会将整条负 prompt 设为空。
+`--use-anchor` 开启“上下文 + anchor”负 prompt，默认关闭。开启后，
+`--target-anchor-config /path/to/config.json` 指定 anchor 配对；
+未指定配置文件时读取公共 `benchmark/configs/dit_target_anchor.json`。
+例如公共配置下，Pikachu 的负 prompt 是 `tench with Cartoon Character`，
+church 的负 prompt 是 `tench with Building`。
+单独指定 `--target-anchor-config` 不会开启 anchor 模式，也不会读取该文件。
+支持公共配置的平铺 `{ "target": "anchor" }` 格式，以及本目录 `conf.json` 的
+`{ "concept_pair": { "target": "anchor" } }` 格式；文件必须包含所选 case 的全部 target，
+anchor 必须是字符串，允许空字符串。擦除 target 仍由 benchmark case 定义。
+
+空 anchor 表示负 prompt 只保留共享上下文，同时去掉 `with` 或 `, … style` 后缀；
+不会将整条负 prompt 设为空。本目录 `conf.json` 当前设置 `nudity → clothed`，
+其余 target 的 anchor 均为空字符串，因此开启 anchor 模式并使用此文件与默认提示词相同。
 该设置不修改 CFG 的 `negative_prompt`，也不修改 benchmark 的评测 prompt、seed、
 采样协议、擦除/保留划分或指标计算。方法输出随 steering 向量变化。
 
 ```bash
-# 自定义 anchor；可加 --phase fit 只统计向量，或 --dry-run 查看计划
+# 默认：仅 nudity 负侧包含 clothed，其余负侧只保留上下文
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --offline
+# 开启公共配置中的 anchor
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --use-anchor --offline
+# 开启自定义 anchor；可加 --phase fit 只统计向量，或 --dry-run 查看计划
 bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all \
-  --target-anchor-config /home/shx/code/ce-new/DiT/steer/conf.json --offline
+  --use-anchor --target-anchor-config /home/shx/code/ce-new/DiT/steer/conf.json --offline
 ```
 
-自定义文件的默认结果名追加 `-anchors-<文件名去扩展名>`，例如 `-anchors-conf`，
-便于与默认 anchor 的指标并列比较；`--method` 仍可显式指定结果名。
+默认结果名追加 `-context`；开启 anchor 后追加 `-anchors`，
+使用自定义文件时为 `-anchors-<文件名去扩展名>`，例如 `-anchors-conf`。
+这些名称用于区分提示词对照与历史结果；`--method` 仍可显式指定结果名。
 修改同一个文件继续做其他对照时，使用不同 `--method` 保存各组指标。
 缓存按实际 anchor 和正负 prompt 匹配，不同文件路径但相同有效配置可复用；
-IP/style/Object 的空 anchor 不会命中原 anchor 的向量或逐对差分缓存，
-I2P 的 anchor 未改变时仍可复用已有向量。
+默认 IP/style/Object 不会命中旧的非空 anchor 向量或逐对差分缓存；
+I2P 的 anchor 未改变时、以及已有空 anchor 配置与默认提示词一致时，仍可复用。
+开关不同但实际 anchor 和提示词相同，也可复用同一份离线统计。
 
 离线向量按配置缓存。每次运行先在当前 `--run-root` 的对应 model/case 下查找完整匹配的
 `metadata.json` 和 `steering.pt`，命中后直接复用；配置变化时自动另存，切回旧配置会再次命中。
@@ -217,7 +301,8 @@ runs/<model>/<case>/<steer_target>-<mean 或 per-position>/offline/
 ```
 
 新构造配置会在目录标签、默认结果名和缓存配置中标明，例如 `pca-filter-k4`、
-`robust-g5-i100-tol1e-05`、`unit-diff`。不传新参数时保持原结果名，并继续复用旧均值向量。
+`robust-g5-i100-tol1e-05`、`unit-diff`。未选择构造改进时继续使用均值差，
+实际提示词及采样配置一致时复用旧均值向量。
 
 启用任一改进后，首次统计另外保存
 `checkpoint/paired_differences/<concept>/pair-0001.pt`，每个文件是一个 prompt 对的

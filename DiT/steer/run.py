@@ -15,7 +15,7 @@ WORKSPACE = Path(__file__).resolve().parents[2]
 DIRECTORY = Path(__file__).resolve().parent
 sys.path.insert(0, str(WORKSPACE))
 
-from benchmark.common import ROOT, configuration, file_digest, locked, read_json, slug
+from benchmark.common import ROOT, configuration, file_digest, locked, read_json, slug, write_json
 from benchmark.cli import SUBSET_EVAL_DEFAULTS, add_subset_eval_arguments, subset_eval_dataset
 from benchmark.data import prompt_records
 from benchmark.dit_cases import definitions, select_cases
@@ -36,6 +36,12 @@ def parser():
     p.add_argument("--beta", type=float, default=-2.0, help="Signed coefficient: negative erases, positive amplifies")
     p.add_argument("--clipping", action=argparse.BooleanOptionalAction, default=True,
                    help="Only steer positive dot products (CASteer intermediate clipping)")
+    p.add_argument("--no-score-gate", dest="score_gate", action="store_false",
+                   help="Add beta * vector directly, without computing a dot-product score")
+    p.add_argument("--steer-noise", choices=("all", "every"),
+                   help="Replace offline directions: all=fixed noise per evaluation concept; every=redraw at each steering call")
+    p.add_argument("--trace-score", action=argparse.BooleanOptionalAction, default=False,
+                   help="Save raw score maps averaged by evaluation concept (default: off; requires score gating)")
     p.add_argument("--steer-target", choices=("text_value", "text_to_image"), default="text_to_image",
                    help="text_value: V_text before attention; text_to_image: projected A_image,text V_text")
     p.add_argument("--average-patches", action=argparse.BooleanOptionalAction, default=True,
@@ -49,8 +55,10 @@ def parser():
     p.add_argument("--robust-tol", type=float, default=1e-5, help="Geometric median relative stopping tolerance")
     p.add_argument("--pca-rank", type=int, default=4, help="Number of components retained by pca-filter")
     p.add_argument("--calibration-prompts", type=int, help="Pairs per concept; default human=210, other=50")
+    p.add_argument("--use-anchor", action="store_true",
+                   help="Append configured anchors to offline negative prompts; default: context only, except nudity -> clothed")
     p.add_argument("--target-anchor-config", type=Path,
-                   help="Offline target-to-anchor JSON (flat mapping or concept_pair); default: benchmark/configs/dit_target_anchor.json")
+                   help="Anchor JSON used with --use-anchor (flat mapping or concept_pair); default: benchmark/configs/dit_target_anchor.json")
     p.add_argument("--seed", type=int, default=0, help="Offline pair seed; benchmark uses each record's seed")
     p.add_argument("--run-root", type=Path, default=DIRECTORY / "runs")
     p.add_argument("--method", help="Result name; default includes beta and clipping")
@@ -101,9 +109,11 @@ def load_target_anchors(path, targets):
 
 
 def case_configs(args, case_id, case):
-    """Customize offline anchors while preserving benchmark targets and protocol."""
+    """Resolve effective offline anchors, preserving benchmark targets and protocol."""
     selected = profile(args.model)
-    anchors = load_target_anchors(args.target_anchor_config or ROOT / "configs/dit_target_anchor.json", case["targets"])
+    anchors = (load_target_anchors(args.target_anchor_config or ROOT / "configs/dit_target_anchor.json", case["targets"])
+               if args.use_anchor else
+               {target: "clothed" if target == "nudity" else "" for target in case["targets"]})
     variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
     checkpoint = args.run_root / args.model / case_id / variant / "checkpoint"
     settings = {
@@ -126,9 +136,11 @@ def case_configs(args, case_id, case):
             "cache_dir": str(args.cache_dir),
             "original_dir": str(args.original_dir or ROOT / "original" / args.model),
             "adapter": {"kind": "plugin", "factory": "DiT.steer.method:SteerAdapter",
-                        "source_files": ["method.py", "run.py", "imagenet_classes.txt"],
+                        "source_files": ["method.py", "run.py", "diagnostics.py", "imagenet_classes.txt"],
                         "checkpoint": str(checkpoint), "steer_target": args.steer_target,
-                        "average_patches": args.average_patches, "beta": args.beta, "clipping": args.clipping},
+                        "average_patches": args.average_patches, "beta": args.beta, "clipping": args.clipping,
+                        "score_gate": args.score_gate, "steer_noise": args.steer_noise,
+                        "noise_seed": args.seed, "trace_score": args.trace_score},
             "sampling": {"device": args.device, "batch_size": args.batch_size,
                          "cpu_offload": args.cpu_offload, "local_files_only": args.offline,
                          "model_revision": args.model_revision},
@@ -155,7 +167,8 @@ def case_configs(args, case_id, case):
         settings["sampling"] = {key: configs[0]["sampling"][key] for key in
             ("dtype", "steps", "height", "width", "max_sequence_length", "guidance_scale", "negative_prompt")}
         for cfg in configs:
-            cfg["erasure_parameters"] = {**settings, "beta": args.beta, "clipping": args.clipping}
+            cfg["erasure_parameters"] = {**settings, "beta": args.beta, "clipping": args.clipping,
+                                         "score_gate": args.score_gate, "steer_noise": args.steer_noise}
     return settings, configs
 
 
@@ -190,8 +203,11 @@ def run(args, experiments, env):
         case_root = checkpoint.parent
         print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
               f"target={args.steer_target}, average_patches={args.average_patches}, "
-              f"construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}", flush=True)
-        if args.phase in {"all", "fit"}:
+              f"construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}, "
+              f"score_gate={args.score_gate}, noise={args.steer_noise}, trace_score={args.trace_score}", flush=True)
+        if args.steer_noise:
+            print(f"[fit:skip] Gaussian noise ({args.steer_noise}), seed={args.seed}; no offline vectors", flush=True)
+        elif args.phase in {"all", "fit"}:
             if args.dry_run:
                 exists = (checkpoint / "metadata.json").is_file() and (checkpoint / "steering.pt").is_file()
                 action = "reuse" if exists else "reconstruct" if args.statistics_sources[case_id] else "collect"
@@ -235,6 +251,7 @@ def run(args, experiments, env):
 def main(argv=None):
     p = parser()
     args = p.parse_args(argv)
+    args.trace_score = args.trace_score and args.score_gate
     for name, value in vars(args).items():
         if isinstance(value, Path):
             setattr(args, name, value.expanduser().resolve())
@@ -260,8 +277,10 @@ def main(argv=None):
     args.method = args.method or (f"Steer-{args.steer_target}-{'mean' if args.average_patches else 'per-position'}-"
                                   f"{args.construction_label + '-' if args.construction_label else ''}"
                                   f"{'erase' if args.beta < 0 else 'add'}-{abs(args.beta):g}-"
-                                  f"{'clip' if args.clipping else 'signed'}"
-                                  f"{'-anchors-' + slug(args.target_anchor_config.stem) if args.target_anchor_config else ''}")
+                                  f"{('clip' if args.clipping else 'signed') if args.score_gate else 'no-score-gate'}"
+                                  f"{'-anchors' if args.use_anchor else '-context'}"
+                                  f"{'-' + slug(args.target_anchor_config.stem) if args.use_anchor and args.target_anchor_config else ''}"
+                                  f"{'-noise-' + args.steer_noise + '-seed' + str(args.seed) if args.steer_noise else ''}")
     args.tasks = {task.strip() for task in args.tasks.split(",")} if args.tasks else None
 
     # All method-parameter and existing-checkpoint checks live at this entry.
@@ -298,6 +317,24 @@ def main(argv=None):
         sampling = configs[0]["sampling"]
         if not args.dry_run:
             resolve_scheduler(configs[0])
+        if args.steer_noise:
+            variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
+            parent = args.run_root / args.model / case_id / variant / "noise"
+            label = f"{args.steer_noise}-seed{args.seed}-{sampling_label(sampling)}"
+            identity = {"mode": args.steer_noise, "seed": args.seed, "targets": settings["targets"],
+                        "base_model": settings["base_model"], "model_revision": args.model_revision,
+                        "sampling": sampling}
+            directory = (parent / f"{label}-planned" if args.dry_run else
+                         registered_directory(parent, label, identity))
+            checkpoint = directory / "checkpoint"
+            if not args.dry_run:
+                checkpoint.mkdir(exist_ok=True)
+                write_json(checkpoint / "metadata.json", identity, portable=True)
+            for cfg in configs:
+                cfg["adapter"]["checkpoint"] = str(checkpoint)
+                if not args.dry_run:
+                    cfg["sampling"]["scheduler_config"] = sampling["scheduler_config"]
+            continue
         pairs = [{"target": target, "anchor": anchor,
                   "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts)}
                  for target, anchor in zip(settings["targets"], settings["anchors"])]

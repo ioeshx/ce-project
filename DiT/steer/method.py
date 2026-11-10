@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from benchmark.common import read_json, slug, write_json
+from benchmark.common import concept_key, digest, read_json, slug, write_json
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.sampling_profile import initial_noise
 
@@ -84,17 +84,22 @@ def construct_from_pairs(positive, negative, directory, pairs_by_concept, constr
     return vectors
 
 
-def steer_output(output, vectors, beta=-2.0, clipping=True):
+def steer_output(output, vectors, beta=-2.0, clipping=True, *, score_gate=True, scores=None):
     """Apply h <- h + beta * max(dot(h, v), 0) * v, in concept order.
 
     Negative beta suppresses the positive-minus-negative concept direction.
-    Disabling clipping uses the signed dot product on both sides of the plane.
+    Without score gating, add beta * v directly and do not compute dot products.
+    Optional scores records the raw dot products, before clipping or this edit.
     """
     current = output
-    for vector in vectors.to(device=output.device, dtype=torch.float32):
-        score = (current.float() * vector).sum(dim=-1, keepdim=True)
-        if clipping:
-            score = score.clamp_min(0)
+    for index, vector in enumerate(vectors.to(device=output.device, dtype=torch.float32)):
+        score = 1.0
+        if score_gate:
+            score = (current.float() * vector).sum(dim=-1, keepdim=True)
+            if scores is not None:
+                scores[index].copy_(score.squeeze(-1).detach())
+            if clipping:
+                score = score.clamp_min(0)
         current = (current.float() + beta * score * vector).to(output.dtype)
     return current
 
@@ -128,8 +133,13 @@ class SD3Steering:
     """
 
     def __init__(self, transformer, steps, *, cfg, vectors=None, beta=-2.0, clipping=True,
-                 steer_target="text_to_image", average_patches=True):
+                 steer_target="text_to_image", average_patches=True, score_gate=True,
+                 steer_noise=None, noise_seed=0, target_count=1, trace_score=False):
         self.vectors, self.beta, self.clipping = vectors, beta, clipping
+        self.collecting = vectors is None and steer_noise is None
+        self.score_gate, self.trace_score = score_gate, trace_score and score_gate
+        self.steer_noise, self.noise_seed, self.target_count = steer_noise, noise_seed, target_count
+        self.noise_vectors, self.noise_generators, self.score_maps = {}, None, None
         self.cfg = cfg
         self.steer_target, self.average_patches = steer_target, average_patches
         self.step, self.samples = -1, 0
@@ -181,7 +191,7 @@ class SD3Steering:
             # Exclude projection bias: it belongs to the full native output.
             cross = F.linear(state.pop("cross"), module.weight, bias=None)
             updated = self._collect_or_steer(cross, layer)
-            if self.vectors is None:
+            if self.collecting:
                 return output
             return output + (updated.float() - cross.float()).to(output.dtype)
 
@@ -192,7 +202,7 @@ class SD3Steering:
         """features: [batch, positions, channels]; vectors may retain positions."""
         conditional = slice(features.shape[0] // 2, None) if self.cfg else slice(None)
         current = features[conditional]
-        if self.vectors is None:
+        if self.collecting:
             statistic = current.float().mean(dim=0)  # Always average samples.
             if self.average_patches:
                 statistic = statistic.mean(dim=0)
@@ -200,13 +210,47 @@ class SD3Steering:
                 self.sums = torch.zeros(self.steps, self.layer_count, *statistic.shape, dtype=torch.float32)
             self.sums[self.step, layer] += statistic.cpu()
             return features
+        vectors = (self._noise_directions(current) if self.steer_noise else
+                   self.vectors[:, self.step, layer])
+        scores = None
+        if self.trace_score:
+            if self.score_maps is None:
+                self.score_maps = torch.empty(len(vectors), self.steps, self.layer_count,
+                                              *current.shape[:2], device=current.device, dtype=torch.float32)
+            scores = self.score_maps[:, self.step, layer]
         updated = features.clone()
-        updated[conditional] = steer_output(current, self.vectors[:, self.step, layer], self.beta, self.clipping)
+        updated[conditional] = steer_output(current, vectors, self.beta, self.clipping,
+                                             score_gate=self.score_gate, scores=scores)
         return updated
 
-    def reset(self, *, clear_statistics=False):
+    def _noise_directions(self, current):
+        """Use unit Gaussian directions and a separate RNG from diffusion noise."""
+        positions = 1 if self.average_patches else current.shape[1]
+        shape = (self.target_count, positions, current.shape[-1])
+        if self.steer_noise == "all":
+            for seed in self.noise_seeds:
+                if seed not in self.noise_vectors:
+                    generator = torch.Generator("cpu").manual_seed(seed)
+                    self.noise_vectors[seed] = F.normalize(torch.randn(shape, generator=generator), dim=-1).to(current.device)
+            return torch.stack([self.noise_vectors[seed] for seed in self.noise_seeds], dim=1)
+        if self.noise_generators is None:
+            self.noise_generators = [torch.Generator(current.device).manual_seed(seed) for seed in self.noise_seeds]
+        # One RNG per sample keeps batch size and resumed sampling from changing its noise.
+        noise = torch.stack([torch.randn(shape, device=current.device, generator=generator)
+                             for generator in self.noise_generators], dim=1)
+        return F.normalize(noise, dim=-1)
+
+    def reset(self, *, clear_statistics=False, records=(), noise_groups=()):
         """Start another sampling call; optionally clear collected statistics."""
         self.step = -1
+        self.score_maps, self.noise_generators = None, None
+        self.noise_seeds = []
+        if self.steer_noise:
+            for record, group in zip(records, noise_groups):
+                identity = [self.noise_seed, group]
+                if self.steer_noise == "every":
+                    identity.extend((record["sample_id"], record["seed"]))
+                self.noise_seeds.append(int(digest(identity)[:16], 16) % 2**63)
         if clear_statistics:
             self.sums, self.samples = None, 0
 
@@ -317,17 +361,39 @@ class SteerAdapter:
         config = copy.deepcopy(config)
         config["adapter"] = {"kind": "original"}
         self.sampler = DiTAdapter(config)
-        state = torch.load(Path(spec["checkpoint"]) / "steering.pt", map_location="cpu", weights_only=True)
+        vectors = None
+        if not spec.get("steer_noise"):
+            vectors = torch.load(Path(spec["checkpoint"]) / "steering.pt", map_location="cpu", weights_only=True)["vectors"]
+        self.trace_config, self.trace_root = config, None
+        self.trace_config["adapter"] = spec
         self.hooks = SD3Steering(self.sampler.pipe.transformer, config["sampling"]["steps"],
-            cfg=config["sampling"]["guidance_scale"] > 1, vectors=state["vectors"],
+            cfg=config["sampling"]["guidance_scale"] > 1, vectors=vectors,
             beta=spec["beta"], clipping=spec["clipping"],
             steer_target=spec.get("steer_target", "text_to_image"),
-            average_patches=spec.get("average_patches", True))
+            average_patches=spec.get("average_patches", True), score_gate=spec.get("score_gate", True),
+            steer_noise=spec.get("steer_noise"), noise_seed=spec.get("noise_seed", 0),
+            target_count=len(config["targets"]), trace_score=spec.get("trace_score", False))
 
     def generate(self, records, sampling_config):
-        self.hooks.reset()
-        return self.sampler.generate(records, sampling_config)
+        cfg = self.trace_config
+        concepts = [cfg["task"] if cfg["task"] in {"i2p", "mscoco"} else concept_key(row["concept"]) for row in records]
+        groups = [f"{cfg.get('case_id', '')}/{cfg['task']}/{concept}" for concept in concepts]
+        self.hooks.reset(records=records, noise_groups=groups)
+        images = self.sampler.generate(records, sampling_config)
+        if self.hooks.trace_score:
+            from .diagnostics import accumulate_scores
+            pipe = self.sampler.pipe
+            patch = pipe.vae_scale_factor * pipe.transformer.config.patch_size
+            spatial_shape = (sampling_config["height"] // patch, sampling_config["width"] // patch)
+            root = Path(records[0]["image"]).parent / "score-traces"
+            accumulate_scores(root, records, self.hooks.score_maps.cpu(), self.trace_config,
+                              spatial_shape, pipe.scheduler.timesteps.cpu().tolist())
+            self.trace_root = root
+        return images
 
     def close(self):
         self.hooks.close()
         self.sampler.close()
+        if self.trace_root is not None:
+            from .diagnostics import write_score_report
+            write_score_report(self.trace_root, self.trace_config)

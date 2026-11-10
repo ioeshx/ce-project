@@ -1,21 +1,19 @@
 {
-    "concept_pair": {
-        "nudity":"clothed",
-        "Snoopy":"",
-        "Pikachu":"",
-        "Van Gogh":"",
-        "Monet":"",
-        "Picasso":"",
+    "nudity":"clothed",
+    "Snoopy":"",
+    "Pikachu":"",
+    "Van Gogh":"",
+    "Monet":"",
+    "Picasso":"",
 
-        "church":"",
-        "golf ball": "",
-        "English springer": "",
-        "goose": "",
-        "chain saw": "",
-        "cassette player": "",
-        "French horn": "",
-        "garbage truck": "",
-        "banana": "",
-        "parachute": ""
-    }
+    "church":"",
+    "golf ball": "",
+    "English springer": "",
+    "goose": "",
+    "chain saw": "",
+    "cassette player": "",
+    "French horn": "",
+    "garbage truck": "",
+    "banana": "",
+    "parachute": ""
 }
