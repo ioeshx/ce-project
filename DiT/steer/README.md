@@ -29,6 +29,11 @@
 |---|---|
 | `--steer-target text_to_image`（默认） | 在 image token 上修改经过输出投影的 `A_image,text V_text` |
 | `--steer-target text_value` | 直接修改 `add_v_proj` 得到的 `V_text`，然后交给原生 attention 使用 |
+| `--steer-target attention_residual` | attention 更新与残差相加后，进入 MLP 的归一化和 modulation 之前；SD3.5 dual-attention 层包含两次 attention 更新 |
+| `--steer-target mlp_output` | 经过归一化、modulation、MLP 后的输出，尚未乘 `gate_mlp`、尚未加回残差 |
+| `--steer-target block_output` | MLP 输出乘 gate 并加回残差后的完整 block 输出 |
+| `--steer-token image/text/all` | 对三个新增 block target 选择统计和干预的 token，默认 `image` |
+| `--steer-pool` | 在上述任一 target 继续执行的同时，额外干预全局 pooled text embedding；默认关闭 |
 | `--average-patches`（默认） | 对位置求均值，每层每步使用一个共享方向 |
 | `--no-average-patches` | 保留位置维度，每个位置使用自己的方向 |
 
@@ -36,6 +41,20 @@
 不做位置平均时，仍然跨 prompt 求均值，最后分别对每个位置的 channel 方向归一化。
 推理按同一位置对应使用向量；分辨率、文本序列长度沿用离线统计设置。
 不平均时，统计量和产物大小会随位置数增加。
+
+三个 block target 对 image、text 两条分支取相同的阶段，`all` 按 image token 在前、text token 在后的顺序拼接。
+位置平均模式对选中的全部 token 一起求均值，构造一个共享方向；不平均时保留每个 token 的方向。
+`--steer-token` 只影响这三个 target，原有 `text_to_image`、`text_value` 的作用对象保持原样。
+SD3 末层不再输出 text 状态：`text` 跳过该层，`all` 在该层仅处理 image。
+不平均时，末层缺失的 text 位置在统计张量中补零，但不参与干预或 score 汇总；metadata 的 `token_counts` 记录各层实际数量。
+
+`--steer-pool` 修改两个 CLIP pooled 输出拼接成的原始全局向量，在 `time_text_embed.text_embedder` 投影之前应用，
+随后仍按原生流程与 timestep embedding 相加，因此影响各层 modulation 和最终 `norm_out`。
+它不会替换所选 target。离线使用同一批正负 prompt 对额外构造 `pool_vectors`，每个目标一个全局方向，
+不带 step、layer、token 维度；统计原始 pooled embedding 时每个 prompt 只计一次。
+token 向量与 pooled 向量分别使用相同的构造选项、`beta`、score gate 和 clipping 设置。
+随机对照时，两处使用独立随机流，`all` 仍在每个评测类别内固定，`every` 在每次对应干预时重抽。
+开启 pooled 或改变新 target 的 token 选项会使用独立缓存与结果名；原有配置的离线向量仍可复用。
 
 ```bash
 # 原有位置：投影后的文本→图像贡献，位置平均
@@ -46,6 +65,14 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target text_to_image --no-av
 bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target text_value --average-patches --dry-run
 # 直接修改 text Value，保留所有 text token
 bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target text_value --no-average-patches --dry-run
+# 保持原 target，同时补充全局 pooled embedding 干预
+bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target text_to_image --steer-pool --dry-run
+# attention 残差后的 image/text 全部 token
+bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target attention_residual --steer-token all --dry-run
+# MLP 原始输出，仅 text token
+bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target mlp_output --steer-token text --dry-run
+# 完整 block 输出，image token（默认），同时修改 pooled embedding
+bash /home/shx/code/ce-new/DiT/steer/run.sh --steer-target block_output --steer-pool --dry-run
 ```
 
 以上命令只展示计划；实际运行时移除 `--dry-run`，按需添加 `--cases`、`--device`、`--offline`。
@@ -90,6 +117,10 @@ Score 追踪默认关闭，只有显式传入 `--trace-score` 才开启；使用
 `--no-score-gate` 会同时关闭追踪，因为该模式不计算点积。
 追踪只读取真实 steering 位置的 conditional CFG 分支，不额外运行模型或评价器。
 `text_to_image` 记录投影后的文本到图像贡献与向量的点积；`text_value` 记录文本 Value 与向量的点积。
+三个 block target 记录所选阶段、所选 token 的原始点积。`all` 的图像与文本分开保存到
+`score-traces/image/`、`score-traces/text/`；末层没有 text 状态，不进入 text 统计。
+开启 pooled 干预时，其 score 另外保存在 `score-traces/pool/`，按 denoising step 记录全局分数。
+各统计文件的 `layer_ids` 标明真实层号，pool 的层标记为 `global`。
 
 每个方法图目录下保存 `score-traces/`：
 

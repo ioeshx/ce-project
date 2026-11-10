@@ -1,7 +1,8 @@
-"""Offline steering of SD3 text values or projected text-to-image contributions."""
+"""Offline and online steering of SD3 token states and global pooled text embeddings."""
 from __future__ import annotations
 
 import copy
+from functools import partial
 from pathlib import Path
 
 import torch
@@ -134,6 +135,7 @@ def prompt_pairs(group, target, anchor, count=None, *, mode="casteer"):
         pairs = [{"positive": f"{stem}, {target}", "negative": f"{stem}, {anchor}" if anchor else stem.rstrip()}
                  for stem in stems]
     else:
+        # CASteer： {imagenet class} + {anchor/target} style/with {anchor/target}
         classes = Path(__file__).with_name("imagenet_classes.txt").read_text().splitlines()
         suffix = f", {target} style" if group == "style" else f" with {target}"
         negative_suffix = (f", {anchor} style" if group == "style" else f" with {anchor}") if anchor else ""
@@ -148,26 +150,108 @@ class SD3Steering:
     text_value edits V_text at add_v_proj, before attention reads it.
     text_to_image edits only W_out * A_image,text * V_text, retaining the native
     joint softmax denominator, image-value contribution and projection bias.
+    The three block sites select image/text/both streams at a residual or MLP
+    boundary. Pooled text steering is an independent, supplementary hook.
     """
 
     def __init__(self, transformer, steps, *, cfg, vectors=None, beta=-2.0, clipping=True,
                  steer_target="text_to_image", average_patches=True, score_gate=True,
-                 steer_noise=None, noise_seed=0, target_count=1, trace_score=False):
+                 steer_noise=None, noise_seed=0, target_count=1, trace_score=False,
+                 steer_token="image", steer_pool=False, pool_vectors=None):
         self.vectors, self.beta, self.clipping = vectors, beta, clipping
         self.collecting = vectors is None and steer_noise is None
         self.score_gate, self.trace_score = score_gate, trace_score and score_gate
         self.steer_noise, self.noise_seed, self.target_count = steer_noise, noise_seed, target_count
-        self.noise_vectors, self.noise_generators, self.score_maps = {}, None, None
+        self.noise_vectors, self.noise_generators, self.score_maps = {}, {}, None
+        self.steer_token, self.steer_pool, self.pool_vectors = steer_token, steer_pool, pool_vectors
+        self.pool_sum, self.pool_scores = None, None
         self.cfg = cfg
         self.steer_target, self.average_patches = steer_target, average_patches
         self.step, self.samples = -1, 0
         self.handles = [transformer.register_forward_pre_hook(self._next_step)]
         layers = transformer.transformer_blocks
         self.steps, self.layer_count = steps, len(layers)
+        self.token_counts = [(0, 0)] * len(layers)
+        self.original_forwards = []
         # Position count comes from the actual V_text or image-patch tensor.
         self.sums = None
+        if steer_pool:
+            self.handles.append(transformer.time_text_embed.text_embedder.register_forward_pre_hook(self._pool_embedding))
         for index, block in enumerate(layers):
-            self._register_block(block.attn, index)
+            if steer_target in {"attention_residual", "mlp_output", "block_output"}:
+                self.original_forwards.append((block, block.forward))
+                block.forward = partial(self._block_forward, block, index)
+            else:
+                self._register_block(block.attn, index)
+
+    def _block_forward(self, block, layer, hidden_states, encoder_hidden_states, temb, joint_attention_kwargs=None):
+        """Native SD3 block equations, with both streams available at each steering site."""
+        from diffusers.models.attention import _chunked_feed_forward
+
+        kwargs = joint_attention_kwargs or {}
+        normalized = block.norm1(hidden_states, emb=temb)
+        image_norm, gate_attn, shift, scale, gate_mlp = normalized[:5]
+        if block.context_pre_only:
+            text_norm = block.norm1_context(encoder_hidden_states, temb)
+        else:
+            text_norm, text_gate_attn, text_shift, text_scale, text_gate_mlp = block.norm1_context(
+                encoder_hidden_states, emb=temb)
+        image_attn, text_attn = block.attn(hidden_states=image_norm, encoder_hidden_states=text_norm, **kwargs)
+        image = hidden_states + gate_attn[:, None] * image_attn
+        if block.use_dual_attention:
+            image = image + normalized[6][:, None] * block.attn2(hidden_states=normalized[5], **kwargs)
+        # Text and image MLPs are independent; form both residual streams before either MLP.
+        text = None if block.context_pre_only else encoder_hidden_states + text_gate_attn[:, None] * text_attn
+        if self.steer_target == "attention_residual":
+            image, text = self._steer_tokens(image, text, layer)
+
+        image_norm = block.norm2(image) * (1 + scale[:, None]) + shift[:, None]
+        image_mlp = (block.ff(image_norm) if block._chunk_size is None else
+                     _chunked_feed_forward(block.ff, image_norm, block._chunk_dim, block._chunk_size))
+        text_mlp = None
+        if text is not None:
+            text_norm = block.norm2_context(text) * (1 + text_scale[:, None]) + text_shift[:, None]
+            text_mlp = (block.ff_context(text_norm) if block._chunk_size is None else
+                        _chunked_feed_forward(block.ff_context, text_norm, block._chunk_dim, block._chunk_size))
+        if self.steer_target == "mlp_output":
+            image_mlp, text_mlp = self._steer_tokens(image_mlp, text_mlp, layer)
+        image = image + gate_mlp[:, None] * image_mlp
+        if text is not None:
+            text = text + text_gate_mlp[:, None] * text_mlp
+        if self.steer_target == "block_output":
+            image, text = self._steer_tokens(image, text, layer)
+        return text, image
+
+    def _steer_tokens(self, image, text, layer):
+        self.token_counts[layer] = (image.shape[1], text.shape[1] if text is not None else 0)
+        if self.steer_token == "image":
+            return self._collect_or_steer(image, layer), text
+        if self.steer_token == "text":
+            return image, self._collect_or_steer(text, layer) if text is not None else None
+        joined = image if text is None else torch.cat((image, text), dim=1)
+        joined = self._collect_or_steer(joined, layer)
+        return joined[:, :image.shape[1]], joined[:, image.shape[1]:] if text is not None else None
+
+    def _pool_embedding(self, module, args):
+        features = args[0]
+        conditional = slice(features.shape[0] // 2, None) if self.cfg else slice(None)
+        current = features[conditional, None, :]
+        if self.collecting:
+            if self.step == 0:
+                statistic = current.float().mean(dim=(0, 1)).cpu()
+                self.pool_sum = statistic if self.pool_sum is None else self.pool_sum + statistic
+            return
+        vectors = self._noise_directions(current, site="pool") if self.steer_noise else self.pool_vectors
+        scores = None
+        if self.trace_score:
+            if self.pool_scores is None:
+                self.pool_scores = torch.empty(len(vectors), self.steps, 1, len(current), 1,
+                                                device=current.device, dtype=torch.float32)
+            scores = self.pool_scores[:, self.step, 0]
+        updated = features.clone()
+        updated[conditional] = steer_output(current, vectors, self.beta, self.clipping,
+                                             score_gate=self.score_gate, scores=scores).squeeze(1)
+        return (updated, *args[1:])
 
     def _next_step(self, module, args):
         self.step += 1
@@ -226,42 +310,48 @@ class SD3Steering:
                 statistic = statistic.mean(dim=0)
             if self.sums is None:
                 self.sums = torch.zeros(self.steps, self.layer_count, *statistic.shape, dtype=torch.float32)
-            self.sums[self.step, layer] += statistic.cpu()
+            if self.average_patches:
+                self.sums[self.step, layer] += statistic.cpu()
+            else:
+                self.sums[self.step, layer, :statistic.shape[0]] += statistic.cpu()
             return features
         vectors = (self._noise_directions(current) if self.steer_noise else
                    self.vectors[:, self.step, layer])
+        if not self.steer_noise and not self.average_patches:
+            vectors = vectors[:, :current.shape[1]]
         scores = None
         if self.trace_score:
             if self.score_maps is None:
-                self.score_maps = torch.empty(len(vectors), self.steps, self.layer_count,
+                self.score_maps = torch.zeros(len(vectors), self.steps, self.layer_count,
                                               *current.shape[:2], device=current.device, dtype=torch.float32)
-            scores = self.score_maps[:, self.step, layer]
+            scores = self.score_maps[:, self.step, layer, :, :current.shape[1]]
         updated = features.clone()
         updated[conditional] = steer_output(current, vectors, self.beta, self.clipping,
                                              score_gate=self.score_gate, scores=scores)
         return updated
 
-    def _noise_directions(self, current):
+    def _noise_directions(self, current, *, site="tokens"):
         """Use unit Gaussian directions and a separate RNG from diffusion noise."""
         positions = 1 if self.average_patches else current.shape[1]
         shape = (self.target_count, positions, current.shape[-1])
+        seeds = self.noise_seeds if site == "tokens" else [int(digest([seed, site])[:16], 16) % 2**63 for seed in self.noise_seeds]
         if self.steer_noise == "all":
-            for seed in self.noise_seeds:
-                if seed not in self.noise_vectors:
+            for seed in seeds:
+                if (site, seed) not in self.noise_vectors:
                     generator = torch.Generator("cpu").manual_seed(seed)
-                    self.noise_vectors[seed] = F.normalize(torch.randn(shape, generator=generator), dim=-1).to(current.device)
-            return torch.stack([self.noise_vectors[seed] for seed in self.noise_seeds], dim=1)
-        if self.noise_generators is None:
-            self.noise_generators = [torch.Generator(current.device).manual_seed(seed) for seed in self.noise_seeds]
+                    self.noise_vectors[site, seed] = F.normalize(torch.randn(shape, generator=generator), dim=-1).to(current.device)
+            return torch.stack([self.noise_vectors[site, seed][:, :positions] for seed in seeds], dim=1)
+        if site not in self.noise_generators:
+            self.noise_generators[site] = [torch.Generator(current.device).manual_seed(seed) for seed in seeds]
         # One RNG per sample keeps batch size and resumed sampling from changing its noise.
         noise = torch.stack([torch.randn(shape, device=current.device, generator=generator)
-                             for generator in self.noise_generators], dim=1)
+                             for generator in self.noise_generators[site]], dim=1)
         return F.normalize(noise, dim=-1)
 
     def reset(self, *, clear_statistics=False, records=(), noise_groups=()):
         """Start another sampling call; optionally clear collected statistics."""
         self.step = -1
-        self.score_maps, self.noise_generators = None, None
+        self.score_maps, self.pool_scores, self.noise_generators = None, None, {}
         self.noise_seeds = []
         if self.steer_noise:
             for record, group in zip(records, noise_groups):
@@ -271,8 +361,12 @@ class SD3Steering:
                 self.noise_seeds.append(int(digest(identity)[:16], 16) % 2**63)
         if clear_statistics:
             self.sums, self.samples = None, 0
+            self.pool_sum = None
 
     def close(self):
+        for block, forward in self.original_forwards:
+            block.forward = forward
+        self.original_forwards.clear()
         for handle in self.handles:
             handle.remove()
         self.handles.clear()
@@ -289,17 +383,19 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
     checkpoint.mkdir(parents=True, exist_ok=True)
     construction = settings.get("construction", {"method": "mean", "normalize_differences": False})
     paired = construction["method"] != "mean" or construction["normalize_differences"]
+    steer_pool = settings.get("steer_pool", False)
     if statistics_checkpoint is not None:
         # Reconstruct another direction without loading a diffusion model.
         source = Path(statistics_checkpoint)
         state = torch.load(source / "steering.pt", map_location="cpu", weights_only=True, mmap=True)
         metadata = read_json(source / "metadata.json")
-        positive, negative = state["positive_means"], state["negative_means"]
-        vectors = (construct_from_pairs(positive, negative, metadata["paired_differences"],
-                    metadata["prompt_pairs"], construction, settings["seed"]) if paired else
-                   construct_vectors(positive, negative))
-        torch.save({"vectors": vectors, "positive_means": positive, "negative_means": negative},
-                   checkpoint / "steering.pt")
+        result = {}
+        for prefix in (["", "pool_"] if steer_pool else [""]):
+            positive, negative = state[prefix + "positive_means"], state[prefix + "negative_means"]
+            result[prefix + "vectors"] = (construct_from_pairs(positive, negative, metadata[prefix + "paired_differences"],
+                metadata["prompt_pairs"], construction, settings["seed"]) if paired else construct_vectors(positive, negative))
+            result.update({prefix + "positive_means": positive, prefix + "negative_means": negative})
+        torch.save(result, checkpoint / "steering.pt")
         metadata.update(settings=settings, statistics_checkpoint=str(source))
         write_json(checkpoint / "metadata.json", metadata)
         return
@@ -309,7 +405,9 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
     config["adapter"] = {"kind": "original"}
     sampler = DiTAdapter(config)
     pipe, opts = sampler.pipe, sampler.config["sampling"]
-    means = {"positive": [], "negative": []}
+    # Preserve existing token checkpoint keys; supplementary pooled tensors use pool_ keys.
+    prefixes = ["", "pool_"] if steer_pool else [""]
+    means = {prefix: {"positive": [], "negative": []} for prefix in prefixes}
     pairs_by_concept = []
     shape = (pipe.transformer.config.in_channels, opts["height"] // pipe.vae_scale_factor,
              opts["width"] // pipe.vae_scale_factor)
@@ -318,14 +416,15 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
             pairs = prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"],
                                  mode=settings.get("prompt_mode", "casteer"))
             pairs_by_concept.append({"target": target, "anchor": anchor, "pairs": pairs})
-            pair_directory = checkpoint / "paired_differences" / slug(target)
             if paired:
-                pair_directory.mkdir(parents=True, exist_ok=True)
+                for prefix in prefixes:
+                    (checkpoint / (prefix + "paired_differences") / slug(target)).mkdir(parents=True, exist_ok=True)
             for side in ("positive", "negative"):
                 hooks = SD3Steering(pipe.transformer, opts["steps"], cfg=opts["guidance_scale"] > 1,
-                    steer_target=settings["steer_target"], average_patches=settings["average_patches"])
+                    steer_target=settings["steer_target"], average_patches=settings["average_patches"],
+                    steer_token=settings.get("steer_token", "image"), steer_pool=steer_pool)
                 try:
-                    total = None
+                    total = {}
                     for index, pair in enumerate(pairs):
                         hooks.reset(clear_statistics=paired)
                         latent = initial_noise(shape, settings["seed"], dtype=sampler.dtype, device="cpu")
@@ -336,37 +435,43 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
                              guidance_scale=opts["guidance_scale"], max_sequence_length=opts["max_sequence_length"],
                              output_type="latent")
                         if paired:
-                            if total is None:
-                                total = hooks.sums.clone()
-                            else:
-                                total += hooks.sums
-                            positive_path = pair_directory / f"positive-{index + 1:04d}.pt"
-                            if side == "positive":
-                                torch.save(hooks.sums, positive_path)
-                            else:
-                                positive_sample = torch.load(positive_path, map_location="cpu", weights_only=True, mmap=True)
-                                torch.save(positive_sample - hooks.sums, pair_directory / f"pair-{index + 1:04d}.pt")
-                                del positive_sample
-                                positive_path.unlink()
+                            for prefix in prefixes:
+                                statistic = hooks.pool_sum if prefix else hooks.sums
+                                total[prefix] = total[prefix] + statistic if prefix in total else statistic.clone()
+                                pair_directory = checkpoint / (prefix + "paired_differences") / slug(target)
+                                positive_path = pair_directory / f"positive-{index + 1:04d}.pt"
+                                if side == "positive":
+                                    torch.save(statistic, positive_path)
+                                else:
+                                    positive_sample = torch.load(positive_path, map_location="cpu", weights_only=True, mmap=True)
+                                    torch.save(positive_sample - statistic, pair_directory / f"pair-{index + 1:04d}.pt")
+                                    del positive_sample
+                                    positive_path.unlink()
                         print(f"[fit:{target}:{side}] {index + 1}/{len(pairs)}", flush=True)
-                    means[side].append(total / len(pairs) if paired else hooks.sums / hooks.samples)
+                    for prefix in prefixes:
+                        statistic = hooks.pool_sum if prefix else hooks.sums
+                        means[prefix][side].append(total[prefix] / len(pairs) if paired else statistic / hooks.samples)
+                    token_counts = hooks.token_counts
                 finally:
                     hooks.close()
                 del hooks, total
-        positive = torch.stack(means.pop("positive"))
-        negative = torch.stack(means.pop("negative"))
-        vectors = (construct_from_pairs(positive, negative, checkpoint / "paired_differences",
-                    pairs_by_concept, construction, settings["seed"]) if paired else
-                   construct_vectors(positive, negative))
-        torch.save({"vectors": vectors,
-                    "positive_means": positive, "negative_means": negative}, checkpoint / "steering.pt")
+        state = {}
+        for prefix, values in means.items():
+            positive, negative = torch.stack(values["positive"]), torch.stack(values["negative"])
+            vectors = (construct_from_pairs(positive, negative, checkpoint / (prefix + "paired_differences"),
+                        pairs_by_concept, construction, settings["seed"]) if paired else construct_vectors(positive, negative))
+            state.update({prefix + "vectors": vectors, prefix + "positive_means": positive, prefix + "negative_means": negative})
+        torch.save(state, checkpoint / "steering.pt")
         write_json(checkpoint / "metadata.json", {
             "settings": settings, "sampling": opts, "prompt_pairs": pairs_by_concept,
             "shape": ("concept, step, layer, channel" if settings["average_patches"] else
                       "concept, step, layer, position, channel"),
-            "position_axis": "text token" if settings["steer_target"] == "text_value" else "image patch",
+            "position_axis": ("text token" if settings["steer_target"] == "text_value" else
+                              settings.get("steer_token", "image") + " token"),
+            "token_counts": token_counts,
+            **({"pool_shape": "concept, channel", "pool_intervention": "raw pooled embedding before text projection"} if steer_pool else {}),
             "timesteps": pipe.scheduler.timesteps.cpu().tolist(),
-            **({"paired_differences": str(checkpoint / "paired_differences")} if paired else {}),
+            **({prefix + "paired_differences": str(checkpoint / (prefix + "paired_differences")) for prefix in prefixes} if paired else {}),
             "intervention": settings["steer_target"]})
     finally:
         sampler.close()
@@ -380,10 +485,13 @@ class SteerAdapter:
         config = copy.deepcopy(config)
         config["adapter"] = {"kind": "original"}
         self.sampler = DiTAdapter(config)
-        vectors = None
+        vectors, pool_vectors = None, None
         if not spec.get("steer_noise"):
-            vectors = torch.load(Path(spec["checkpoint"]) / "steering.pt", map_location="cpu", weights_only=True)["vectors"]
-        self.trace_config, self.trace_root = config, None
+            state = torch.load(Path(spec["checkpoint"]) / "steering.pt", map_location="cpu", weights_only=True)
+            vectors = state["vectors"]
+            if spec.get("steer_pool"):
+                pool_vectors = state["pool_vectors"]
+        self.trace_config, self.trace_roots = config, set()
         self.trace_config["adapter"] = spec
         self.hooks = SD3Steering(self.sampler.pipe.transformer, config["sampling"]["steps"],
             cfg=config["sampling"]["guidance_scale"] > 1, vectors=vectors,
@@ -391,7 +499,8 @@ class SteerAdapter:
             steer_target=spec.get("steer_target", "text_to_image"),
             average_patches=spec.get("average_patches", True), score_gate=spec.get("score_gate", True),
             steer_noise=spec.get("steer_noise"), noise_seed=spec.get("noise_seed", 0),
-            target_count=len(config["targets"]), trace_score=spec.get("trace_score", False))
+            target_count=len(config["targets"]), trace_score=spec.get("trace_score", False),
+            steer_token=spec.get("steer_token", "image"), steer_pool=spec.get("steer_pool", False), pool_vectors=pool_vectors)
 
     def generate(self, records, sampling_config):
         cfg = self.trace_config
@@ -405,14 +514,31 @@ class SteerAdapter:
             patch = pipe.vae_scale_factor * pipe.transformer.config.patch_size
             spatial_shape = (sampling_config["height"] // patch, sampling_config["width"] // patch)
             root = Path(records[0]["image"]).parent / "score-traces"
-            accumulate_scores(root, records, self.hooks.score_maps.cpu(), self.trace_config,
-                              spatial_shape, pipe.scheduler.timesteps.cpu().tolist())
-            self.trace_root = root
+            scores = self.hooks.score_maps.cpu()
+            traces = []
+            block_target = self.hooks.steer_target in {"attention_residual", "mlp_output", "block_output"}
+            text_layers = [i for i, block in enumerate(pipe.transformer.transformer_blocks) if not block.context_pre_only]
+            if block_target and self.hooks.steer_token == "all":
+                image_count = spatial_shape[0] * spatial_shape[1]
+                traces.extend([(root / "image", scores[..., :image_count], "image", None),
+                               (root / "text", scores[:, :, text_layers, :, image_count:], "text", text_layers)])
+            else:
+                kind = (self.hooks.steer_token if block_target else
+                        "text" if self.hooks.steer_target == "text_value" else "image")
+                layers = text_layers if block_target and kind == "text" else None
+                traces.append((root, scores[:, :, layers] if layers is not None else scores, kind, layers))
+            if self.hooks.steer_pool:
+                traces.append((root / "pool", self.hooks.pool_scores.cpu(), "pool", ["global"]))
+            for directory, values, kind, layers in traces:
+                accumulate_scores(directory, records, values, self.trace_config, spatial_shape,
+                                  pipe.scheduler.timesteps.cpu().tolist(), position_kind=kind, layer_ids=layers)
+                self.trace_roots.add(directory)
         return images
 
     def close(self):
         self.hooks.close()
         self.sampler.close()
-        if self.trace_root is not None:
+        if self.trace_roots:
             from .diagnostics import write_score_report
-            write_score_report(self.trace_root, self.trace_config)
+            for root in sorted(self.trace_roots):
+                write_score_report(root, self.trace_config)

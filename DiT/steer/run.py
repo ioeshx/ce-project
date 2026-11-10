@@ -42,8 +42,12 @@ def parser():
                    help="Replace offline directions: all=fixed noise per evaluation concept; every=redraw at each steering call")
     p.add_argument("--trace-score", action=argparse.BooleanOptionalAction, default=False,
                    help="Save raw score maps averaged by evaluation concept (default: off; requires score gating)")
-    p.add_argument("--steer-target", choices=("text_value", "text_to_image"), default="text_to_image",
-                   help="text_value: V_text before attention; text_to_image: projected A_image,text V_text")
+    p.add_argument("--steer-target", choices=("text_value", "text_to_image", "attention_residual", "mlp_output", "block_output"),
+                   default="text_to_image", help="Steering site: text Value, text-to-image contribution, attention residual, raw MLP, or full block output")
+    p.add_argument("--steer-token", choices=("image", "text", "all"), default="image",
+                   help="Tokens used by attention_residual/mlp_output/block_output (default: image)")
+    p.add_argument("--steer-pool", action="store_true",
+                   help="Also steer the global pooled text embedding, before its projection and timestep addition")
     p.add_argument("--average-patches", action=argparse.BooleanOptionalAction, default=True,
                    help="Average positions (default); --no-average-patches keeps a direction per position")
     p.add_argument("--vector-method", choices=("mean", "robust", "pca", "pca-filter"), default="mean",
@@ -120,11 +124,12 @@ def case_configs(args, case_id, case):
     source_files = ["method.py", "imagenet_classes.txt"]
     if args.prompt_mode in {"subject", "matched"}:
         source_files.append(f"prompts/{args.prompt_mode}.json")
-    variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
+    variant = args.variant
     checkpoint = args.run_root / args.model / case_id / variant / "checkpoint"
     settings = {
         "implementation": "steer-sd3-mean-difference-v2", "model_name": args.model,
         "steer_target": args.steer_target, "average_patches": args.average_patches,
+        "steer_token": args.steer_token, "steer_pool": args.steer_pool,
         "construction": args.construction,
         "base_model": args.base_model or selected["base_model"], "model_revision": args.model_revision,
         "group": case["group"], "targets": case["targets"],
@@ -144,6 +149,7 @@ def case_configs(args, case_id, case):
             "adapter": {"kind": "plugin", "factory": "DiT.steer.method:SteerAdapter",
                         "source_files": ["method.py", "run.py", "diagnostics.py", "imagenet_classes.txt"],
                         "checkpoint": str(checkpoint), "steer_target": args.steer_target,
+                        "steer_token": args.steer_token, "steer_pool": args.steer_pool,
                         "average_patches": args.average_patches, "beta": args.beta, "clipping": args.clipping,
                         "score_gate": args.score_gate, "steer_noise": args.steer_noise,
                         "noise_seed": args.seed, "trace_score": args.trace_score},
@@ -192,6 +198,9 @@ def offline_identity(settings, sampling, pairs):
     identity["model_revision"] = identity.get("model_revision") or None
     identity.setdefault("steer_target", "text_to_image")
     identity.setdefault("average_patches", True)
+    identity.setdefault("steer_pool", False)
+    identity["steer_token"] = (settings.get("steer_token", "image") if
+        identity["steer_target"] in {"attention_residual", "mlp_output", "block_output"} else None)
     identity.setdefault("construction", {"method": "mean", "normalize_differences": False})
     identity.setdefault("prompt_mode", "casteer")
     identity["prompt_pairs"] = pairs
@@ -209,7 +218,7 @@ def run(args, experiments, env):
         checkpoint = Path(configs[0]["adapter"]["checkpoint"])
         case_root = checkpoint.parent
         print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
-              f"target={args.steer_target}, average_patches={args.average_patches}, "
+              f"target={args.steer_target}, token={args.steer_token}, pool={args.steer_pool}, average_patches={args.average_patches}, "
               f"prompts={args.prompt_mode}, construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}, "
               f"score_gate={args.score_gate}, noise={args.steer_noise}, trace_score={args.trace_score}", flush=True)
         if args.steer_noise:
@@ -259,6 +268,12 @@ def main(argv=None):
     p = parser()
     args = p.parse_args(argv)
     args.trace_score = args.trace_score and args.score_gate
+    block_target = args.steer_target in {"attention_residual", "mlp_output", "block_output"}
+    if not block_target:
+        args.steer_token = "image"  # Token selection only applies to the three block sites.
+    target_label = args.steer_target + (f"-{args.steer_token}" if block_target else "")
+    target_label += "-pool" if args.steer_pool else ""
+    args.variant = f"{target_label}-{'mean' if args.average_patches else 'per-position'}"
     for name, value in vars(args).items():
         if isinstance(value, Path):
             setattr(args, name, value.expanduser().resolve())
@@ -282,7 +297,7 @@ def main(argv=None):
     if args.normalize_differences:
         args.construction_label += "-unit-diff"
     args.construction_label = args.construction_label.strip("-")
-    args.method = args.method or (f"Steer-{args.steer_target}-{'mean' if args.average_patches else 'per-position'}-"
+    args.method = args.method or (f"Steer-{args.variant}-"
                                   f"{args.construction_label + '-' if args.construction_label else ''}"
                                   f"{'erase' if args.beta < 0 else 'add'}-{abs(args.beta):g}-"
                                   f"{('clip' if args.clipping else 'signed') if args.score_gate else 'no-score-gate'}"
@@ -324,11 +339,11 @@ def main(argv=None):
         if not args.dry_run:
             resolve_scheduler(configs[0])
         if args.steer_noise:
-            variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
-            parent = args.run_root / args.model / case_id / variant / "noise"
+            parent = args.run_root / args.model / case_id / args.variant / "noise"
             label = f"{args.steer_noise}-seed{args.seed}-{sampling_label(sampling)}"
             identity = {"mode": args.steer_noise, "seed": args.seed, "targets": settings["targets"],
                         "base_model": settings["base_model"], "model_revision": args.model_revision,
+                        "steer_target": args.steer_target, "steer_token": args.steer_token, "steer_pool": args.steer_pool,
                         "sampling": sampling}
             directory = (parent / f"{label}-planned" if args.dry_run else
                          registered_directory(parent, label, identity))
@@ -376,8 +391,7 @@ def main(argv=None):
         if checkpoint is None:
             if not args.dry_run and args.phase not in {"all", "fit"}:
                 p.error(f"No matching offline vector; run --phase fit with these settings first: {case_root}")
-            variant = f"{args.steer_target}-{'mean' if args.average_patches else 'per-position'}"
-            parent = case_root / variant / "offline"
+            parent = case_root / args.variant / "offline"
             label = f"{sampling_label(sampling)}-pairs{len(pairs[0]['pairs'])}-seed{args.seed}"
             if args.prompt_mode != "casteer":
                 label += f"-prompts-{args.prompt_mode}"

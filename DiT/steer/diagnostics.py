@@ -6,12 +6,13 @@ import torch
 from benchmark.common import concept_key, slug, write_csv, write_json
 
 
-def accumulate_scores(root, records, scores, config, spatial_shape, timesteps):
+def accumulate_scores(root, records, scores, config, spatial_shape, timesteps, *, position_kind=None, layer_ids=None):
     """scores: [target, step, layer, sample, position], before clipping.
 
     Persist means and sample IDs after each completed batch. Resumed generations
     can repeat a sample without counting its score twice.
     """
+    kind = position_kind or ("image" if config["adapter"]["steer_target"] == "text_to_image" else "text")
     groups = {}
     for index, record in enumerate(records):
         concept = config["task"] if config["task"] in {"i2p", "mscoco"} else record["concept"]
@@ -25,7 +26,7 @@ def accumulate_scores(root, records, scores, config, spatial_shape, timesteps):
             continue
         selected = scores[:, :, :, indices, :]
         maps = selected.mean(dim=3)
-        if config["adapter"]["steer_target"] == "text_to_image":
+        if kind == "image":
             maps = maps.reshape(*maps.shape[:-1], *spatial_shape)
         gate = selected.clamp_min(0) if config["adapter"]["clipping"] else selected
         moments = {"score_mean": maps, "gate_mean": gate.mean(dim=(3, 4)),
@@ -36,8 +37,9 @@ def accumulate_scores(root, records, scores, config, spatial_shape, timesteps):
             state[name] = (state[name] * old_count + value * added) / (old_count + added) if old_count else value
         state["sample_ids"].extend(records[index]["sample_id"] for index in indices)
         state.update(concept=concept, targets=config["targets"], timesteps=timesteps,
-                     steer_target=config["adapter"]["steer_target"],
-                     axes=("target, step, layer, y, x" if maps.ndim == 5 else "target, step, layer, token"))
+                     steer_target="pool_embedding" if kind == "pool" else config["adapter"]["steer_target"],
+                     position_kind=kind, layer_ids=layer_ids if layer_ids is not None else list(range(scores.shape[2])),
+                     axes="target, step, layer, " + ("y, x" if kind == "image" else "global" if kind == "pool" else "token"))
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(".tmp")
         torch.save(state, temporary)
@@ -54,11 +56,13 @@ def plot_scores(directory, state, limit, gate_limit):
         scores = state["score_mean"][index]
         raw = scores.flatten(2).mean(dim=-1)
         spatial = scores.ndim == 4
+        pooled = state.get("position_kind") == "pool"
+        position_name = "global embedding" if pooled else "text tokens"
         position_mean = scores.mean(dim=(0, 1)) if spatial else scores.mean(dim=1)
         panels = [(raw, "Raw dot product", "layer", "denoising step", "RdBu_r", -limit, limit),
                   (state["gate_mean"][index], "Applied gate", "layer", "denoising step", "RdBu_r", -gate_limit, gate_limit),
                   (state["positive_fraction"][index], "Fraction of scores > 0", "layer", "denoising step", "viridis", 0, 1),
-                  (position_mean, "Mean position scores", "patch x" if spatial else "token position",
+                  (position_mean, "Mean position scores", "patch x" if spatial else "global embedding" if pooled else "token position",
                    "patch y" if spatial else "denoising step", "RdBu_r", -limit, limit)]
         fig, axes = plt.subplots(2, 2, figsize=(12, 9), layout="constrained")
         for ax, (values, title, xlabel, ylabel, cmap, low, high) in zip(axes.flat, panels):
@@ -79,9 +83,10 @@ def plot_scores(directory, state, limit, gate_limit):
                 values = scores[step, layer] if spatial else scores[step, layer].unsqueeze(0)
                 im = axes[row, column].imshow(values.numpy(), cmap="RdBu_r", vmin=-limit, vmax=limit,
                                               aspect="equal" if spatial else "auto", interpolation="nearest")
-                axes[row, column].set_title(f"step {step}, t={state['timesteps'][step]:g}, layer {layer}")
+                layer_id = state.get("layer_ids", list(range(scores.shape[1])))[layer]
+                axes[row, column].set_title(f"step {step}, t={state['timesteps'][step]:g}, layer {layer_id}")
         fig.colorbar(im, ax=axes.ravel().tolist(), label="Mean raw dot product")
-        fig.suptitle(f"{state['concept']} | direction: {target} | {'image patches' if spatial else 'text tokens'}")
+        fig.suptitle(f"{state['concept']} | direction: {target} | {'image patches' if spatial else position_name}")
         fig.savefig(directory / f"{slug(target)}-positions.png", dpi=140)
         plt.close(fig)
 
@@ -94,14 +99,16 @@ def write_score_report(root, config):
     for directory, state in states:
         means = state["score_mean"].flatten(3).mean(dim=-1)
         for index, target in enumerate(state["targets"]):
-            common = {"concept": state["concept"], "steering_target": target, "n": len(state["sample_ids"])}
+            common = {"concept": state["concept"], "steering_target": target, "n": len(state["sample_ids"]),
+                      "site": state["steer_target"], "position_kind": state.get("position_kind")}
             summary.append({**common, "score_mean": means[index].mean().item(),
                 **{name: state[name][index].mean().item() for name in
                    ("absolute_score_mean", "gate_mean", "positive_fraction")},
                 "mean_update_coefficient": config["adapter"]["beta"] * state["gate_mean"][index].mean().item()})
             for step, timestep in enumerate(state["timesteps"]):
                 for layer in range(means.shape[2]):
-                    details.append({**common, "step": step, "timestep": timestep, "layer": layer,
+                    layer_id = state.get("layer_ids", list(range(means.shape[2])))[layer]
+                    details.append({**common, "step": step, "timestep": timestep, "layer": layer_id,
                         "score_mean": means[index, step, layer].item(),
                         **{name: state[name][index, step, layer].item() for name in
                            ("absolute_score_mean", "gate_mean", "positive_fraction")}})
