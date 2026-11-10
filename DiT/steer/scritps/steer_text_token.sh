@@ -14,20 +14,20 @@
 #   --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
 #   --offline > DiT/steer/logs/steer_pool_prompt_bare.log 2>&1
 
-DiT/steer/run.sh \
-  --cases all \
-  --device cuda:0 \
-  --prompt-mode bare \
-  --steer-token text \
-  --steer-target attention_residual \
-  --subset-eval \
-  --i2p-test-num 10 --mscoco-test-num 10 \
-  --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
-  --offline > DiT/steer/logs/steer_text_attention_residual.log 2>&1
+# DiT/steer/run.sh \
+#   --cases all \
+#   --device cuda:0 \
+#   --prompt-mode bare \
+#   --steer-token text \
+#   --steer-target attention_residual \
+#   --subset-eval \
+#   --i2p-test-num 10 --mscoco-test-num 10 \
+#   --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
+#   --offline > DiT/steer/logs/steer_text_attention_residual.log 2>&1
 
 DiT/steer/run.sh \
   --cases all \
-  --device cuda:0 \
+  --device cuda:1 \
   --prompt-mode bare \
   --steer-target mlp_output \
   --steer-token text \
@@ -38,7 +38,7 @@ DiT/steer/run.sh \
 
 DiT/steer/run.sh \
   --cases all \
-  --device cuda:0 \
+  --device cuda:1 \
   --prompt-mode bare \
   --steer-target block_output \
   --steer-token text \

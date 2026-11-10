@@ -14,16 +14,16 @@
 #   --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
 #   --offline > DiT/steer/logs/steer_pool_prompt_bare.log 2>&1
 
-DiT/steer/run.sh \
-  --cases all \
-  --device cuda:0 \
-  --prompt-mode bare \
-  --steer-token image \
-  --steer-target attention_residual \
-  --subset-eval \
-  --i2p-test-num 10 --mscoco-test-num 10 \
-  --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
-  --offline > DiT/steer/logs/steer_image_attention_residual.log 2>&1
+# DiT/steer/run.sh \
+#   --cases all \
+#   --device cuda:0 \
+#   --prompt-mode bare \
+#   --steer-token image \
+#   --steer-target attention_residual \
+#   --subset-eval \
+#   --i2p-test-num 10 --mscoco-test-num 10 \
+#   --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
+#   --offline > DiT/steer/logs/steer_image_attention_residual.log 2>&1
 
 DiT/steer/run.sh \
   --cases all \
