@@ -6,12 +6,12 @@
 
 DiT/steer/run.sh \
   --cases all \
-  --device cuda:0 \
+  --device cuda:1 \
   --steer-target mlp_output \
   --prompt-mode subject \
   --steer-token text \
   --subset-eval \
-  --offline > DiT/steer/logs/steer_text_mlp_output.log 2>&1
+  --offline > DiT/steer/logs/steer_text_mlp_output_prompt_subject.log 2>&1
 
   # --i2p-test-num 10 --mscoco-test-num 10 \
   # --ip-test-num 3 --style-test-num 3 --object-test-num 3 \

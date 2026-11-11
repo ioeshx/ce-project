@@ -42,8 +42,9 @@ def parser():
                    help="Replace offline directions: all=fixed noise per evaluation concept; every=redraw at each steering call")
     p.add_argument("--trace-score", action=argparse.BooleanOptionalAction, default=False,
                    help="Save raw score maps averaged by evaluation concept (default: off; requires score gating)")
-    p.add_argument("--steer-target", choices=("text_value", "text_to_image", "attention_residual", "mlp_output", "block_output"),
-                   default="text_to_image", help="Steering site: text Value, text-to-image contribution, attention residual, raw MLP, or full block output")
+    p.add_argument("--steer-target", choices=("text_value", "text_to_image", "text_token", "text_token_output",
+                                           "attention_residual", "mlp_output", "block_output"),
+                   default="text_to_image", help="Steering site: text Value, text-to-image contribution, text attention before/after output projection, attention residual, raw MLP, or full block output")
     p.add_argument("--steer-token", choices=("image", "text", "all"), default="image",
                    help="Tokens used by attention_residual/mlp_output/block_output (default: image)")
     p.add_argument("--steer-pool", action="store_true",
@@ -60,6 +61,8 @@ def parser():
     p.add_argument("--pca-rank", type=int, default=4, help="Number of components retained by pca-filter")
     p.add_argument("--prompt-mode", choices=("casteer", "bare", "subject", "matched"), default="casteer",
                    help="Offline prompts: CASteer contexts (default), literal concepts, short subject wrappers, or shared scene content")
+    p.add_argument("--prompt-mode-num", type=int, default=1,
+                   help="Seeds per prompt pair for bare/subject/matched; use seed, seed+1, ... (default: 1)")
     p.add_argument("--calibration-prompts", type=int,
                    help="Use the first N pairs; defaults: casteer human=210/other=50, bare=1, subject/matched=8")
     p.add_argument("--use-anchor", action="store_true",
@@ -134,7 +137,8 @@ def case_configs(args, case_id, case):
         "base_model": args.base_model or selected["base_model"], "model_revision": args.model_revision,
         "group": case["group"], "targets": case["targets"],
         "anchors": [anchors[target] for target in case["targets"]],
-        "seed": args.seed, "calibration_prompts": args.calibration_prompts, "prompt_mode": args.prompt_mode,
+        "seed": args.seed, "calibration_prompts": args.calibration_prompts,
+        "prompt_mode": args.prompt_mode, "prompt_mode_num": args.prompt_mode_num,
         "sources": {name: file_digest(DIRECTORY / name) for name in source_files}}
     configs = []
     for task in case["tasks"]:
@@ -203,6 +207,7 @@ def offline_identity(settings, sampling, pairs):
         identity["steer_target"] in {"attention_residual", "mlp_output", "block_output"} else None)
     identity.setdefault("construction", {"method": "mean", "normalize_differences": False})
     identity.setdefault("prompt_mode", "casteer")
+    identity.setdefault("prompt_mode_num", 1)
     identity["prompt_pairs"] = pairs
     identity["sampling"] = {key: sampling[key] for key in
         ("dtype", "steps", "height", "width", "max_sequence_length", "guidance_scale", "negative_prompt", "scheduler")}
@@ -219,7 +224,8 @@ def run(args, experiments, env):
         case_root = checkpoint.parent
         print(f"[steer:{args.model}:{case_id}] {settings['targets']} -> {settings['anchors']}; "
               f"target={args.steer_target}, token={args.steer_token}, pool={args.steer_pool}, average_patches={args.average_patches}, "
-              f"prompts={args.prompt_mode}, construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}, "
+              f"prompts={args.prompt_mode}, seeds_per_pair={args.prompt_mode_num}, "
+              f"construction={settings['construction']}, beta={args.beta:g}, clipping={args.clipping}, "
               f"score_gate={args.score_gate}, noise={args.steer_noise}, trace_score={args.trace_score}", flush=True)
         if args.steer_noise:
             print(f"[fit:skip] Gaussian noise ({args.steer_noise}), seed={args.seed}; no offline vectors", flush=True)
@@ -288,7 +294,7 @@ def main(argv=None):
     args.construction_label = "" if args.vector_method == "mean" else args.vector_method
     if args.vector_method == "robust":
         groups = (args.robust_groups if args.robust_groups is not None else
-                  min(5, args.calibration_prompts or (1 if args.prompt_mode == "bare" else 50)))
+                  min(5, (args.calibration_prompts or (1 if args.prompt_mode == "bare" else 50)) * args.prompt_mode_num))
         args.construction.update(groups=groups, max_iter=args.robust_max_iter, tol=args.robust_tol)
         args.construction_label += f"-g{groups}-i{args.robust_max_iter}-tol{args.robust_tol:g}"
     if args.vector_method == "pca-filter":
@@ -304,19 +310,22 @@ def main(argv=None):
                                   f"{'-anchors' if args.use_anchor else '-context'}"
                                   f"{'-' + slug(args.target_anchor_config.stem) if args.use_anchor and args.target_anchor_config else ''}"
                                   f"{'-prompts-' + args.prompt_mode if args.prompt_mode != 'casteer' else ''}"
+                                  f"{'-seeds' + str(args.prompt_mode_num) if args.prompt_mode_num > 1 else ''}"
                                   f"{'-noise-' + args.steer_noise + '-seed' + str(args.seed) if args.steer_noise else ''}")
     args.tasks = {task.strip() for task in args.tasks.split(",")} if args.tasks else None
 
     # All method-parameter and existing-checkpoint checks live at this entry.
     sizes = [args.cpu_threads, args.batch_size, args.metric_batch_size, args.calibration_prompts,
              args.steps, args.height, args.width, args.max_sequence_length, args.max_records,
-             args.robust_groups, args.robust_max_iter, args.pca_rank]
+             args.robust_groups, args.robust_max_iter, args.pca_rank, args.prompt_mode_num]
     if args.subset_eval:
         sizes.extend(getattr(args, f"{task}_test_num") for task in SUBSET_EVAL_DEFAULTS)
     if any(value is not None and value <= 0 for value in sizes):
         p.error("Counts, dimensions and sequence lengths must be positive.")
-    if not math.isfinite(args.beta) or not 0 <= args.seed < 2**32:
-        p.error("Use finite beta and a uint32 seed.")
+    if not math.isfinite(args.beta) or not 0 <= args.seed <= 2**32 - args.prompt_mode_num:
+        p.error("Use finite beta; all offline seeds from seed to seed + prompt-mode-num - 1 must fit uint32.")
+    if args.prompt_mode == "casteer" and args.prompt_mode_num != 1:
+        p.error("--prompt-mode-num > 1 requires --prompt-mode bare, subject or matched.")
     if not math.isfinite(args.robust_tol) or args.robust_tol <= 0:
         p.error("--robust-tol must be finite and positive.")
     if args.device == "cpu" and (args.dtype != "float32" or args.cpu_offload):
@@ -357,16 +366,18 @@ def main(argv=None):
                     cfg["sampling"]["scheduler_config"] = sampling["scheduler_config"]
             continue
         pairs = [{"target": target, "anchor": anchor,
-                  "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts, mode=args.prompt_mode)}
+                  "pairs": prompt_pairs(settings["group"], target, anchor, args.calibration_prompts,
+                                        mode=args.prompt_mode, repeats=args.prompt_mode_num, seed=args.seed)}
                  for target, anchor in zip(settings["targets"], settings["anchors"])]
-        pair_count = len(pairs[0]["pairs"])
-        if args.calibration_prompts and args.calibration_prompts > pair_count:
-            p.error(f"{case_id}: --prompt-mode {args.prompt_mode} provides at most {pair_count} pairs; "
-                    "reduce --calibration-prompts or omit it. Identical pairs are not repeated.")
-        if args.vector_method == "robust" and settings["construction"]["groups"] > pair_count:
-            p.error(f"--robust-groups cannot exceed the number of prompt pairs ({pair_count}).")
-        if args.vector_method == "pca-filter" and args.pca_rank > pair_count:
-            p.error(f"--pca-rank cannot exceed the number of prompt pairs ({pair_count}).")
+        sample_count = len(pairs[0]["pairs"])
+        template_count = sample_count // args.prompt_mode_num
+        if args.calibration_prompts and args.calibration_prompts > template_count:
+            p.error(f"{case_id}: --prompt-mode {args.prompt_mode} provides at most {template_count} templates; "
+                    "reduce --calibration-prompts or omit it; use --prompt-mode-num to vary seeds.")
+        if args.vector_method == "robust" and settings["construction"]["groups"] > sample_count:
+            p.error(f"--robust-groups cannot exceed the number of template-seed samples ({sample_count}).")
+        if args.vector_method == "pca-filter" and args.pca_rank > sample_count:
+            p.error(f"--pca-rank cannot exceed the number of template-seed samples ({sample_count}).")
         identity = offline_identity(settings, sampling, pairs)
         collection_identity = {key: value for key, value in identity.items() if key != "construction"}
         case_root = args.run_root / args.model / case_id
@@ -392,9 +403,11 @@ def main(argv=None):
             if not args.dry_run and args.phase not in {"all", "fit"}:
                 p.error(f"No matching offline vector; run --phase fit with these settings first: {case_root}")
             parent = case_root / args.variant / "offline"
-            label = f"{sampling_label(sampling)}-pairs{len(pairs[0]['pairs'])}-seed{args.seed}"
+            label = f"{sampling_label(sampling)}-pairs{template_count}-seed{args.seed}"
             if args.prompt_mode != "casteer":
                 label += f"-prompts-{args.prompt_mode}"
+            if args.prompt_mode_num > 1:
+                label += f"-seeds{args.prompt_mode_num}"
             if args.construction_label:
                 label += f"-{args.construction_label}"
             directory = (parent / f"{label}-planned" if args.dry_run else

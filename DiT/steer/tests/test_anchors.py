@@ -20,7 +20,8 @@ class AnchorTests(unittest.TestCase):
     def pairs(self, settings):
         return [{"target": target, "anchor": anchor,
                  "pairs": run.prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"],
-                                           mode=settings.get("prompt_mode", "casteer"))}
+                                           mode=settings.get("prompt_mode", "casteer"),
+                                           repeats=settings.get("prompt_mode_num", 1), seed=settings["seed"])}
                 for target, anchor in zip(settings["targets"], settings["anchors"])]
 
     def test_custom_anchors_preserve_all_benchmark_records_and_protocols(self):
@@ -54,6 +55,41 @@ class AnchorTests(unittest.TestCase):
                     self.assertEqual(old_identity == new_identity, before["group"] == "i2p")
                     if before["group"] != "i2p":
                         self.assertEqual(new_pairs[0]["pairs"][0]["negative"], "tench")
+            self.assertFalse(root.exists())
+
+    def test_multiseed_pairs_and_sample_count_validation(self):
+        for mode in ("bare", "subject", "matched"):
+            with self.subTest(mode=mode):
+                templates = run.prompt_pairs("ip", "Pikachu", "Cartoon Character", mode=mode)
+                samples = run.prompt_pairs("ip", "Pikachu", "Cartoon Character", mode=mode, repeats=4, seed=7)
+                self.assertEqual(len(samples), 4 * len(templates))
+                for index, template in enumerate(templates):
+                    self.assertEqual(samples[index * 4:(index + 1) * 4],
+                                     [{**template, "seed": seed} for seed in range(7, 11)])
+                self.assertEqual(run.prompt_pairs("ip", "Pikachu", "Cartoon Character", mode=mode,
+                                                 repeats=1, seed=7), templates)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "runs"
+            for mode in ("bare", "subject", "matched"):
+                args, experiments = self.preview(root, "--prompt-mode", mode, "--prompt-mode-num", "4", "--seed", "7")
+                self.assertTrue(args.method.endswith(f"-prompts-{mode}-seeds4"))
+                for _, settings, configs in experiments:
+                    self.assertEqual(settings["prompt_mode_num"], 4)
+                    self.assertTrue(all(len(entry["pairs"]) == (4 if mode == "bare" else 32)
+                                        for entry in self.pairs(settings)))
+                    for cfg in configs:
+                        self.assertIn("-seeds4-", cfg["adapter"]["checkpoint"])
+            _, robust = self.preview(root, "--cases", "ip_pikachu", "--prompt-mode", "bare",
+                                     "--prompt-mode-num", "4", "--vector-method", "robust")
+            self.assertEqual(robust[0][1]["construction"]["groups"], 4)
+            self.preview(root, "--cases", "ip_pikachu", "--prompt-mode", "bare", "--prompt-mode-num", "4",
+                         "--vector-method", "pca-filter", "--pca-rank", "4")
+            for extra in (["--prompt-mode-num", "0"], ["--prompt-mode-num", "2"],
+                          ["--prompt-mode", "bare", "--prompt-mode-num", "2", "--seed", str(2**32 - 1)],
+                          ["--prompt-mode", "bare", "--prompt-mode-num", "4", "--calibration-prompts", "2"],
+                          ["--prompt-mode", "bare", "--prompt-mode-num", "4", "--vector-method", "pca-filter", "--pca-rank", "5"]):
+                with self.subTest(extra=extra), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    self.preview(root, "--cases", "ip_pikachu", *extra)
             self.assertFalse(root.exists())
             explicit, _ = self.preview(root, "--target-anchor-config", str(run.DIRECTORY / "conf.json"),
                                        "--method", "Anchor-ablation")
@@ -158,7 +194,10 @@ class AnchorTests(unittest.TestCase):
                  contextlib.redirect_stdout(io.StringIO()):
                 variants = [[], anchored, [], anchored, custom]
                 for mode in ("bare", "subject", "matched"):
-                    variants.extend([["--prompt-mode", mode], ["--prompt-mode", mode]])
+                    single = ["--prompt-mode", mode]
+                    multiple = [*single, "--prompt-mode-num", "3"]
+                    variants.extend([single, single, multiple, multiple, single,
+                                     [*multiple, "--seed", "7"], multiple])
                 for extra in variants:
                     self.assertEqual(run.main(base + extra), 0)
                 templates = read_json(run.DIRECTORY / "prompts/subject.json")
@@ -171,9 +210,19 @@ class AnchorTests(unittest.TestCase):
                 metadata = Path(calls[0]["checkpoint"]) / "metadata.json"
                 legacy = read_json(metadata)
                 legacy["settings"].pop("prompt_mode")
+                legacy["settings"].pop("prompt_mode_num")
                 write_json(metadata, legacy)
                 self.assertEqual(run.main(base), 0)
-            self.assertEqual(len(calls), 6)
+                # Earlier single-seed bare/subject/matched checkpoints are equivalent to num=1.
+                for call in calls:
+                    if call["settings"]["prompt_mode"] != "casteer" and call["settings"]["prompt_mode_num"] == 1:
+                        metadata = Path(call["checkpoint"]) / "metadata.json"
+                        legacy = read_json(metadata)
+                        legacy["settings"].pop("prompt_mode_num")
+                        write_json(metadata, legacy)
+                for mode in ("bare", "subject", "matched"):
+                    self.assertEqual(run.main(base + ["--prompt-mode", mode, "--prompt-mode-num", "1"]), 0)
+            self.assertEqual(len(calls), 12)
             self.assertNotEqual(calls[0]["checkpoint"], calls[1]["checkpoint"])
             saved = read_json(Path(calls[0]["checkpoint"]) / "metadata.json")
             self.assertEqual(saved["prompt_pairs"][0]["pairs"][0]["negative"], "tench")

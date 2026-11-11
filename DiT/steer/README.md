@@ -29,6 +29,8 @@
 |---|---|
 | `--steer-target text_to_image`（默认） | 在 image token 上修改经过输出投影的 `A_image,text V_text` |
 | `--steer-target text_value` | 直接修改 `add_v_proj` 得到的 `V_text`，然后交给原生 attention 使用 |
+| `--steer-target text_token` | joint attention 聚合后的全部 text token，拼接各 head 后、进入文本输出投影 `to_add_out` 前 |
+| `--steer-target text_token_output` | 上述 text token 经过 `to_add_out` 后的输出（包含原生 bias），尚未乘文本 gate、尚未与残差相加 |
 | `--steer-target attention_residual` | attention 更新与残差相加后，进入 MLP 的归一化和 modulation 之前；SD3.5 dual-attention 层包含两次 attention 更新 |
 | `--steer-target mlp_output` | 经过归一化、modulation、MLP 后的输出，尚未乘 `gate_mlp`、尚未加回残差 |
 | `--steer-target block_output` | MLP 输出乘 gate 并加回残差后的完整 block 输出 |
@@ -37,7 +39,7 @@
 | `--average-patches`（默认） | 对位置求均值，每层每步使用一个共享方向 |
 | `--no-average-patches` | 保留位置维度，每个位置使用自己的方向 |
 
-`text_to_image` 的位置是图像 patch；`text_value` 的位置是文本 token。
+`text_to_image` 的位置是图像 patch；`text_value`、`text_token`、`text_token_output` 的位置是文本 token。
 不做位置平均时，仍然跨 prompt 求均值，最后分别对每个位置的 channel 方向归一化。
 推理按同一位置对应使用向量；分辨率、文本序列长度沿用离线统计设置。
 不平均时，统计量和产物大小会随位置数增加。
@@ -47,6 +49,25 @@
 `--steer-token` 只影响这三个 target，原有 `text_to_image`、`text_value` 的作用对象保持原样。
 SD3 末层不再输出 text 状态：`text` 跳过该层，`all` 在该层仅处理 image。
 不平均时，末层缺失的 text 位置在统计张量中补零，但不参与干预或 score 汇总；metadata 的 `token_counts` 记录各层实际数量。
+
+两个 text-token target 固定作用于完整文本序列，不受 `--steer-token` 控制。
+`text_token` 收集并干预 `A_text,image V_image + A_text,text V_text`，其中 attention 权重来自原生 joint softmax；
+它包含图像 Value 和文本 Value 的完整聚合，不是 `V_text`，也不是只取文本到文本的部分。
+`text_token_output` 收集并干预原生 `to_add_out` 输出，与 `attention_residual --steer-token text` 的残差后位置不同。
+两者使用原生 attention 和投影，只在投影输入或输出挂 hook，不额外计算 attention，
+不直接修改本层的 image attention 输出；更新的文本状态可在后续层影响图像。
+末层 `context_pre_only` 不使用 text 输出且没有 `to_add_out`，两个 target 均跳过该层；
+对应统计与向量补零，score 报告排除该层。向量缓存和默认结果名按 target 分开。
+两者均支持位置平均/逐位置方向、现有向量构造、多概念、CFG 条件分支、随机方向、score 记录和额外 pooled 干预。
+
+```bash
+# attention 后、文本输出投影前
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip --steer-target text_token --offline
+# 文本输出投影后、gate 和残差之前
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip --steer-target text_token_output --offline
+```
+
+可添加 `--phase fit` 只构造向量，或添加 `--dry-run` 仅查看计划。
 
 `--steer-pool` 修改两个 CLIP pooled 输出拼接成的原始全局向量，在 `time_text_embed.text_embedder` 投影之前应用，
 随后仍按原生流程与 timestep embedding 相加，因此影响各层 modulation 和最终 `norm_out`。
@@ -251,7 +272,7 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --cases ip_pikachu --steer-target te
 ```
 
 添加 `--phase fit` 只构造向量；添加 `--dry-run` 只查看计划。
-上述配置同样支持两个 steer target、两种位置平均方式及全部四组 benchmark。
+上述配置同样支持全部 steer target、两种位置平均方式及全部四组 benchmark。
 不平均位置时，在每个位置分别应用同一公式；不会把位置和通道拼成一个向量。
 
 ## 1. 离线统计
@@ -273,7 +294,7 @@ vector = normalize(positive_mean - negative_mean, over channels)
 默认 `--prompt-mode casteer`，提示词模板与 CASteer 一致：IP/Object 为 `ImageNet 类名 with concept`，
 style 为 `ImageNet 类名, concept style`，默认各 50 对；I2P 为 15 类人物 × 14 类场景，
 共 210 对。默认负 prompt 只保留共享上下文；nudity 的负 prompt 额外包含 `clothed`。
-正负两侧使用相同 seed、相同初始噪声、相同原生调度器；统计时保留未干预轨迹。
+每个配对样本的正负两侧使用相同 seed、相同初始噪声、相同原生调度器；统计时保留未干预轨迹。
 执行所有去噪步，但 `output_type="latent"` 跳过 VAE 图像解码；不调用外部检测器或评价指标。
 
 ### 自定义 target / anchor 对照
@@ -381,17 +402,61 @@ bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode matched --
 ```
 
 `--calibration-prompts N` 选取模板顺序中的前 N 对。新模式省略该参数时分别使用
-1/8/8 对；超过模板总数会在入口报错，不重复相同提示词凑数量。
-纯概念词只有一对、一个固定 seed，适合先用默认均值差做对照。
-单对数据不能提供 PCA、稳健统计所需的多对变化；默认 `pca-filter --pca-rank 4`
-因此不适用于 `bare`，如需检查单方向退化情形应显式设 `--pca-rank 1`。
-`bare` 的自动 robust 分组数为 1，此时稳健聚合也退化为该单对差分。
+1/8/8 对；超过模板总数会在入口报错。
+
+### 每对提示词使用多个 seed
+
+`--prompt-mode-num R` 适用于 `bare`、`subject`、`matched`，表示每对模板使用
+R 个不同 seed 做离线采样，默认 `1`。第 r 次使用 `--seed + r`（r 从 0 开始）；
+例如 `--seed 7 --prompt-mode-num 4` 使用 7、8、9、10。
+同一次重复的正、负两侧共用该 seed 和初始噪声；不同模板使用同一组 seed。
+`casteer` 保持原有单 seed 方式，传入大于 1 的值会在入口报错。
+
+这种统计覆盖同一文本条件下的不同生成轨迹，减少向量被某个噪声样本、布局或细节主导的机会。
+它增加的是轨迹多样性，模板决定的语义覆盖范围仍相同。
+固定提示词、时间步和模型时，原始文本编码、pooled embedding 以及首层 `text_value`
+不依赖图像初始噪声；这些位置不会因增加 seed 获得新的特征变化。
+后续 joint attention 的文本状态及文本对图像的贡献会与图像轨迹发生交互，因而可以获得变化。
+最终擦除和保留效果仍通过实验评测。
+
+设模板数为 M、每对重复 R 次，中间特征为 H，每个样本独立计算：
+
+```text
+d[m, r] = H(positive[m], seed+r) - H(negative[m], seed+r)
+vector = normalize(mean(d[m, r], over all M*R samples))  # 默认均值差
+```
+
+归一化差分、PCA、PCA-filter、稳健统计都直接使用全部 `M*R` 个差分，
+不会先对同一模板的不同 seed 求均值再构造向量。PCA rank、robust 分组数按总样本数校验。
+例如 `bare --prompt-mode-num 10` 可配合 `--pca-rank 4`，但重复不能保证产生四个独立方向。
+`bare` 使用默认单次采样时仍只有一个差分；此时 robust 分组数自动为 1，PCA-filter 需设 rank=1。
+
+| 配置（每个概念） | 模板数 M | 差分样本数 | 完整去噪次数 |
+|---|---:|---:|---:|
+| `bare --prompt-mode-num 10` | 1 | 10 | 20 |
+| `subject --prompt-mode-num 10` | 8 | 80 | 160 |
+| `matched --prompt-mode-num 10` | 8 | 80 | 160 |
+
+完整去噪仅收集中间特征，仍跳过 VAE 解码。运行时间及逐样本差分磁盘占用随 R 线性增加。
+
+```bash
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode bare --prompt-mode-num 10 --seed 0 --offline
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode subject --prompt-mode-num 10 --seed 0 --offline
+bash /home/shx/code/ce-new/DiT/steer/run.sh --cases all --prompt-mode matched --prompt-mode-num 10 --seed 0 --offline
+```
+
+`metadata.json` 的 `prompt_pairs` 按“模板优先、seed 次之”记录全部采样对；R 大于 1 时，
+每一项包含 `positive`、`negative`、`seed`。`pair-0001.pt` 等逐样本差分与列表顺序对应，
+token 和可选 pooled 统计采用相同索引。R=1 保留旧提示词记录格式。
 
 新模式在默认结果名及新离线目录标签中追加 `-prompts-bare`、`-prompts-subject` 或
 `-prompts-matched`。缓存包含模式与实际正负提示词，不会在不同模式之间混用；
 旧 metadata 未记录模式时按 `casteer` 处理，继续复用配置一致的旧向量。
+R 大于 1 时，结果名及新离线目录追加 `-seeds<R>`，例如 `-prompts-bare-seeds10`。
+缓存同时匹配 R、起始 seed 和实际采样对，改变 R 会匹配新的统计；
+旧 metadata 未记录 `prompt_mode_num` 时按 1 处理，继续复用已有单 seed 结果。
 两种 steering 位置、两种位置平均方式以及现有四类向量构造都可与这些模式组合使用，
-PCA rank 与 robust 分组数仍须不超过实际对数。benchmark 评测提示词与采样协议不变。
+PCA rank 与 robust 分组数须不超过实际模板与 seed 组合的样本数。benchmark 评测提示词与采样协议不变。
 
 离线向量按配置缓存。每次运行先在当前 `--run-root` 的对应 model/case 下查找完整匹配的
 `metadata.json` 和 `steering.pt`，命中后直接复用；配置变化时自动另存，切回旧配置会再次命中。
@@ -410,7 +475,7 @@ runs/<model>/<case>/<steer_target>-<mean 或 per-position>/offline/
 
 启用任一改进后，首次统计另外保存
 `checkpoint/paired_differences/<concept>/pair-0001.pt`，每个文件是一个 prompt 对的
-`[step, layer, channel]` 或 `[step, layer, position, channel]` 差分。
+`[step, layer, channel]` 或 `[step, layer, position, channel]` 差分；多 seed 时每个模板、每个 seed 各一份。
 后续改变构造方法、归一化开关、分组参数或 PCA rank 时，会查找相同采样配置的这些差分，
 打印 `[fit:reconstruct]`，直接重算向量，不加载 DiT 或重新采样。
 匹配的最终向量仍打印 `[fit:reuse]`。
@@ -457,6 +522,8 @@ V_text_new = features_new                                  # text_value
 hooks 保留原生 attention processor 和模型权重。
 `text_to_image` 只将 cross 分量的变化加到图像输出，不直接修改文本输出或 `attn2`；
 `text_value` 只在文本 Value 投影处干预，原生 attention 将其变化传递给图像和文本输出。
+`text_token` 在完整文本 attention 聚合结果进入 `to_add_out` 前干预；
+`text_token_output` 在该投影后干预，随后才由原生 block 执行文本 gate 与残差相加。
 存在 CFG 时，只直接修改 conditional 半个 batch；guidance≤1 时处理全部样本。
 
 ## 安装与运行

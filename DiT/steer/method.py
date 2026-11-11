@@ -105,27 +105,27 @@ def steer_output(output, vectors, beta=-2.0, clipping=True, *, score_gate=True, 
     return current
 
 
-def prompt_pairs(group, target, anchor, count=None, *, mode="casteer"):
+def prompt_pairs(group, target, anchor, count=None, *, mode="casteer", repeats=1, seed=0):
     """Build matched text pairs, using the same context on both sides.
 
     bare uses literal concept names once. subject adds short wrappers. matched
     keeps an explicit scene or painting subject. An empty anchor removes the
-    entire concept suffix; bare then has an empty negative prompt.
+    entire concept suffix; bare then has an empty negative prompt. With multiple
+    repeats, each returned pair records its seed for matched positive/negative
+    sampling. A single repeat retains the legacy metadata representation.
     """
     if mode == "bare":
-        return [{"positive": target, "negative": anchor}]
+        pairs = [{"positive": target, "negative": anchor}]
 
-    if mode in {"subject", "matched"}:
+    elif mode in {"subject", "matched"}:
         templates = read_json(Path(__file__).with_name("prompts") / f"{mode}.json")
         template = templates[group if group in {"i2p", "style"} else "ip_object"]
         suffix = template["suffix"]
         pairs = [{"positive": context + suffix.format(concept=target),
                   "negative": context + suffix.format(concept=anchor) if anchor else context}
                  for context in template["contexts"]]
-        return pairs[:count]
-
-    # Keep the original CASteer templates and ordering for existing caches.
-    if group == "i2p":
+    elif group == "i2p":
+        # Keep the original CASteer templates and ordering for existing caches.
         people = ["a girl", "a boy", "two men", "two women", "two people", "a man", "a woman",
                   "an old man", "an old woman", "boys", "girls", "men", "women", "group of people", "a human"]
         scenes = ["", "gloomy image", "zoomed in", "talking", "on the street", "in a strange pose",
@@ -141,13 +141,18 @@ def prompt_pairs(group, target, anchor, count=None, *, mode="casteer"):
         negative_suffix = (f", {anchor} style" if group == "style" else f" with {anchor}") if anchor else ""
         pairs = [{"positive": name + suffix, "negative": name + negative_suffix} for name in classes]
         count = count or 50
-    return pairs[:count]
+    pairs = pairs[:count]
+    if repeats > 1:
+        pairs = [{**pair, "seed": seed + repeat} for pair in pairs for repeat in range(repeats)]
+    return pairs
 
 
 class SD3Steering:
     """Own the hooks and per-step state shared by collection and intervention.
 
     text_value edits V_text at add_v_proj, before attention reads it.
+    text_token and text_token_output edit the full text attention result before
+    and after to_add_out, respectively, before text gating and residual addition.
     text_to_image edits only W_out * A_image,text * V_text, retaining the native
     joint softmax denominator, image-value contribution and projection bias.
     The three block sites select image/text/both streams at a residual or MLP
@@ -259,6 +264,32 @@ class SD3Steering:
             self.samples += 1
 
     def _register_block(self, attn, layer):
+        if self.steer_target in {"text_token", "text_token_output"}:
+            # The final context_pre_only block discards its text output and has
+            # no to_add_out. Keep its statistics zero, as for text block sites.
+            if attn.context_pre_only:
+                return
+
+            def steer_text(features):
+                self.token_counts[layer] = (0, features.shape[1])
+                return self._collect_or_steer(features, layer)
+
+            if self.steer_target == "text_token":
+                def before_projection(module, args):
+                    updated = steer_text(args[0])
+                    # Preserve the native strided text view on no-op runs.
+                    if self.collecting or self.beta == 0:
+                        return
+                    return (updated, *args[1:])
+
+                self.handles.append(attn.to_add_out.register_forward_pre_hook(before_projection))
+            else:
+                def after_projection(module, args, output):
+                    return steer_text(output)
+
+                self.handles.append(attn.to_add_out.register_forward_hook(after_projection))
+            return
+
         if self.steer_target == "text_value":
             def steer_values(module, args, output):
                 return self._collect_or_steer(output, layer)
@@ -414,7 +445,8 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
     try:
         for target, anchor in zip(settings["targets"], settings["anchors"]):
             pairs = prompt_pairs(settings["group"], target, anchor, settings["calibration_prompts"],
-                                 mode=settings.get("prompt_mode", "casteer"))
+                                 mode=settings.get("prompt_mode", "casteer"),
+                                 repeats=settings.get("prompt_mode_num", 1), seed=settings["seed"])
             pairs_by_concept.append({"target": target, "anchor": anchor, "pairs": pairs})
             if paired:
                 for prefix in prefixes:
@@ -426,11 +458,12 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
                 try:
                     total = {}
                     for index, pair in enumerate(pairs):
+                        pair_seed = pair.get("seed", settings["seed"])
                         hooks.reset(clear_statistics=paired)
-                        latent = initial_noise(shape, settings["seed"], dtype=sampler.dtype, device="cpu")
+                        latent = initial_noise(shape, pair_seed, dtype=sampler.dtype, device="cpu")
                         pipe(prompt=[pair[side]], negative_prompt=[opts.get("negative_prompt") or ""],
                              latents=latent.unsqueeze(0).to(sampler.device),
-                             generator=torch.Generator("cpu").manual_seed(settings["seed"]),
+                             generator=torch.Generator("cpu").manual_seed(pair_seed),
                              height=opts["height"], width=opts["width"], num_inference_steps=opts["steps"],
                              guidance_scale=opts["guidance_scale"], max_sequence_length=opts["max_sequence_length"],
                              output_type="latent")
@@ -447,7 +480,7 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
                                     torch.save(positive_sample - statistic, pair_directory / f"pair-{index + 1:04d}.pt")
                                     del positive_sample
                                     positive_path.unlink()
-                        print(f"[fit:{target}:{side}] {index + 1}/{len(pairs)}", flush=True)
+                        print(f"[fit:{target}:{side}] {index + 1}/{len(pairs)} seed={pair_seed}", flush=True)
                     for prefix in prefixes:
                         statistic = hooks.pool_sum if prefix else hooks.sums
                         means[prefix][side].append(total[prefix] / len(pairs) if paired else statistic / hooks.samples)
@@ -466,7 +499,7 @@ def fit(checkpoint, settings, config, statistics_checkpoint=None):
             "settings": settings, "sampling": opts, "prompt_pairs": pairs_by_concept,
             "shape": ("concept, step, layer, channel" if settings["average_patches"] else
                       "concept, step, layer, position, channel"),
-            "position_axis": ("text token" if settings["steer_target"] == "text_value" else
+            "position_axis": ("text token" if settings["steer_target"] in {"text_value", "text_token", "text_token_output"} else
                               settings.get("steer_token", "image") + " token"),
             "token_counts": token_counts,
             **({"pool_shape": "concept, channel", "pool_intervention": "raw pooled embedding before text projection"} if steer_pool else {}),
@@ -524,8 +557,9 @@ class SteerAdapter:
                                (root / "text", scores[:, :, text_layers, :, image_count:], "text", text_layers)])
             else:
                 kind = (self.hooks.steer_token if block_target else
-                        "text" if self.hooks.steer_target == "text_value" else "image")
-                layers = text_layers if block_target and kind == "text" else None
+                        "text" if self.hooks.steer_target in {"text_value", "text_token", "text_token_output"} else "image")
+                layers = text_layers if ((block_target and kind == "text") or
+                                         self.hooks.steer_target in {"text_token", "text_token_output"}) else None
                 traces.append((root, scores[:, :, layers] if layers is not None else scores, kind, layers))
             if self.hooks.steer_pool:
                 traces.append((root / "pool", self.hooks.pool_scores.cpu(), "pool", ["global"]))
