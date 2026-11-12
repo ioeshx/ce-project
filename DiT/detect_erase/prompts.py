@@ -23,6 +23,15 @@ def cfg_loss(positive, anchor, negative, scale):
     return F.mse_loss(guided, anchor.float())
 
 
+def load_concept_prompts(checkpoints):
+    """Combine only the requested per-concept files in memory."""
+    prompts = {}
+    for item in checkpoints:
+        entry = torch.load(item["checkpoint"], map_location="cpu", weights_only=True)
+        prompts.setdefault(item["target"], {}).update(entry)
+    return prompts
+
+
 class PromptModel(DiTAdapter):
     """Share native model loading between prompt training and benchmark sampling."""
 
@@ -37,8 +46,7 @@ class PromptModel(DiTAdapter):
         for component in self.pipe.components.values():
             if isinstance(component, torch.nn.Module):
                 component.eval().requires_grad_(False)
-        self.bank = (torch.load(self.options["checkpoint"], map_location="cpu", weights_only=True)
-                     if self.options.get("checkpoint") else None)
+        self.prompts = load_concept_prompts(self.options.get("checkpoints", []))
 
     @torch.no_grad()
     def encode(self, texts, *, clip_only=False):
@@ -117,12 +125,13 @@ class PromptModel(DiTAdapter):
         """Select learned negative embeddings once per user prompt."""
         sequence, pooled = condition
         targets = self.config["targets"]
-        entries = [self.bank["concepts"][target] for target in targets]
+        entries = [self.prompts[target] for target in targets]
         device = pooled.device
         if self.options["similarity"] == "cosine":
             prototypes = torch.cat([entry["detect_pooled"] for entry in entries]).to(device)
             scores = F.normalize(pooled.float(), dim=-1) @ F.normalize(prototypes.float(), dim=-1).T
-            hits = scores >= self.options["tau"]
+            thresholds = torch.tensor([entry["tau"] for entry in entries], device=device)
+            hits = scores >= (self.options["tau"] if self.options["tau"] is not None else thresholds)
             best = scores.argmax(dim=1)
         else:
             distances = []
@@ -176,33 +185,3 @@ class PromptModel(DiTAdapter):
                                              "concept": record.get("concept", ""),
                                              "seed": record["seed"], **decision}, ensure_ascii=False) + "\n")
         return images
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Merge independently trained detect and erase checkpoints.")
-    parser.add_argument("--run-dir", type=Path, required=True)
-    args = parser.parse_args()
-    directory = args.run_dir.expanduser().resolve()
-    detect_checkpoint = directory / "train_detect" / "prompts.pt"
-    erase_checkpoint = directory / "train_erase" / "prompts.pt"
-    detector = torch.load(detect_checkpoint, map_location="cpu", weights_only=True)
-    eraser = torch.load(erase_checkpoint, map_location="cpu", weights_only=True)
-    if (any(detector["config"][key] != eraser["config"][key] for key in ("model_name", "base_model"))
-            or any(detector["config"]["sampling"].get(key) != eraser["config"]["sampling"].get(key)
-                   for key in ("max_sequence_length", "dtype", "model_revision"))):
-        parser.error("Both checkpoints must use the same model, text length, dtype and revision.")
-    incomplete = [target for target, entry in eraser["concepts"].items()
-                  if not entry.get("erase_trained") or not detector["concepts"].get(target, {}).get("detect_trained")]
-    if incomplete:
-        parser.error(f"Missing completed detect/erase prompts: {', '.join(incomplete)}")
-    for target, entry in eraser["concepts"].items():
-        entry.update({key: value for key, value in detector["concepts"][target].items()
-                      if key.startswith("detect_") or key in {"tau", "temperature"}})
-    eraser.update(tau=detector["tau"], temperature=detector["temperature"], detect_loss=detector["detect_loss"],
-                  prompt_sources={"detect": str(detect_checkpoint), "erase": str(erase_checkpoint)})
-    from DiT.detect_erase.outputs import update_run
-    torch.save(eraser, directory / "prompts.pt")
-    update_run(directory, eraser["config"]["model_name"], checkpoint=str(directory / "prompts.pt"))
-    print(f"Merged {len(eraser['concepts'])} concepts: {directory / 'prompts.pt'}", flush=True)

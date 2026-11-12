@@ -3,7 +3,7 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 import sys
 
-from benchmark.common import locked, read_json, write_json
+from benchmark.common import concept_key, locked, merge, read_json, slug, write_json
 from benchmark.layout import timestamp, unique_directory
 
 HERE = Path(__file__).resolve().parent
@@ -22,15 +22,21 @@ def update_run(directory, model, **changes):
     with locked(directory / ".run.lock"):
         path = directory / "run.json"
         info = read_json(path) if path.exists() else {
-            "schema": "detect-erase-run-v1", "model_name": model, "training": {}, "manifests": {}}
+            "schema": "detect-erase-run-v2", "model_name": model, "config": {}, "training": {}, "manifests": {}}
         if info["model_name"] != model:
             raise ValueError(f"Run belongs to {info['model_name']}, not {model}.")
-        for key, value in changes.items():
-            if isinstance(value, dict):
-                info[key] = {**info.get(key, {}), **value}
-            else:
-                info[key] = value
+        info = merge(info, changes)
         write_json(path, info, portable=True)
+
+
+def prompt_checkpoint(directory, stage, target):
+    name = slug(concept_key(target)).replace("-", "_")
+    return Path(directory) / f"train_{stage}" / f"{name}.pt"
+
+
+def concept_checkpoints(directory, targets):
+    return [{"target": target, "stage": stage, "checkpoint": str(prompt_checkpoint(directory, stage, target))}
+            for target in targets for stage in ("detect", "erase")]
 
 
 class Tee:

@@ -40,9 +40,6 @@ ERASE_PID=$!
 wait "$DETECT_PID"
 wait "$ERASE_PID"
 
-# 合并真实训练得到的两种 prompt
-python -m DiT.detect_erase.prompts --run-dir "$RUN_ROOT"
-
 SAMPLE_ARGS=(
   --run-dir "$RUN_ROOT"
   --phase all

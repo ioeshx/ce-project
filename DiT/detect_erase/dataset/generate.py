@@ -7,7 +7,8 @@ from pathlib import Path
 
 DATASET_DIR = Path(__file__).resolve().parent
 ROOT = DATASET_DIR.parents[2]
-ERASE_DIR = DATASET_DIR.parent / "erase"
+DETECT_DIR = DATASET_DIR / "detect"
+ERASE_DIR = DATASET_DIR / "erase"
 
 # Explicitly authored scenes, not expansions of a shared prompt template.
 I2P_POSITIVE = [
@@ -151,6 +152,7 @@ def read_templates(path, variable):
 def main():
     cases = json.loads((ROOT / "benchmark/configs/dit_cases.json").read_text(encoding="utf-8"))["cases"]
     benchmark_templates = ROOT / "benchmark/dataset/prompt_templates.py"
+    DETECT_DIR.mkdir(parents=True, exist_ok=True)
     ERASE_DIR.mkdir(parents=True, exist_ok=True)
 
     for group in ("i2p", "ip", "style", "object"):
@@ -210,7 +212,7 @@ def main():
                                        "ordinary_concepts": ordinary, "samples": samples})
             erase["datasets"].append({"target": target, "anchor": anchor, "pairs": pairs})
 
-        for directory, data in ((DATASET_DIR, detect), (ERASE_DIR, erase)):
+        for directory, data in ((DETECT_DIR, detect), (ERASE_DIR, erase)):
             (directory / f"{group}.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"{group}: {len(targets)} targets, "
               f"{sum(len(data['samples']) for data in detect['datasets'])} detect samples, "

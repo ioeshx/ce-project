@@ -114,6 +114,9 @@ def adapter_identity(config):
         p = Path(path).resolve()
         files = [p] if p.is_file() else sorted(x for x in p.rglob("*") if x.is_file())
         spec["files"] = [[str(x.relative_to(p) if p.is_dir() else x.name), file_digest(x)] for x in files]
+    if spec.get("checkpoints"):
+        spec["files"] = [[f"{Path(item['checkpoint']).parent.name}/{Path(item['checkpoint']).name}",
+                          file_digest(item["checkpoint"])] for item in spec["checkpoints"]]
     return spec
 
 

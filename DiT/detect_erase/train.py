@@ -18,7 +18,7 @@ from benchmark.common import configuration, read_json, slug, write_json
 from benchmark.dit_cases import definitions, select_cases
 from benchmark.model_profiles import DIT_MODELS
 from benchmark.sampling_time import cuda_devices, synchronize
-from DiT.detect_erase.outputs import run_directory, run_log, update_run
+from DiT.detect_erase.outputs import prompt_checkpoint, run_directory, run_log, update_run
 from DiT.detect_erase.prompts import PromptModel, cfg_loss, classification_loss
 
 HERE = Path(__file__).resolve().parent
@@ -213,18 +213,18 @@ def main(argv=None):
     parser.add_argument("--cases", default="all")
     parser.add_argument("--targets", nargs="+", help='Optional subset, e.g. --targets nudity "Van Gogh"')
     parser.add_argument("--stage", choices=("all", "detect", "erase"), default="all")
-    parser.add_argument("--checkpoint", type=Path, help="Optional existing prompts.pt to continue either training stage")
-    parser.add_argument("--detect-loss", choices=("clip", "velocity"), help="Default: clip, or the checkpoint setting")
+    parser.add_argument("--resume", action="store_true", help="Continue selected concept files in --run-dir with a fresh optimizer")
+    parser.add_argument("--detect-loss", choices=("clip", "velocity"), help="Default: clip, or the saved training setting")
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--max-steps", "--steps", type=int, default=2000, help="Optimizer updates per target/stage; 0 disables the cap")
     parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--tau", type=float, help="Default: 0.2, or the checkpoint setting")
-    parser.add_argument("--temperature", type=float, help="Default: 0.1, or the checkpoint setting")
+    parser.add_argument("--tau", type=float, help="Default: 0.2, or the saved training setting")
+    parser.add_argument("--temperature", type=float, help="Default: 0.1, or the saved training setting")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--limit-prompts", type=int, help="Use first N rows of each training stage for a quick run")
-    parser.add_argument("--dataset-dir", type=Path, default=HERE / "dataset")
-    parser.add_argument("--erase-dir", type=Path, default=HERE / "erase")
+    parser.add_argument("--dataset-dir", type=Path, default=HERE / "dataset/detect", help="Detect JSON directory")
+    parser.add_argument("--erase-dir", type=Path, default=HERE / "dataset/erase", help="Erase JSON directory")
     parser.add_argument("--run-dir", type=Path, help="Exact experiment directory shared by both training stages and sampling")
     parser.add_argument("--output-dir", type=Path, default=HERE / "results", help="Parent for a new model-time experiment directory")
     parser.add_argument("--sampling-steps", type=int, help="Denoising steps in each teacher trajectory")
@@ -248,11 +248,15 @@ def main(argv=None):
         from importlib.util import find_spec
         if find_spec("swanboard") is None:
             parser.error("Local SwanLab requires: pip install 'swanlab[dashboard]'; or use --swanlab-mode offline.")
-    bank = (torch.load(args.checkpoint, map_location="cpu", weights_only=True) if args.checkpoint else
-            {"schema": "detect-erase-prompts-v1", "concepts": {}})
-    args.detect_loss = args.detect_loss or bank.get("detect_loss", "clip")
-    args.tau = bank.get("tau", 0.2) if args.tau is None else args.tau
-    args.temperature = bank.get("temperature", 0.1) if args.temperature is None else args.temperature
+    if args.resume and args.run_dir is None:
+        parser.error("--resume requires --run-dir.")
+    directory = args.run_dir.expanduser().resolve() if args.run_dir else None
+    info = read_json(directory / "run.json") if directory and (directory / "run.json").exists() else {}
+    saved_detect = directory / "train_detect/training.json" if directory else None
+    defaults = read_json(saved_detect) if saved_detect and saved_detect.exists() else {}
+    args.detect_loss = args.detect_loss or defaults.get("detect_loss", "clip")
+    args.tau = defaults.get("tau", 0.2) if args.tau is None else args.tau
+    args.temperature = defaults.get("temperature", 0.1) if args.temperature is None else args.temperature
     if (args.learning_rate <= 0 or args.epochs <= 0 or args.max_steps < 0 or args.batch_size <= 0
             or args.temperature <= 0 or not -1 <= args.tau <= 1
             or (args.limit_prompts is not None and args.limit_prompts <= 0)):
@@ -265,6 +269,12 @@ def main(argv=None):
         if set(args.targets) - {target for _, target in wanted}:
             parser.error("--targets must belong to the selected benchmark cases.")
         wanted = [(group, target) for group, target in wanted if target in args.targets]
+    stages = ("detect", "erase") if args.stage == "all" else (args.stage,)
+    existing = {(stage, target): prompt_checkpoint(directory, stage, target)
+                for stage in stages for _, target in wanted
+                if directory and prompt_checkpoint(directory, stage, target).exists()}
+    if existing and not args.resume:
+        parser.error("Selected concept files already exist; start a new run, or use --resume to continue them.")
 
     sampling = dict(device=args.device, batch_size=args.batch_size, local_files_only=args.offline,
                     device_map=args.device_map, max_memory=args.max_memory)
@@ -273,18 +283,20 @@ def main(argv=None):
             sampling[field] = getattr(args, field)
     if args.sampling_steps is not None:
         sampling["steps"] = args.sampling_steps
-    model_name = args.model or bank.get("config", {}).get("model_name", "sd35_medium")
+    configs = info.get("config", {})
+    previous = configs.get("erase" if args.stage == "all" else args.stage) or next(iter(configs.values()), {})
+    model_name = args.model or info.get("model_name", "sd35_medium")
     if model_name.startswith("flux1_"):
-        sampling.setdefault("true_cfg_scale", bank.get("config", {}).get("sampling", {}).get("true_cfg_scale", 2.0))
-    base = copy.deepcopy(bank.get("config", {}))
+        sampling.setdefault("true_cfg_scale", previous.get("sampling", {}).get("true_cfg_scale", 2.0))
+    base = copy.deepcopy(previous)
     base.update(model_name=model_name, adapter={"kind": "original"})
     if args.base_model:
         base["base_model"] = args.base_model
-    if args.checkpoint and (model_name != bank["config"]["model_name"]
-                           or args.base_model and args.base_model != bank["config"]["base_model"]
-                           or args.max_sequence_length is not None
-                           and args.max_sequence_length != bank["config"]["sampling"]["max_sequence_length"]):
-        parser.error("An existing prompt checkpoint requires the same model and max-sequence-length.")
+    if previous and (model_name != previous["model_name"]
+                     or args.base_model and args.base_model != previous["base_model"]
+                     or any(getattr(args, key) is not None and getattr(args, key) != previous["sampling"][key]
+                            for key in ("max_sequence_length", "dtype"))):
+        parser.error("Concept files in one run require the same model, text length and dtype.")
     base["sampling"] = {**base.get("sampling", {}), **sampling}
     config = configuration(task="i2p", base=base)
     scale = config["sampling"]["true_cfg_scale"] if model_name.startswith("flux1_") else config["sampling"]["guidance_scale"]
@@ -295,15 +307,11 @@ def main(argv=None):
         detect_data.update({data["target"]: data for data in read_json(args.dataset_dir / f"{group}.json")["datasets"]})
         erase_data.update({data["target"]: data for data in read_json(args.erase_dir / f"{group}.json")["datasets"]})
 
-    directory = run_directory(model_name, args.run_dir, args.output_dir)
+    directory = run_directory(model_name, directory, args.output_dir)
     config.update(output_dir=str(directory), result_layout="flat")
-    stages = ("detect", "erase") if args.stage == "all" else (args.stage,)
-    if not args.checkpoint and any((directory / f"train_{stage}" / "training.json").exists() for stage in stages):
-        parser.error("This stage already exists; start a new run, or use --checkpoint to continue training.")
     for stage in stages:
         stage_dir = directory / f"train_{stage}"
         stage_dir.mkdir(exist_ok=True)
-        update_run(directory, model_name, training={stage: str(stage_dir / "prompts.pt")})
         write_json(stage_dir / "training.json", {
             **{key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
             "stage": stage, "run_dir": str(directory)})
@@ -315,17 +323,19 @@ def main(argv=None):
                 tracker.devices = cuda_devices(model, model.config["sampling"])
             if args.gradient_checkpointing:
                 model.pipe.transformer.enable_gradient_checkpointing()
-            bank.update(config=model.config, tau=args.tau, temperature=args.temperature, detect_loss=args.detect_loss)
+            update_run(directory, model_name, config={stage: model.config})
             null = model.encode([""])
             for group, target in wanted:
-                if target not in bank["concepts"]:
+                checkpoint = prompt_checkpoint(directory, stage, target)
+                if (stage, target) in existing:
+                    entry = torch.load(existing[stage, target], map_location="cpu", weights_only=True)
+                else:
+                    entry = {"schema": "detect-erase-concept-v1", "target": target, "stage": stage, "group": group}
+                if stage == "detect" and "detect_pooled" not in entry:
                     concept = model.encode([target])
-                    bank["concepts"][target] = {
-                        "group": group, "detect_sequence": concept[0].float().cpu(), "detect_pooled": concept[1].float().cpu(),
-                        "erase_sequence": null[0].float().cpu(), "erase_pooled": null[1].float().cpu(),
-                        "detect_trained": False, "erase_trained": False,
-                    }
-                entry = bank["concepts"][target]
+                    entry.update(detect_sequence=concept[0].float().cpu(), detect_pooled=concept[1].float().cpu())
+                if stage == "erase" and "erase_pooled" not in entry:
+                    entry.update(erase_sequence=null[0].float().cpu(), erase_pooled=null[1].float().cpu())
                 if stage == "detect":
                     pooled = torch.nn.Parameter(entry["detect_pooled"].to(model.device).clone())
                     rows = detect_data[target]["samples"]
@@ -344,22 +354,18 @@ def main(argv=None):
                     rows = erase_data[target]["pairs"][:args.limit_prompts]
                     updates = train_velocity(model, (sequence, pooled), rows, args, tracker, target, stage)
                     entry["erase_sequence"], entry["erase_pooled"] = sequence.detach().cpu(), pooled.detach().cpu()
-                entry[f"{stage}_trained"] = True
                 entry[f"{stage}_updates"] = updates
                 entry[f"{stage}_samples"] = len(rows)
                 if stage == "detect":
                     entry.update(detect_loss=args.detect_loss, tau=args.tau, temperature=args.temperature)
                 else:
                     entry["cfg_scale"] = scale
-                torch.save(bank, stage_dir / "prompts.pt")
-                print(f"[{target}:{stage}] completed {updates} updates", flush=True)
+                torch.save(entry, checkpoint)
+                update_run(directory, model_name, training={stage: {target: str(checkpoint)}})
+                print(f"[{target}:{stage}] completed {updates} updates; checkpoint: {checkpoint}", flush=True)
             model.close()
-            if all(entry.get("detect_trained") and entry.get("erase_trained") for entry in bank["concepts"].values()):
-                torch.save(bank, directory / "prompts.pt")
-                update_run(directory, model_name, checkpoint=str(directory / "prompts.pt"))
             if tracker:
                 tracker.finish()
-            print(f"Checkpoint: {stage_dir / 'prompts.pt'}", flush=True)
     print(f"Run: {directory}", flush=True)
 
 

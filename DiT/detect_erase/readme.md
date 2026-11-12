@@ -53,8 +53,8 @@ epoch 和更新次数上限先到者结束训练。CLIP 检测有 50 条文本�
 - **数据**：直接使用已有 detect / erase JSON。非 i2p 的数据 anchor 是 `template.format("")`，不等于整条空文本；erase prompt 自身仍由整条空文本编码初始化。测试模板按本次要求直接用于训练。
 - **相似度**：默认 `--similarity cosine`，只比较 CLIP pooled；`--similarity l2` 比较完整序列和 pooled，计算全部元素的 RMS 距离，距离不超过 `--l2-threshold 0.2` 时触发。完整 detect 条件的序列固定为概念编码，只有 pooled 被学习。
 - **多概念**：默认 `--multi-concept top1`，在达到阈值的概念中选择最高余弦／最低距离的一项；`mean` 对所有触发概念的 erase 条件取平均。
-- **训练配置**：`--stage all/detect/erase`、`--cases`、`--targets`、`--limit-prompts`；`--checkpoint` 从已有 prompt 参数继续训练，重新创建优化器。Detect 和 erase 可分别从初始化独立训练，完成后合并 checkpoint。
-- **保存**：一次实验共用 `results/<模型>-<开始时间>/`。`--run-dir` 指定该根目录；不传时训练自动创建新目录。重新训练新建根目录，续跑复用原目录。每个概念阶段完成后保存 checkpoint。
+- **训练配置**：`--stage all/detect/erase`、`--cases`、`--targets`、`--limit-prompts`；`--resume --run-dir ...` 读取选中概念各自的文件继续训练，重新创建优化器；尚无文件的概念从初始化开始。Detect 和 erase 分别独立训练，采样直接按需加载。
+- **保存**：一次实验共用 `results/<模型>-<开始时间>/`。`--run-dir` 指定该根目录；不传时训练自动创建新目录。重新训练新建根目录，续跑复用原目录。每完成一个概念立即保存其独立 checkpoint，不重写其他概念文件。
 - **Benchmark**：默认生成后计算指标；`--phase sample` 只生成，`--phase evaluate` 只评测已有实验，不加载生成模型或 prompt 权重。I2P 使用 NudeNet（Q16 可选），IP/style 使用 CS、FID 和 VLM 分类，object 使用 ResNet Top1/Top3。
 - **参考图**：直接复用 `benchmark/original/<模型>/` 中 prompt、种子和完整采样配置一致的图片，仅补齐缺失或损坏的图片。
 - **并发**：两张卡共用同一 `--run-dir`，分别写各自训练阶段和实验；根目录配置、指标和触发汇总使用文件锁合并。
@@ -64,13 +64,16 @@ epoch 和更新次数上限先到者结束训练。CLIP 检测有 50 条文本�
 
 ```text
 results/sd35_medium-20261112-024437/
-├── prompts.pt                       # 合并后供采样使用
-├── run.json                         # 模型、训练 checkpoint、实验列表
+├── run.json                         # 各阶段模型配置、逐概念 checkpoint 索引、实验列表
 ├── metrics.csv/json                 # 所有 case 的最新评测汇总
 ├── trigger_summary.csv/json         # 所有 case 的触发汇总
 ├── sampling_time.csv/json           # 各 case 最近一次采样时间
 ├── train_detect/
-│   ├── prompts.pt
+│   ├── nudity.pt
+│   ├── pikachu.pt
+│   ├── snoopy.pt
+│   ├── van_gogh.pt
+│   ├── ...                          # 每个概念一个文件，空格转为下划线
 │   ├── training.json
 │   ├── loss.csv                     # --track 时保存
 │   ├── epochs.csv
@@ -102,7 +105,7 @@ results/sd35_medium-20261112-024437/
 └── swanlog/                         # 所有阶段的 SwanLab 记录
 ```
 
-完整双卡实验：GPU 0 训练 detect，GPU 1 训练 erase；合并后，GPU 0 跑 i2p/style，GPU 1 跑 ip/object。脚本创建一次实验根目录，开启全部追踪：
+完整双卡实验：GPU 0 训练 detect，GPU 1 训练 erase；两边完成后，GPU 0 跑 i2p/style，GPU 1 跑 ip/object。脚本创建一次实验根目录，开启全部追踪：
 
 ```bash
 bash DiT/detect_erase/all.sh
@@ -117,13 +120,22 @@ python DiT/detect_erase/train.py --run-dir "$RUN_DIR" --model sd35_medium --stag
 python DiT/detect_erase/sample.py --run-dir "$RUN_DIR" --cases all --track
 ```
 
-`--stage all` 分别写入两个训练目录，并自动将完整 prompt 保存为根目录的 `prompts.pt`。独立训练的两个进程完成后执行：
+`--stage all` 分别写入两个训练目录，每个概念各一个 `.pt` 文件。目录内不保存打包的 `prompts.pt`，无需执行合并命令。
+
+每个文件只含所属概念、所属阶段的参数和训练信息，张量保存为 CPU FP32：
+
+- Detect：`target`、`stage`、`group`、`detect_sequence`（固定概念编码）、`detect_pooled`（学习向量）、`detect_loss`、`tau`、`temperature`、更新次数和样本数。
+- Erase：`target`、`stage`、`group`、`erase_sequence`、`erase_pooled`、`cfg_scale`、更新次数和样本数。
+- 两者均带 `schema=detect-erase-concept-v1`，不保存另一阶段的向量或完整模型权重。共享模型及采样配置集中保存在 `run.json` 的 `config.detect`、`config.erase`。
+
+只继续训练一个概念，例如 nudity 的 detect（其他概念 checkpoint 保持不变）：
 
 ```bash
-python -m DiT.detect_erase.prompts --run-dir "$RUN_DIR"
+python DiT/detect_erase/train.py --run-dir "$RUN_DIR" \
+  --stage detect --targets nudity --resume --epochs 5 --track
 ```
 
-双卡采样或续跑（各命令都从同一根目录读取 `prompts.pt`，自动跳过完整图片）：
+双卡采样或续跑（仅加载各 case 的 targets 对应的 detect/erase 文件，自动跳过完整图片）：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python DiT/detect_erase/sample.py \
@@ -137,7 +149,7 @@ wait
 
 首次准备 case 时可配置 `--i2p-prompt-count`、`--ip-template-count`、`--style-template-count`、`--object-template-count`、`--seeds`、相似度和阈值。已保存 case 沿用其配置；重新选择这些生成配置需新建实验。`--batch-size`、设备和评测参数可在续跑时调整。
 
-训练还可用 `--targets`、`--limit-prompts`、`--checkpoint`；采样可用 `--dry-run`、`--skip-vlm`、`--with-q16` 和评测权重路径。独立采样可用 `--checkpoint /path/to/prompts.pt`，会在 `results/` 创建新的实验根目录。
+训练还可用 `--targets`、`--limit-prompts`、`--resume`；采样使用 `--run-dir` 定位训练结果，可用 `--dry-run`、`--skip-vlm`、`--with-q16` 和评测权重路径。每个 case 的采样缓存只记录实际使用的概念文件，其他概念的重新训练不影响它。
 
 **可选追踪**：训练和采样均添加 `--track` 开启 SwanLab；默认关闭，不导入 SwanLab、不写追踪文件。默认 `--swanlab-mode local`，所有阶段的数据保存在实验根目录的 `swanlog/`（内部运行目录由 SwanLab 管理）。可配置 `--swanlab-project`、`--swanlab-name`；云端记录使用 `--swanlab-mode online`，提前执行 `swanlab login`。
 
@@ -179,3 +191,28 @@ swanlab watch /path/to/run/swanlog
 IP/style/object 按输入概念与该 case 的 targets 判断。I2P 按 `real_nude_mapping.csv` 的 **sample_id＋seed** 对齐，仅 `is_real_nude=1` 的 125 条算 nudity，其余输入均算无关；`--real-nude-mapping` 可指定映射文件。此标签仅用于统计，不参与门控，也不重新运行 NudeNet。
 
 继续采样时按 sample_id＋seed 保留最后一次门控记录，不重复计数。`--phase evaluate --run-dir ... --track` 可仅汇总已有门控记录；缺少记录的缓存样本显示 `missing_count` 和 `coverage`，不当作未触发，相关比率仅统计已记录样本。
+
+## 4. 训练数据集来源与构造
+
+目标概念取自 `benchmark/configs/dit_cases.json`，共 11 个。Detect 保存于 `DiT/detect_erase/dataset/detect/`，erase 保存于 `DiT/detect_erase/dataset/erase/`，各自按 i2p、ip、style、object 分为四个 JSON。训练默认读取这两个目录，可通过 `--dataset-dir`、`--erase-dir` 指定其他位置。
+
+| 类别 | 目标概念 | Detect：每个概念 | Erase：每个概念 |
+|---|---|---:|---:|
+| i2p | nudity | 50 条 | 50 对 |
+| ip | Pikachu、Snoopy | 50 条 | 80 对 |
+| style | Van Gogh、Monet、Picasso | 50 条 | 30 对 |
+| object | church、golf ball、parachute、cassette player、banana | 50 条 | 80 对 |
+
+**Detect**：每个概念由 30 条正样本、10 条相近负样本、10 条普通负样本组成。
+1. I2P 由 AI 直接编写独立场景：正样本描述成人裸体，相近负样本描述穿衣成人，普通负样本描述无关场景，不使用模板。
+2. IP/object 使用 Textual Inversion 对象模板 `dataset/personalized.py`，style 使用风格模板 `dataset/personalized_style.py`，分别填入目标、相近和普通负概念。模板去重后按顺序使用，不足时循环；style 仅有 17 条不同模板，因此 30 条正样本包含重复。负概念保存在 `similar_concepts`、`ordinary_concepts` 字段中。默认 CLIP 分类使用全部 50 条，velocity loss 仅使用 30 条正样本。
+
+**Erase**：
+1. I2P 由 AI 编写 50 个独立成人场景，每对共享上下文，仅将 `nude` 替换为 `clothed`。
+2. IP/object 使用 `benchmark/dataset/prompt_templates.py` 的全部 80 条 `imagenet_templates`，style 使用全部 30 条 `painting_templates`。按本次约定直接复用 benchmark 模板。每条模板分别填入 target 和空 anchor 得到配对文本；空 anchor 指 `anchor=""`，仍保留模板上下文，不是整句空文本。
+
+总计 550 条 detect 样本、700 对 erase 文本。场景和负概念均已固定在生成脚本中，从仓库根目录执行以下命令可复现：
+
+```bash
+python DiT/detect_erase/dataset/generate.py
+```

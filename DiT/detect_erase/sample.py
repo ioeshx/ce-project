@@ -8,7 +8,6 @@ import csv
 from collections import Counter
 import json
 from pathlib import Path
-import shutil
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,9 +20,8 @@ from benchmark.dit_cases import definitions, select_cases
 from benchmark.layout import original_directory
 from benchmark.results import upsert_summary
 from benchmark.sampling_profile import canonical_protocol
-from DiT.detect_erase.outputs import run_directory, run_log, update_run
-
-HERE = Path(__file__).resolve().parent
+from DiT.detect_erase.outputs import concept_checkpoints, run_log, update_run
+from DiT.detect_erase.prompts import load_concept_prompts
 
 
 def summarize_gates(manifest, gate_log, nude_keys):
@@ -147,10 +145,9 @@ def prepare_case(config, records, source, path):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--cases", help="Cases/groups; default all, or existing cases for evaluate")
     parser.add_argument("--phase", choices=("all", "sample", "evaluate"), default="all")
-    parser.add_argument("--run-dir", type=Path, help="Experiment root containing prompts.pt, training stages and benchmark cases")
+    parser.add_argument("--run-dir", type=Path, required=True, help="Experiment root containing per-concept files and run.json")
     parser.add_argument("--similarity", choices=("cosine", "l2"))
     parser.add_argument("--tau", type=float, help="Cosine threshold; default: trained value (0.2)")
     parser.add_argument("--l2-threshold", type=float)
@@ -182,7 +179,6 @@ def main(argv=None):
     parser.add_argument("--with-q16", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--cache-dir", type=Path, default=BENCHMARK_ROOT / "cache")
-    parser.add_argument("--output-dir", type=Path, default=HERE / "results")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--track", action="store_true", help="Record selected prompts, trigger counts/rates and SwanLab summaries")
     parser.add_argument("--swanlab-mode", choices=("local", "offline", "online"), default="local")
@@ -194,7 +190,7 @@ def main(argv=None):
         from importlib.util import find_spec
         if find_spec("swanboard") is None:
             parser.error("Local SwanLab requires: pip install 'swanlab[dashboard]'; or use --swanlab-mode offline.")
-    generation_fields = ("checkpoint", "steps", "height", "width", "seeds", "i2p_prompt_count", "i2p_subset",
+    generation_fields = ("steps", "height", "width", "seeds", "i2p_prompt_count", "i2p_subset",
                          "tau", "similarity", "l2_threshold", "multi_concept", "ip_template_count",
                          "style_template_count", "object_template_count")
     generation_overrides = any(getattr(args, key) is not None for key in generation_fields)
@@ -214,10 +210,6 @@ def main(argv=None):
         parser.error("--i2p-prompt-count must be positive.")
     if args.seeds is not None and (len(set(args.seeds)) != len(args.seeds) or any(seed < 0 or seed >= 2 ** 63 for seed in args.seeds)):
         parser.error("Seeds must be distinct integers in [0, 2**63).")
-    if args.run_dir is None and args.checkpoint is None:
-        parser.error("Supply --checkpoint for a new run or --run-dir for an existing run.")
-    if args.phase == "evaluate" and args.run_dir is None:
-        parser.error("--phase evaluate requires --run-dir.")
 
     evaluation = dict(device=args.metric_device, batch_size=args.metric_batch_size,
                       local_files_only=args.offline, q16_enabled=args.with_q16)
@@ -231,14 +223,14 @@ def main(argv=None):
         if key not in evaluation and local.exists():
             evaluation[key] = str(local)
 
-    directory = args.run_dir.expanduser().resolve() if args.run_dir else None
-    info = read_json(directory / "run.json") if directory and (directory / "run.json").exists() else {}
+    directory = args.run_dir.expanduser().resolve()
+    info = read_json(directory / "run.json")
     selected = (list(info.get("manifests", {})) if args.phase == "evaluate" and args.cases is None else
                 select_cases(args.cases or "all"))
     if not selected:
         parser.error("No benchmark cases have been prepared in this run.")
     manifests = {case: load_manifest(directory / case / "manifest.json") for case in selected
-                 if directory and (directory / case / "manifest.json").exists()}
+                 if (directory / case / "manifest.json").exists()}
     if manifests and generation_overrides:
         parser.error("Existing cases reuse their saved prompts/protocol; omit generation overrides or start a new run.")
     if args.phase == "evaluate" and set(selected) - set(manifests):
@@ -250,18 +242,21 @@ def main(argv=None):
     new_cases = [case for case in selected if case not in manifests]
     cases = definitions()["cases"]
     if new_cases:
-        import torch
-        args.checkpoint = (args.checkpoint.expanduser().resolve() if args.checkpoint else directory / "prompts.pt")
-        bank = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
         targets = {target for case in new_cases for target in cases[case]["targets"]}
-        missing = [target for target in sorted(targets) if not all(
-            bank["concepts"].get(target, {}).get(f"{stage}_trained") for stage in ("detect", "erase"))]
+        checkpoints = concept_checkpoints(directory, sorted(targets))
+        missing = [f"{item['target']}:{item['stage']}" for item in checkpoints if not Path(item["checkpoint"]).is_file()]
         if missing:
-            parser.error(f"Checkpoint lacks completed detect/erase prompts: {', '.join(missing)}")
-        trained = bank["config"]
+            parser.error(f"Missing concept checkpoints: {', '.join(missing)}")
+        entries = load_concept_prompts(checkpoints)
+        trained = info["config"]["erase"]
+        detector = info["config"]["detect"]
+        if (any(trained[key] != detector[key] for key in ("model_name", "base_model"))
+                or any(trained["sampling"].get(key) != detector["sampling"].get(key)
+                       for key in ("max_sequence_length", "dtype", "model_revision"))):
+            parser.error("Detect and erase require the same model, text length, dtype and revision.")
         flux = trained["model_name"].startswith("flux1_")
         scale = trained["sampling"]["true_cfg_scale"] if flux else trained["sampling"]["guidance_scale"]
-        if any(bank["concepts"][target]["cfg_scale"] != scale for target in targets):
+        if any(entries[target]["cfg_scale"] != scale for target in targets):
             parser.error("Selected erase prompts must share the recorded training CFG scale.")
         prepared = []
         for case in new_cases:
@@ -305,20 +300,17 @@ def main(argv=None):
             for case, _, records, _ in prepared:
                 print(f"{case}: {len(records)} generated images", flush=True)
         else:
-            directory = run_directory(trained["model_name"], directory, args.output_dir)
-            if args.checkpoint != directory / "prompts.pt":
-                shutil.copyfile(args.checkpoint, directory / "prompts.pt")
             for case, cfg, records, source in prepared:
                 case_dir = directory / case
                 case_dir.mkdir(exist_ok=True)
                 cfg.update(output_dir=str(directory))
                 cfg["adapter"] = dict(kind="plugin", factory="DiT.detect_erase.prompts:PromptModel",
-                                      checkpoint=str(directory / "prompts.pt"), source_files=["train.py"],
-                                      similarity=args.similarity, tau=args.tau if args.tau is not None else bank["tau"],
+                                      checkpoints=concept_checkpoints(directory, cfg["targets"]), source_files=["train.py"],
+                                      similarity=args.similarity, tau=args.tau,
                                       l2_reduction="rms", l2_threshold=args.l2_threshold, multi_concept=args.multi_concept,
                                       gate_log=str(case_dir / "gates.jsonl"))
                 manifests[case] = prepare_case(cfg, records, source, case_dir / "manifest.json")
-            update_run(directory, trained["model_name"], checkpoint=str(directory / "prompts.pt"),
+            update_run(directory, trained["model_name"],
                        manifests={case: str(directory / case / "manifest.json") for case in new_cases})
 
     if args.dry_run:
