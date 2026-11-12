@@ -11,10 +11,10 @@ import torch.nn.functional as F
 
 from benchmark.dit_adapter import DiTAdapter
 from benchmark.sampling_profile import initial_noise
+from DiT.detect_erase.encoding import TextEncoder
 
 
-def classification_loss(prompt, pooled, labels, tau, temperature):
-    scores = F.cosine_similarity(pooled.float(), prompt.float(), dim=-1)
+def classification_loss(scores, labels, tau, temperature):
     return F.binary_cross_entropy_with_logits((scores - tau) / temperature, labels.float())
 
 
@@ -46,25 +46,21 @@ class PromptModel(DiTAdapter):
         for component in self.pipe.components.values():
             if isinstance(component, torch.nn.Module):
                 component.eval().requires_grad_(False)
+        self.text = TextEncoder(self.config, self.pipe)
         self.prompts = load_concept_prompts(self.options.get("checkpoints", []))
+        if self.prompts:
+            detectors = {item["target"]: self.prompts[item["target"]]
+                         for item in self.options["checkpoints"] if item["stage"] == "detect"}
+            self.text.prepare_detector(detectors, self.options)
+        self.erase_conditions = {}
 
-    @torch.no_grad()
     def encode(self, texts, *, clip_only=False):
-        """Use the same pooled representation for detector training and inference."""
-        if clip_only:
-            if self.flux:
-                return self.pipe._get_clip_prompt_embeds(texts, device=self.device)
-            pooled = [self.pipe._get_clip_prompt_embeds(texts, device=self.device, clip_model_index=i)[1]
-                      for i in (0, 1)]
-            return torch.cat(pooled, dim=-1)
-        kwargs = dict(prompt=texts, device=self.device,
-                      max_sequence_length=self.config["sampling"]["max_sequence_length"])
-        if self.flux:
-            sequence, pooled, _ = self.pipe.encode_prompt(**kwargs)
-        else:
-            sequence, _, pooled, _ = self.pipe.encode_prompt(
-                prompt_2=None, prompt_3=None, do_classifier_free_guidance=False, **kwargs)
-        return sequence.detach(), pooled.detach()
+        return self.text.features(texts) if clip_only else self.text.encode(texts)
+
+    def close(self):
+        self.erase_conditions.clear()
+        self.text.close()
+        super().close()
 
     def latents(self, seeds, sampling):
         channels = self.pipe.transformer.config.in_channels // 4 if self.flux else self.pipe.transformer.config.in_channels
@@ -121,53 +117,31 @@ class PromptModel(DiTAdapter):
             )
         return self.pipe.transformer(**kwargs)[0]
 
-    def negatives(self, condition):
-        """Select learned negative embeddings once per user prompt."""
-        sequence, pooled = condition
+    def negatives(self, texts, condition):
+        """Detect once, then average the selected native erase conditions."""
+        decisions = self.text.detect(texts, condition)
         targets = self.config["targets"]
-        entries = [self.prompts[target] for target in targets]
-        device = pooled.device
-        if self.options["similarity"] == "cosine":
-            prototypes = torch.cat([entry["detect_pooled"] for entry in entries]).to(device)
-            scores = F.normalize(pooled.float(), dim=-1) @ F.normalize(prototypes.float(), dim=-1).T
-            thresholds = torch.tensor([entry["tau"] for entry in entries], device=device)
-            hits = scores >= (self.options["tau"] if self.options["tau"] is not None else thresholds)
-            best = scores.argmax(dim=1)
-        else:
-            distances = []
-            for entry in entries:
-                square = (sequence.float() - entry["detect_sequence"].to(device)).square().flatten(1).sum(1)
-                square += (pooled.float() - entry["detect_pooled"].to(device)).square().sum(1)
-                if self.options["l2_reduction"] == "rms":
-                    square /= sequence[0].numel() + pooled[0].numel()
-                distances.append(square.sqrt())
-            scores = torch.stack(distances, dim=1)
-            hits = scores <= self.options["l2_threshold"]
-            best = scores.argmin(dim=1)
-
-        selected = hits.clone()
-        if self.options["multi_concept"] == "top1":
-            selected.zero_()
-            selected.scatter_(1, best[:, None], hits.any(dim=1, keepdim=True))
-        weights = selected.float() / selected.sum(dim=1, keepdim=True).clamp_min(1)
-        negative_sequence = torch.cat([entry["erase_sequence"] for entry in entries]).to(device)
-        negative_pooled = torch.cat([entry["erase_pooled"] for entry in entries]).to(device)
+        device = condition[1].device
+        for target in targets:
+            if target not in self.erase_conditions:
+                self.erase_conditions[target] = self.text.condition(self.prompts[target], "erase")
+        weights = torch.tensor([[target in decision["selected"] for target in targets] for decision in decisions],
+                               device=device, dtype=torch.float32)
+        weights /= weights.sum(1, keepdim=True).clamp_min(1)
+        negative_sequence = torch.cat([self.erase_conditions[target][0] for target in targets]).float()
+        negative_pooled = torch.cat([self.erase_conditions[target][1] for target in targets]).float()
         combined_sequence = torch.einsum("bc,csd->bsd", weights, negative_sequence)
         combined_pooled = weights @ negative_pooled
         null_sequence, null_pooled = self.encode([""])
-        active = selected.any(dim=1)
+        active = weights.any(dim=1)
         result = (torch.where(active[:, None, None], combined_sequence, null_sequence.float()).to(self.dtype),
                   torch.where(active[:, None], combined_pooled, null_pooled.float()).to(self.dtype))
-        decisions = [{"scores": dict(zip(targets, row.tolist())),
-                      "matched": [target for target, flag in zip(targets, matched.tolist()) if flag],
-                      "selected": [target for target, flag in zip(targets, chosen.tolist()) if flag]}
-                     for row, matched, chosen in zip(scores, hits, selected)]
         return result, decisions
 
     @torch.inference_mode()
     def generate(self, records, sampling_config):
         condition = self.encode([record["prompt"] for record in records])
-        negative, decisions = self.negatives(condition)
+        negative, decisions = self.negatives([record["prompt"] for record in records], condition)
         opts = sampling_config
         kwargs = dict(prompt_embeds=condition[0], pooled_prompt_embeds=condition[1],
                       negative_prompt_embeds=negative[0], negative_pooled_prompt_embeds=negative[1],

@@ -54,9 +54,10 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
     """Publish only after all requested sampling phases completed successfully."""
     config = manifest["config"]
     model = model_name(manifest["base_model"], config.get("model_name"))
-    flat = config.get("result_layout") == "flat"
+    flat = config.get("result_layout") in {"flat", "exps"}
     root = Path(config["output_dir"]) if flat else results_directory(config["output_dir"], model)
-    method = root / manifest["case_id"] if flat else method_directory(root, manifest["task"], manifest["method"], manifest.get("case_id"))
+    case_root = root / "exps" if config.get("result_layout") == "exps" else root
+    method = case_root / manifest["case_id"] if flat else method_directory(root, manifest["task"], manifest["method"], manifest.get("case_id"))
     directory = method if flat else unique_directory(method / "samplings", "sampling-" + started_at.strftime("%Y%m%d-%H%M%S"))
     details = directory / ("sampling_time.json" if flat else "timing.json")
     generated = sum(p["generated_images"] for p in phases)

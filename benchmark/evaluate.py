@@ -171,8 +171,9 @@ def evaluate(path, config=None, method=None, targets=None):
         raise ValueError("Evaluation batch size must be positive.")
     task = manifest["task"]
     root = Path(config["output_dir"])
-    flat = config.get("result_layout") == "flat"
-    method_dir = root / manifest["case_id"] if flat else method_directory(root, task, manifest["method"], manifest.get("case_id"))
+    flat = config.get("result_layout") in {"flat", "exps"}
+    case_root = root / "exps" if config.get("result_layout") == "exps" else root
+    method_dir = case_root / manifest["case_id"] if flat else method_directory(root, task, manifest["method"], manifest.get("case_id"))
     method_dir.mkdir(parents=True, exist_ok=True)
     started = timestamp()
     pending = unique_directory(method_dir, ".evaluation-pending" if flat else f".evaluation-pending-{started}")

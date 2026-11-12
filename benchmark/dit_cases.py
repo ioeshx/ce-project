@@ -26,6 +26,9 @@ def select_cases(selection=None):
 
 
 def defaults(task, case_id=None):
+    # A separate result ID for the COCO task of the existing nudity protocol.
+    if task == "mscoco" and case_id == "mscoco_nudity":
+        return {**defaults(task, "i2p_nudity"), "case_id": case_id}
     spec = definitions()
     case_id = case_id or {"instance": "ip_pikachu", "style": "style_van_gogh",
                           "object": "object_church"}.get(task, "i2p_nudity")

@@ -1,4 +1,4 @@
-"""Learn pooled detect prototypes and negative CFG conditions from local datasets."""
+"""Learn CLIP soft tokens (or hidden conditions) for detection and negative CFG."""
 import os
 os.environ["HF_ENDPOINT"]="https://hf-mirror.com"
 
@@ -20,6 +20,7 @@ from benchmark.model_profiles import DIT_MODELS
 from benchmark.sampling_time import cuda_devices, synchronize
 from DiT.detect_erase.outputs import prompt_checkpoint, run_directory, run_log, update_run
 from DiT.detect_erase.prompts import PromptModel, cfg_loss, classification_loss
+from DiT.detect_erase.encoding import TextEncoder, cosine_scores
 
 HERE = Path(__file__).resolve().parent
 
@@ -66,7 +67,7 @@ class TrainingTrace:
         self.current["updates"] += 1
         self.current["examples"] += batch_size
         self.loss_sum += row["loss"] * batch_size
-        if metrics:
+        if metrics and "accuracy" in metrics:
             self.correct_sum += metrics["accuracy"] * batch_size
             self.has_accuracy = True
         prefix = f"train/{slug(row['target'])}/{row['stage']}"
@@ -103,34 +104,31 @@ class TrainingTrace:
 
 
 def encode_dataset(model, texts, batch_size, *, clip_only=False):
-    """Cache frozen text outputs on CPU; no encoder graph is needed during training."""
-    batches = []
-    for start in range(0, len(texts), batch_size):
-        encoded = model.encode(texts[start:start + batch_size], clip_only=clip_only)
-        batches.append(encoded.cpu() if clip_only else tuple(value.cpu() for value in encoded))
-    if clip_only:
-        return torch.cat(batches)
-    return tuple(torch.cat([batch[index] for batch in batches]) for index in (0, 1))
+    """Cache frozen query features; the learned token always keeps its encoder graph."""
+    batches = [model.encode(texts[start:start + batch_size], clip_only=clip_only)
+               for start in range(0, len(texts), batch_size)]
+    return tuple(torch.cat([batch[i].detach().cpu() for batch in batches]) for i in range(len(batches[0])))
 
 
-def train_clip(model, prompt, rows, args, tracker, target):
-    pooled = encode_dataset(model, [row["prompt"] for row in rows], args.batch_size, clip_only=True)
+def train_clip(text, entry, rows, parameters, args, tracker, target):
+    features = encode_dataset(text, [row["prompt"] for row in rows], args.batch_size, clip_only=True)
     labels = torch.tensor([row["label"] for row in rows], dtype=torch.float32)
-    optimizer = torch.optim.AdamW([prompt], lr=args.learning_rate, weight_decay=0)
+    optimizer = torch.optim.AdamW(parameters, lr=args.learning_rate, weight_decay=0)
     generator = torch.Generator().manual_seed(args.seed)
     step = 0
     for epoch in range(1, args.epochs + 1):
         if tracker:
             tracker.start_epoch(target, "detect", epoch)
-        order = torch.randperm(len(rows), generator=generator)
-        for indices in order.split(args.batch_size):
+        for indices in torch.randperm(len(rows), generator=generator).split(args.batch_size):
             optimizer.zero_grad(set_to_none=True)
-            batch, truth = pooled[indices].to(model.device), labels[indices].to(model.device)
-            loss = classification_loss(prompt, batch, truth, args.tau, args.temperature)
+            batch = tuple(value[indices].to(text.device) for value in features)
+            truth = labels[indices].to(text.device)
+            prototype = text.condition(entry, "detect", features_only=True)
+            scores = cosine_scores(batch, prototype).squeeze(1)
+            loss = classification_loss(scores, truth, args.tau, args.temperature)
             metrics = None
             if tracker:
                 with torch.no_grad():
-                    scores = torch.nn.functional.cosine_similarity(batch.float(), prompt.float(), dim=-1)
                     metrics = {"accuracy": ((scores >= args.tau) == truth.bool()).float().mean().item()}
                     for label, key in ((1, "positive_cosine"), (0, "negative_cosine")):
                         if (truth == label).any():
@@ -139,7 +137,7 @@ def train_clip(model, prompt, rows, args, tracker, target):
             optimizer.step()
             step += 1
             if tracker:
-                tracker.log_step(step, loss, optimizer, [prompt], len(indices), metrics=metrics)
+                tracker.log_step(step, loss, optimizer, parameters, len(indices), metrics=metrics)
             if step % 50 == 0:
                 print(f"[{target}:detect] epoch={epoch} update={step} loss={loss.item():.6f}", flush=True)
             if args.max_steps and step >= args.max_steps:
@@ -151,26 +149,102 @@ def train_clip(model, prompt, rows, args, tracker, target):
     return step
 
 
-def train_velocity(model, condition, rows, args, tracker, target, stage):
-    """Fit each visited state, advancing only a detached, frozen-teacher trajectory."""
-    sampling = model.config["sampling"]
-    scale = sampling["true_cfg_scale"] if model.flux else sampling["guidance_scale"]
-    texts = [row["target_prompt"] if stage == "erase" else row["prompt"] for row in rows]
-    positive = encode_dataset(model, texts, args.batch_size)
-    anchors = (encode_dataset(model, [row["anchor_prompt"] for row in rows], args.batch_size)
-               if stage == "erase" else None)
-    null = model.encode([""])
-    parameters = list(condition) if stage == "erase" else [condition[1]]
+def ti_images(model, rows, args, stage_dir, target):
+    """Generate one fixed base-model image per positive prompt, and reuse the cache."""
+    import numpy as np
+    from PIL import Image
+    from benchmark.adapters import atomic_image
+    from benchmark.data import valid_image
+    from benchmark.dit_adapter import DiTAdapter
+    from benchmark.sampling_profile import canonical_protocol
+
+    directory = stage_dir / "ti_images" / slug(target).lower().replace("-", "_")
+    directory.mkdir(parents=True, exist_ok=True)
+    sampling = {**model.config["sampling"], "negative_prompt": ""}
+    sampling["steps"] = args.ti_generation_steps or sampling["steps"]
+    seed = args.seed if args.ti_seed is None else args.ti_seed
+    records = [{"prompt": row["prompt"], "seed": seed + index,
+                "image": str(directory / f"positive_{index:03d}.png")} for index, row in enumerate(rows)]
+    identity = dict(base_model=model.config["base_model"], sampling=canonical_protocol(sampling), records=records)
+    path = directory / "images.json"
+    if path.exists() and read_json(path) != identity:
+        raise ValueError(f"TI image configuration changed; use a new run directory: {directory}")
+    write_json(path, identity)
+    missing = [record for record in records if not valid_image(record["image"])]
+    for start in range(0, len(missing), args.batch_size):
+        batch = missing[start:start + args.batch_size]
+        images = DiTAdapter.generate(model, batch, sampling)
+        for image, record in zip(images, batch):
+            atomic_image(image, record["image"])
+    print(f"[{target}:ti-flow] images={len(records)}, generated={len(missing)}, cache={directory}", flush=True)
+    latents = []
+    vae = model.pipe.vae
+    for start in range(0, len(records), args.batch_size):
+        pixels = []
+        for record in records[start:start + args.batch_size]:
+            with Image.open(record["image"]) as image:
+                pixels.append(torch.from_numpy(np.array(image.convert("RGB"), dtype=np.float32)).permute(2, 0, 1) / 127.5 - 1)
+        with torch.no_grad():
+            z = vae.encode(torch.stack(pixels).to(device=vae.device, dtype=vae.dtype)).latent_dist.mode()
+            z = (z - (vae.config.shift_factor or 0)) * vae.config.scaling_factor
+        latents.append(z.float().cpu())
+    return torch.cat(latents)
+
+
+def train_ti_flow(model, entry, rows, parameters, args, tracker, target, stage_dir):
+    clean = ti_images(model, rows, args, stage_dir, target)
     optimizer = torch.optim.AdamW(parameters, lr=args.learning_rate, weight_decay=0)
     generator = torch.Generator().manual_seed(args.seed)
     step = 0
     for epoch in range(1, args.epochs + 1):
         if tracker:
-            tracker.start_epoch(target, stage, epoch)
-        order = torch.randperm(len(rows), generator=generator)
-        for indices in order.split(args.batch_size):
+            tracker.start_epoch(target, "detect", epoch)
+        for indices in torch.randperm(len(clean), generator=generator).split(args.batch_size):
+            z0 = clean[indices].to(model.device)
+            noise = torch.randn(z0.shape, generator=generator).to(model.device)
+            sigma = torch.rand((len(indices),), generator=generator).to(model.device)
+            amount = sigma[:, None, None, None]
+            noisy = (1 - amount) * z0 + amount * noise
+            velocity_target = noise - z0
+            if model.flux:
+                noisy = model.pipe._pack_latents(noisy, *noisy.shape)
+                velocity_target = model.pipe._pack_latents(velocity_target, *velocity_target.shape)
+            optimizer.zero_grad(set_to_none=True)
+            condition = model.text.condition(entry, "detect")
+            prediction = model.velocity(noisy.to(model.dtype), sigma * 1000, condition, model.config["sampling"])
+            loss = torch.nn.functional.mse_loss(prediction.float(), velocity_target.float())
+            loss.backward()
+            optimizer.step()
+            step += 1
+            if tracker:
+                tracker.log_step(step, loss, optimizer, parameters, len(indices), timestep=float(sigma.mean() * 1000))
+            if step % 50 == 0:
+                print(f"[{target}:ti-flow] epoch={epoch} update={step} loss={loss.item():.6f}", flush=True)
+            if args.max_steps and step >= args.max_steps:
+                if tracker:
+                    tracker.end_epoch(len(clean))
+                return step
+        if tracker:
+            tracker.end_epoch(len(clean))
+    return step
+
+
+def train_erase(model, entry, rows, parameters, args, tracker, target):
+    """Fit CFG at each state of a detached base-model trajectory."""
+    sampling = model.config["sampling"]
+    scale = sampling["true_cfg_scale"] if model.flux else sampling["guidance_scale"]
+    positive = encode_dataset(model, [row["target_prompt"] for row in rows], args.batch_size)
+    anchors = encode_dataset(model, [row["anchor_prompt"] for row in rows], args.batch_size)
+    null = model.encode([""])
+    optimizer = torch.optim.AdamW(parameters, lr=args.learning_rate, weight_decay=0)
+    generator = torch.Generator().manual_seed(args.seed)
+    step = 0
+    for epoch in range(1, args.epochs + 1):
+        if tracker:
+            tracker.start_epoch(target, "erase", epoch)
+        for indices in torch.randperm(len(rows), generator=generator).split(args.batch_size):
             positive_batch = tuple(value[indices] for value in positive)
-            anchor_batch = tuple(value[indices] for value in anchors) if anchors is not None else None
+            anchor_batch = tuple(value[indices] for value in anchors)
             seeds = torch.randint(0, 2 ** 31, (len(indices),), generator=generator).tolist()
             latents = model.latents(seeds, sampling)
             for timestep in model.timesteps(latents, sampling):
@@ -178,22 +252,18 @@ def train_velocity(model, condition, rows, args, tracker, target, stage):
                     v_positive = model.velocity(latents, timestep, positive_batch, sampling)
                     v_null = model.velocity(latents, timestep, null, sampling)
                     teacher_step = v_null + scale * (v_positive - v_null)
-                    v_anchor = (model.velocity(latents, timestep, anchor_batch, sampling)
-                                if stage == "erase" else None)
-
+                    v_anchor = model.velocity(latents, timestep, anchor_batch, sampling)
                 optimizer.zero_grad(set_to_none=True)
+                condition = model.text.condition(entry, "erase")
                 prediction = model.velocity(latents.detach(), timestep, condition, sampling)
-                if stage == "erase":
-                    loss = cfg_loss(v_positive, v_anchor, prediction, scale)
-                else:
-                    loss = torch.nn.functional.mse_loss(prediction.float(), v_positive.float())
+                loss = cfg_loss(v_positive, v_anchor, prediction, scale)
                 loss.backward()
                 optimizer.step()
                 step += 1
                 if tracker:
                     tracker.log_step(step, loss, optimizer, parameters, len(indices), timestep=float(timestep))
                 if step % 50 == 0:
-                    print(f"[{target}:{stage}] epoch={epoch} update={step} loss={loss.item():.6f}", flush=True)
+                    print(f"[{target}:erase] epoch={epoch} update={step} loss={loss.item():.6f}", flush=True)
                 if args.max_steps and step >= args.max_steps:
                     if tracker:
                         tracker.end_epoch(len(rows) * sampling["steps"])
@@ -214,7 +284,14 @@ def main(argv=None):
     parser.add_argument("--targets", nargs="+", help='Optional subset, e.g. --targets nudity "Van Gogh"')
     parser.add_argument("--stage", choices=("all", "detect", "erase"), default="all")
     parser.add_argument("--resume", action="store_true", help="Continue selected concept files in --run-dir with a fresh optimizer")
-    parser.add_argument("--detect-loss", choices=("clip", "velocity"), help="Default: clip, or the saved training setting")
+    parser.add_argument("--detect-loss", choices=("clip", "ti-flow"), help="Default: clip, or the saved training setting")
+    parser.add_argument("--prompt-space", choices=("soft", "hidden"), help="Default: soft; hidden learns encoder outputs")
+    parser.add_argument("--soft-template", help="One {} placeholder; default: {}")
+    parser.add_argument("--clip-projection-model", help="FLUX contrastive CLIP head; default: openai/clip-vit-large-patch14")
+    parser.add_argument("--ti-image-count", type=int, help="Positive images per concept; default: all positive rows")
+    parser.add_argument("--ti-generation-steps", type=int, help="Base-model steps for cached TI images; default: sampling steps")
+    parser.add_argument("--ti-seed", type=int, help="TI image seeds start here; default: seed")
+    # training hyperparameters
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--max-steps", "--steps", type=int, default=2000, help="Optimizer updates per target/stage; 0 disables the cap")
@@ -244,23 +321,36 @@ def main(argv=None):
     parser.add_argument("--swanlab-project", default="detect-erase")
     parser.add_argument("--swanlab-name")
     args = parser.parse_args(argv)
+
     if args.track and args.swanlab_mode == "local":
         from importlib.util import find_spec
         if find_spec("swanboard") is None:
             parser.error("Local SwanLab requires: pip install 'swanlab[dashboard]'; or use --swanlab-mode offline.")
     if args.resume and args.run_dir is None:
         parser.error("--resume requires --run-dir.")
+
     directory = args.run_dir.expanduser().resolve() if args.run_dir else None
     info = read_json(directory / "run.json") if directory and (directory / "run.json").exists() else {}
     saved_detect = directory / "train_detect/training.json" if directory else None
     defaults = read_json(saved_detect) if saved_detect and saved_detect.exists() else {}
     args.detect_loss = args.detect_loss or defaults.get("detect_loss", "clip")
+    stage_settings = directory / f"train_{args.stage}/training.json" if directory else None
+    stage_defaults = read_json(stage_settings) if stage_settings and stage_settings.exists() else {}
+    args.prompt_space = args.prompt_space or stage_defaults.get("prompt_space", "soft")
+    args.soft_template = args.soft_template or stage_defaults.get("soft_template", "{}")
     args.tau = defaults.get("tau", 0.2) if args.tau is None else args.tau
     args.temperature = defaults.get("temperature", 0.1) if args.temperature is None else args.temperature
     if (args.learning_rate <= 0 or args.epochs <= 0 or args.max_steps < 0 or args.batch_size <= 0
             or args.temperature <= 0 or not -1 <= args.tau <= 1
             or (args.limit_prompts is not None and args.limit_prompts <= 0)):
         parser.error("Use positive learning rate/epochs/batch size/temperature, max-steps >= 0 and tau in [-1, 1].")
+
+    if args.soft_template.count("{}") != 1:
+        parser.error("--soft-template must contain exactly one {} placeholder.")
+    if any(value is not None and value <= 0 for value in (args.ti_image_count, args.ti_generation_steps)):
+        parser.error("TI image count and generation steps must be positive.")
+    if args.ti_seed is not None and not 0 <= args.ti_seed < 2 ** 63 - 100000:
+        parser.error("--ti-seed must be nonnegative and leave room for per-image seeds.")
 
     cases = definitions()["cases"]
     selected = select_cases(args.cases)
@@ -275,6 +365,10 @@ def main(argv=None):
                 if directory and prompt_checkpoint(directory, stage, target).exists()}
     if existing and not args.resume:
         parser.error("Selected concept files already exist; start a new run, or use --resume to continue them.")
+    resumed = {key: torch.load(path, map_location="cpu", weights_only=True) for key, path in existing.items()}
+    if any(entry[f"{stage}_space"] != args.prompt_space or entry[f"{stage}_template"] != args.soft_template
+           for (stage, target), entry in resumed.items()):
+        parser.error("Resume requires the saved prompt space and soft template.")
 
     sampling = dict(device=args.device, batch_size=args.batch_size, local_files_only=args.offline,
                     device_map=args.device_map, max_memory=args.max_memory)
@@ -298,14 +392,18 @@ def main(argv=None):
                             for key in ("max_sequence_length", "dtype"))):
         parser.error("Concept files in one run require the same model, text length and dtype.")
     base["sampling"] = {**base.get("sampling", {}), **sampling}
+    if args.clip_projection_model:
+        base["text"] = {"clip_projection_model": args.clip_projection_model}
     config = configuration(task="i2p", base=base)
     scale = config["sampling"]["true_cfg_scale"] if model_name.startswith("flux1_") else config["sampling"]["guidance_scale"]
-    if scale <= 1:
+    if "erase" in stages and scale <= 1:
         parser.error("CFG prompt fitting requires guidance-scale > 1 (FLUX: true-cfg-scale > 1).")
     detect_data, erase_data = {}, {}
     for group in dict.fromkeys(group for group, _ in wanted):
-        detect_data.update({data["target"]: data for data in read_json(args.dataset_dir / f"{group}.json")["datasets"]})
-        erase_data.update({data["target"]: data for data in read_json(args.erase_dir / f"{group}.json")["datasets"]})
+        if "detect" in stages:
+            detect_data.update({data["target"]: data for data in read_json(args.dataset_dir / f"{group}.json")["datasets"]})
+        if "erase" in stages:
+            erase_data.update({data["target"]: data for data in read_json(args.erase_dir / f"{group}.json")["datasets"]})
 
     directory = run_directory(model_name, directory, args.output_dir)
     config.update(output_dir=str(directory), result_layout="flat")
@@ -318,42 +416,47 @@ def main(argv=None):
         with run_log(directory, f"train_{stage}"):
             print(f"Run: {directory}\nStage: {stage}", flush=True)
             tracker = TrainingTrace(args, stage_dir, config) if args.track else None
-            model = PromptModel(config)
+            diffusion_needed = stage == "erase" or args.detect_loss == "ti-flow"
+            model = PromptModel(config) if diffusion_needed else TextEncoder(config)
+            text = model.text if diffusion_needed else model
+            for tokenizer in text.tokenizers:
+                fixed_length = sum(len(tokenizer.encode(part, add_special_tokens=False))
+                                   for part in args.soft_template.split("{}"))
+                if args.prompt_space == "soft" and fixed_length + 3 > tokenizer.model_max_length:
+                    parser.error("--soft-template must leave room for BOS, one soft token and EOS.")
             if tracker:
-                tracker.devices = cuda_devices(model, model.config["sampling"])
+                tracker.devices = cuda_devices(model, config["sampling"])
             if args.gradient_checkpointing:
-                model.pipe.transformer.enable_gradient_checkpointing()
+                for encoder in text.encoders:
+                    encoder.gradient_checkpointing_enable()
+                if diffusion_needed:
+                    model.pipe.transformer.enable_gradient_checkpointing()
             update_run(directory, model_name, config={stage: model.config})
-            null = model.encode([""])
             for group, target in wanted:
                 checkpoint = prompt_checkpoint(directory, stage, target)
                 if (stage, target) in existing:
-                    entry = torch.load(existing[stage, target], map_location="cpu", weights_only=True)
+                    entry = resumed[stage, target]
                 else:
-                    entry = {"schema": "detect-erase-concept-v1", "target": target, "stage": stage, "group": group}
-                if stage == "detect" and "detect_pooled" not in entry:
-                    concept = model.encode([target])
-                    entry.update(detect_sequence=concept[0].float().cpu(), detect_pooled=concept[1].float().cpu())
-                if stage == "erase" and "erase_pooled" not in entry:
-                    entry.update(erase_sequence=null[0].float().cpu(), erase_pooled=null[1].float().cpu())
+                    entry = {"schema": "detect-erase-concept-v2", "target": target, "stage": stage, "group": group}
+                    text.initialize(entry, stage, args.prompt_space, args.soft_template)
+                parameters = text.parameters(entry, stage)
                 if stage == "detect":
-                    pooled = torch.nn.Parameter(entry["detect_pooled"].to(model.device).clone())
                     rows = detect_data[target]["samples"]
-                    if args.detect_loss == "velocity":
-                        rows = [row for row in rows if row["label"] == 1]
+                    if args.detect_loss == "ti-flow":
+                        rows = [row for row in rows if row["label"] == 1][:args.ti_image_count]
                     rows = rows[:args.limit_prompts]
                     if args.detect_loss == "clip":
-                        updates = train_clip(model, pooled, rows, args, tracker, target)
+                        updates = train_clip(text, entry, rows, parameters, args, tracker, target)
                     else:
-                        updates = train_velocity(model, (entry["detect_sequence"], pooled), rows,
-                                                 args, tracker, target, stage)
-                    entry["detect_pooled"] = pooled.detach().cpu()
+                        updates = train_ti_flow(model, entry, rows, parameters, args, tracker, target, stage_dir)
                 else:
-                    sequence = torch.nn.Parameter(entry["erase_sequence"].to(model.device).clone())
-                    pooled = torch.nn.Parameter(entry["erase_pooled"].to(model.device).clone())
                     rows = erase_data[target]["pairs"][:args.limit_prompts]
-                    updates = train_velocity(model, (sequence, pooled), rows, args, tracker, target, stage)
-                    entry["erase_sequence"], entry["erase_pooled"] = sequence.detach().cpu(), pooled.detach().cpu()
+                    updates = train_erase(model, entry, rows, parameters, args, tracker, target)
+                for key, value in list(entry.items()):
+                    if isinstance(value, torch.Tensor):
+                        entry[key] = value.detach().float().cpu()
+                    elif key.endswith("_soft_tokens"):
+                        entry[key] = [token.detach().float().cpu() for token in value]
                 entry[f"{stage}_updates"] = updates
                 entry[f"{stage}_samples"] = len(rows)
                 if stage == "detect":

@@ -34,9 +34,24 @@ def prompt_checkpoint(directory, stage, target):
     return Path(directory) / f"train_{stage}" / f"{name}.pt"
 
 
-def concept_checkpoints(directory, targets):
+def experiment_directory(directory, case):
+    return Path(directory) / "exps" / case
+
+
+def concept_checkpoints(directory, targets, stages=("detect", "erase")):
     return [{"target": target, "stage": stage, "checkpoint": str(prompt_checkpoint(directory, stage, target))}
-            for target in targets for stage in ("detect", "erase")]
+            for target in targets for stage in stages]
+
+
+def all_detect_checkpoints(directory):
+    """Discover actual saved detectors, including concepts outside selected cases."""
+    import torch
+
+    result = []
+    for path in sorted((Path(directory) / "train_detect").glob("*.pt")):
+        entry = torch.load(path, map_location="cpu", weights_only=True)
+        result.append({"target": entry["target"], "stage": "detect", "checkpoint": str(path)})
+    return result
 
 
 class Tee:

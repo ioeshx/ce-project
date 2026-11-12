@@ -12,6 +12,7 @@ TRAIN_ARGS=(
   --model "$MODEL"
   --run-dir "$RUN_ROOT"
   --cases all
+  --prompt-space soft
   --learning-rate 1e-3
   --epochs 5
   --max-steps 2000
@@ -50,11 +51,11 @@ SAMPLE_ARGS=(
   --swanlab-mode "$TRACK_MODE"
 )
 
-# GPU 0：i2p、style 采样及指标计算
+# GPU 0：i2p、MSCOCO、style 采样及指标计算
 CUDA_VISIBLE_DEVICES=0 python DiT/detect_erase/sample.py \
   "${SAMPLE_ARGS[@]}" \
-  --cases i2p,style \
-  --swanlab-name i2p-style &
+  --cases i2p,mscoco,style \
+  --swanlab-name i2p-mscoco-style &
 BENCHMARK_A_PID=$!
 
 # GPU 1：ip、object 采样及指标计算

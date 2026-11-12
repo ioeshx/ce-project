@@ -25,3 +25,25 @@ python DiT/detect_erase/sample.py \
   --track \
   --swanlab-mode local \
   >> "$RUN_ROOT/ip-object-shared-reference.log" 2>&1 < /dev/null &
+
+
+cd /home/shx/code/ce-new
+
+TRAIN_RUN="/home/shx/code/ce-new/DiT/detect_erase/results/sd35_medium-detect-20261112-202026"
+TEST_RUN="/home/shx/code/ce-new/DiT/detect_erase/results/sd35_medium-detect-all-$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
+
+CUDA_VISIBLE_DEVICES=0 python DiT/detect_erase/sample.py \
+  --run-dir "$TRAIN_RUN" \
+  --output-dir "$TEST_RUN" \
+  --cases all \
+  --detect-only \
+  --all-detect-prompts \
+  --similarity cosine \
+  --multi-concept top1 \
+  --batch-size 16 \
+  --device cuda:0 \
+  --track \
+  --swanlab-mode local \
+  --swanlab-name detect-all-benchmark
+
+echo "测试结果：$TEST_RUN"
