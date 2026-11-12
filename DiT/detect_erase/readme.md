@@ -54,54 +54,99 @@ epoch 和更新次数上限先到者结束训练。CLIP 检测有 50 条文本�
 - **相似度**：默认 `--similarity cosine`，只比较 CLIP pooled；`--similarity l2` 比较完整序列和 pooled，计算全部元素的 RMS 距离，距离不超过 `--l2-threshold 0.2` 时触发。完整 detect 条件的序列固定为概念编码，只有 pooled 被学习。
 - **多概念**：默认 `--multi-concept top1`，在达到阈值的概念中选择最高余弦／最低距离的一项；`mean` 对所有触发概念的 erase 条件取平均。
 - **训练配置**：`--stage all/detect/erase`、`--cases`、`--targets`、`--limit-prompts`；`--checkpoint` 从已有 prompt 参数继续训练，重新创建优化器。Detect 和 erase 可分别从初始化独立训练，完成后合并 checkpoint。
-- **保存**：`checkpoints/<模型>/<开始时间>/` 下保存 `prompts.pt`、`training.json`；每个阶段结束保存 checkpoint。阶段未完成的概念不能用于采样。Loss 和时间日志仅在 `--track` 时保存。
-- **Benchmark**：`sample.py` 调用原生数据、参考图、采样 adapter 和评测接口。默认生成后计算指标；`--phase sample` 只生成，`--phase evaluate --run-dir ...` 只评测，不加载生成模型或 prompt 权重。I2P 使用 NudeNet（Q16 可选），IP/style 使用 CS、FID 和 VLM 分类，object 使用 ResNet Top1/Top3。
-- **参考图**：使用同一 prompt、种子、CFG 和采样配置，负条件为空文本；同一 run 内共享。结果位于 `results/<模型>/<开始时间>/`，每个 case 保存 manifest；`gates.jsonl` 仅在 `--track` 时记录。
-- **仍需实验选择**：学习率、温度、训练时长、检测阈值和平均组合的效果；上述默认值已按当前约定固定，代码不利用最终图像指标自动调整它们。
+- **保存**：一次实验共用 `results/<模型>-<开始时间>/`。`--run-dir` 指定该根目录；不传时训练自动创建新目录。重新训练新建根目录，续跑复用原目录。每个概念阶段完成后保存 checkpoint。
+- **Benchmark**：默认生成后计算指标；`--phase sample` 只生成，`--phase evaluate` 只评测已有实验，不加载生成模型或 prompt 权重。I2P 使用 NudeNet（Q16 可选），IP/style 使用 CS、FID 和 VLM 分类，object 使用 ResNet Top1/Top3。
+- **参考图**：直接复用 `benchmark/original/<模型>/` 中 prompt、种子和完整采样配置一致的图片，仅补齐缺失或损坏的图片。
+- **并发**：两张卡共用同一 `--run-dir`，分别写各自训练阶段和实验；根目录配置、指标和触发汇总使用文件锁合并。
+- **仍需实验选择**：学习率、温度、训练时长、检测阈值和平均组合的效果；代码不利用最终图像指标自动调整它们。
 
-训练：
+目录结构（所有 benchmark case 均与 `i2p_nudity/` 同级）：
 
-```bash
-python DiT/detect_erase/train.py --model sd35_medium --cases i2p
-python DiT/detect_erase/train.py --model flux1_dev --cases all --epochs 5 --max-steps 2000
+```text
+results/sd35_medium-20261112-024437/
+├── prompts.pt                       # 合并后供采样使用
+├── run.json                         # 模型、训练 checkpoint、实验列表
+├── metrics.csv/json                 # 所有 case 的最新评测汇总
+├── trigger_summary.csv/json         # 所有 case 的触发汇总
+├── sampling_time.csv/json           # 各 case 最近一次采样时间
+├── train_detect/
+│   ├── prompts.pt
+│   ├── training.json
+│   ├── loss.csv                     # --track 时保存
+│   ├── epochs.csv
+│   └── training_summary.json
+├── train_erase/                      # 与 train_detect 相同
+├── i2p_nudity/
+│   ├── images/
+│   ├── manifest.json
+│   ├── metrics.json                 # 完整指标和评测配置
+│   ├── sampling_time.json
+│   ├── gates.jsonl                  # --track 时保存
+│   ├── trigger_summary.json
+│   ├── trigger_records.csv
+│   ├── trigger_by_concept.csv
+│   ├── trigger_by_erase_prompt.csv
+│   └── plots/                       # 指标图；逐图评测明细也保存在 case 内
+├── ip_pikachu/
+├── ip_snoopy_pikachu/
+├── style_van_gogh/
+├── style_monet/
+├── style_picasso/
+├── object_church/
+├── object_multi5/
+├── logs/                            # 自动追加控制台日志
+│   ├── train_detect.log
+│   ├── train_erase.log
+│   ├── sample_i2p_style.log
+│   └── sample_ip_object.log
+└── swanlog/                         # 所有阶段的 SwanLab 记录
 ```
 
-双卡独立训练时分别使用 `--stage detect` 和 `--stage erase`；等待两边结束，再合并并用于采样：
+完整双卡实验：GPU 0 训练 detect，GPU 1 训练 erase；合并后，GPU 0 跑 i2p/style，GPU 1 跑 ip/object。脚本创建一次实验根目录，开启全部追踪：
 
 ```bash
-python -m DiT.detect_erase.prompts \
-  --detect-checkpoint /path/to/detect/prompts.pt \
-  --erase-checkpoint /path/to/erase/prompts.pt \
-  --output /path/to/merged/prompts.pt
+bash DiT/detect_erase/all.sh
+# 可选：MODEL=flux1_dev TRACK_MODE=offline bash DiT/detect_erase/all.sh
 ```
 
-合并保留 erase 的采样配置，从 detect 文件复制已训练的检测参数；两份文件须使用相同模型、文本长度和精度。`CUDA_VISIBLE_DEVICES=1` 后，命令中的 `--device cuda:0` 表示物理第 1 张显卡。
-
-快速检查训练与采样（将路径替换为实际 checkpoint）：
+单独训练全部阶段并采样：
 
 ```bash
-python DiT/detect_erase/train.py --cases i2p --epochs 1 --max-steps 2 --limit-prompts 2 --sampling-steps 2
-python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases i2p --i2p-prompt-count 4 --phase sample
+RUN_DIR="/home/shx/code/ce-new/DiT/detect_erase/results/sd35_medium-$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
+python DiT/detect_erase/train.py --run-dir "$RUN_DIR" --model sd35_medium --stage all --track
+python DiT/detect_erase/sample.py --run-dir "$RUN_DIR" --cases all --track
 ```
 
-完整实验或缩小模板数量：
+`--stage all` 分别写入两个训练目录，并自动将完整 prompt 保存为根目录的 `prompts.pt`。独立训练的两个进程完成后执行：
 
 ```bash
-python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases all
-python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases ip --ip-template-count 2 --seeds 0 --similarity l2
-python DiT/detect_erase/sample.py --run-dir /path/to/run --phase evaluate
+python -m DiT.detect_erase.prompts --run-dir "$RUN_DIR"
 ```
 
-采样还可用 `--style-template-count`、`--object-template-count`、`--batch-size`、`--dry-run`；评测可用 `--metric-device`、`--metric-batch-size`、`--skip-vlm`、`--with-q16` 和各评测权重路径。`--run-dir` 复用已保存的数据与门控配置。
+双卡采样或续跑（各命令都从同一根目录读取 `prompts.pt`，自动跳过完整图片）：
 
-**可选追踪**：训练和采样均添加 `--track` 开启 SwanLab；默认关闭，不导入 SwanLab、不写追踪文件。默认 `--swanlab-mode local`，数据保存在当前运行目录的 `swanlog/`。可配置 `--swanlab-project`、`--swanlab-name`；云端记录使用 `--swanlab-mode online`，提前执行 `swanlab login`。
+```bash
+CUDA_VISIBLE_DEVICES=0 python DiT/detect_erase/sample.py \
+  --run-dir "$RUN_DIR" --cases i2p,style --device cuda:0 --metric-device cuda:0 --track &
+CUDA_VISIBLE_DEVICES=1 python DiT/detect_erase/sample.py \
+  --run-dir "$RUN_DIR" --cases ip,object --device cuda:0 --metric-device cuda:0 --track &
+wait
+```
+
+`CUDA_VISIBLE_DEVICES=1` 后，`cuda:0` 表示物理第 1 张显卡。`--phase evaluate --run-dir "$RUN_DIR"` 仅评测已有 case。
+
+首次准备 case 时可配置 `--i2p-prompt-count`、`--ip-template-count`、`--style-template-count`、`--object-template-count`、`--seeds`、相似度和阈值。已保存 case 沿用其配置；重新选择这些生成配置需新建实验。`--batch-size`、设备和评测参数可在续跑时调整。
+
+训练还可用 `--targets`、`--limit-prompts`、`--checkpoint`；采样可用 `--dry-run`、`--skip-vlm`、`--with-q16` 和评测权重路径。独立采样可用 `--checkpoint /path/to/prompts.pt`，会在 `results/` 创建新的实验根目录。
+
+**可选追踪**：训练和采样均添加 `--track` 开启 SwanLab；默认关闭，不导入 SwanLab、不写追踪文件。默认 `--swanlab-mode local`，所有阶段的数据保存在实验根目录的 `swanlog/`（内部运行目录由 SwanLab 管理）。可配置 `--swanlab-project`、`--swanlab-name`；云端记录使用 `--swanlab-mode online`，提前执行 `swanlab login`。
 
 Local 模式需要安装看板扩展；只有 SwanLab 核心包时，可用 `--swanlab-mode offline` 保存离线记录，之后用 `swanlab sync` 同步到云端。
 
 ```bash
 pip install 'swanlab[dashboard]'
 python DiT/detect_erase/train.py --cases i2p --track
-python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases all --track
+python DiT/detect_erase/sample.py --run-dir "$RUN_DIR" --cases all --track
 swanlab watch /path/to/run/swanlog
 ```
 

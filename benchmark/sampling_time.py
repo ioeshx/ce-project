@@ -54,9 +54,11 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
     """Publish only after all requested sampling phases completed successfully."""
     config = manifest["config"]
     model = model_name(manifest["base_model"], config.get("model_name"))
-    root = results_directory(config["output_dir"], model)
-    method = method_directory(root, manifest["task"], manifest["method"], manifest.get("case_id"))
-    directory = unique_directory(method / "samplings", "sampling-" + started_at.strftime("%Y%m%d-%H%M%S"))
+    flat = config.get("result_layout") == "flat"
+    root = Path(config["output_dir"]) if flat else results_directory(config["output_dir"], model)
+    method = root / manifest["case_id"] if flat else method_directory(root, manifest["task"], manifest["method"], manifest.get("case_id"))
+    directory = method if flat else unique_directory(method / "samplings", "sampling-" + started_at.strftime("%Y%m%d-%H%M%S"))
+    details = directory / ("sampling_time.json" if flat else "timing.json")
     generated = sum(p["generated_images"] for p in phases)
     reused = sum(p["reused_images"] for p in phases)
     row = {"method": manifest["method"], "task": manifest["task"], "model_name": model,
@@ -79,13 +81,20 @@ def publish(manifest, mode, started_at, total_seconds, phases, validation_second
                finished_at=local_now().isoformat(timespec="seconds"),
                sampling=manifest["sampling"], sampling_options=config["sampling"],
                manifest=str(Path(manifest_path).resolve()) if manifest_path else None,
-               details_file=str(directory / "timing.json"))
+               details_file=str(details))
     document = {"schema": "benchmark-sampling-time-v1", "row": row, "phases": phases,
                 "definitions": {"total_seconds": "This sample_manifest call before timing publication, including cache checks, lock waits, model load, generation, image saves and cleanup; excludes prepare/evaluate.",
                                 "generation_seconds": "Sum of adapter.generate wall time, including native text encoding, denoising and decoding; synchronized on participating CUDA devices; excludes model loading and PNG writes.",
                                 "seconds_per_image": "generation_seconds / newly generated images; null when all requested images are cached.",
-                                "resume": "Only this invocation is timed; previous invocation records are retained under samplings/."}}
-    write_json(directory / "timing.json", document, portable=True)
+                                "resume": ("Only this invocation is timed; this is the latest successful invocation." if flat else
+                                           "Only this invocation is timed; previous invocation records are retained under samplings/.")}}
+    write_json(details, document, portable=True)
+    if flat:
+        from .results import upsert_summary
+        upsert_summary(root, "sampling_time", row)
+        print(table([row]), flush=True)
+        print(f"[sampling details] {details}", flush=True)
+        return document
     path = root / "time" / f"{manifest['task']}-sampling-time.csv"
     with locked(path.with_suffix(".lock")):
         rows = []

@@ -16,9 +16,9 @@ sys.path.insert(0, str(ROOT))
 import torch
 from benchmark.common import configuration, read_json, slug, write_json
 from benchmark.dit_cases import definitions, select_cases
-from benchmark.layout import timestamp, unique_directory
 from benchmark.model_profiles import DIT_MODELS
 from benchmark.sampling_time import cuda_devices, synchronize
+from DiT.detect_erase.outputs import run_directory, run_log, update_run
 from DiT.detect_erase.prompts import PromptModel, cfg_loss, classification_loss
 
 HERE = Path(__file__).resolve().parent
@@ -33,7 +33,7 @@ class TrainingTrace:
         self.directory = directory
         self.run = swanlab.init(project=args.swanlab_project,
                                 name=args.swanlab_name or f"train-{config['model_name']}-{directory.name}",
-                                mode=args.swanlab_mode, log_dir=str(directory / "swanlog"),
+                                mode=args.swanlab_mode, log_dir=str(directory.parent / "swanlog"),
                                 config={"model": config["base_model"], "sampling": config["sampling"],
                                         "training": read_json(directory / "training.json")})
         self.loss_file = (directory / "loss.csv").open("w", encoding="utf-8", newline="", buffering=1)
@@ -225,7 +225,8 @@ def main(argv=None):
     parser.add_argument("--limit-prompts", type=int, help="Use first N rows of each training stage for a quick run")
     parser.add_argument("--dataset-dir", type=Path, default=HERE / "dataset")
     parser.add_argument("--erase-dir", type=Path, default=HERE / "erase")
-    parser.add_argument("--output-dir", type=Path, default=HERE / "checkpoints")
+    parser.add_argument("--run-dir", type=Path, help="Exact experiment directory shared by both training stages and sampling")
+    parser.add_argument("--output-dir", type=Path, default=HERE / "results", help="Parent for a new model-time experiment directory")
     parser.add_argument("--sampling-steps", type=int, help="Denoising steps in each teacher trajectory")
     parser.add_argument("--height", type=int)
     parser.add_argument("--width", type=int)
@@ -294,58 +295,72 @@ def main(argv=None):
         detect_data.update({data["target"]: data for data in read_json(args.dataset_dir / f"{group}.json")["datasets"]})
         erase_data.update({data["target"]: data for data in read_json(args.erase_dir / f"{group}.json")["datasets"]})
 
-    directory = unique_directory(args.output_dir / model_name, timestamp())
-    write_json(directory / "training.json", {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()})
-    tracker = TrainingTrace(args, directory, config) if args.track else None
-    model = PromptModel(config)
-    if tracker:
-        tracker.devices = cuda_devices(model, model.config["sampling"])
-    if args.gradient_checkpointing:
-        model.pipe.transformer.enable_gradient_checkpointing()
-    bank.update(config=model.config, tau=args.tau, temperature=args.temperature, detect_loss=args.detect_loss)
-    null = model.encode([""])
-
-    for group, target in wanted:
-        if target not in bank["concepts"]:
-            concept = model.encode([target])
-            bank["concepts"][target] = {
-                "group": group, "detect_sequence": concept[0].float().cpu(), "detect_pooled": concept[1].float().cpu(),
-                "erase_sequence": null[0].float().cpu(), "erase_pooled": null[1].float().cpu(),
-                "detect_trained": False, "erase_trained": False,
-            }
-        entry = bank["concepts"][target]
-        for stage in (("detect", "erase") if args.stage == "all" else (args.stage,)):
-            if stage == "detect":
-                pooled = torch.nn.Parameter(entry["detect_pooled"].to(model.device).clone())
-                rows = detect_data[target]["samples"]
-                if args.detect_loss == "velocity":
-                    rows = [row for row in rows if row["label"] == 1]
-                rows = rows[:args.limit_prompts]
-                if args.detect_loss == "clip":
-                    updates = train_clip(model, pooled, rows, args, tracker, target)
+    directory = run_directory(model_name, args.run_dir, args.output_dir)
+    config.update(output_dir=str(directory), result_layout="flat")
+    stages = ("detect", "erase") if args.stage == "all" else (args.stage,)
+    if not args.checkpoint and any((directory / f"train_{stage}" / "training.json").exists() for stage in stages):
+        parser.error("This stage already exists; start a new run, or use --checkpoint to continue training.")
+    for stage in stages:
+        stage_dir = directory / f"train_{stage}"
+        stage_dir.mkdir(exist_ok=True)
+        update_run(directory, model_name, training={stage: str(stage_dir / "prompts.pt")})
+        write_json(stage_dir / "training.json", {
+            **{key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
+            "stage": stage, "run_dir": str(directory)})
+        with run_log(directory, f"train_{stage}"):
+            print(f"Run: {directory}\nStage: {stage}", flush=True)
+            tracker = TrainingTrace(args, stage_dir, config) if args.track else None
+            model = PromptModel(config)
+            if tracker:
+                tracker.devices = cuda_devices(model, model.config["sampling"])
+            if args.gradient_checkpointing:
+                model.pipe.transformer.enable_gradient_checkpointing()
+            bank.update(config=model.config, tau=args.tau, temperature=args.temperature, detect_loss=args.detect_loss)
+            null = model.encode([""])
+            for group, target in wanted:
+                if target not in bank["concepts"]:
+                    concept = model.encode([target])
+                    bank["concepts"][target] = {
+                        "group": group, "detect_sequence": concept[0].float().cpu(), "detect_pooled": concept[1].float().cpu(),
+                        "erase_sequence": null[0].float().cpu(), "erase_pooled": null[1].float().cpu(),
+                        "detect_trained": False, "erase_trained": False,
+                    }
+                entry = bank["concepts"][target]
+                if stage == "detect":
+                    pooled = torch.nn.Parameter(entry["detect_pooled"].to(model.device).clone())
+                    rows = detect_data[target]["samples"]
+                    if args.detect_loss == "velocity":
+                        rows = [row for row in rows if row["label"] == 1]
+                    rows = rows[:args.limit_prompts]
+                    if args.detect_loss == "clip":
+                        updates = train_clip(model, pooled, rows, args, tracker, target)
+                    else:
+                        updates = train_velocity(model, (entry["detect_sequence"], pooled), rows,
+                                                 args, tracker, target, stage)
+                    entry["detect_pooled"] = pooled.detach().cpu()
                 else:
-                    updates = train_velocity(model, (entry["detect_sequence"], pooled), rows,
-                                             args, tracker, target, stage)
-                entry["detect_pooled"] = pooled.detach().cpu()
-            else:
-                sequence = torch.nn.Parameter(entry["erase_sequence"].to(model.device).clone())
-                pooled = torch.nn.Parameter(entry["erase_pooled"].to(model.device).clone())
-                rows = erase_data[target]["pairs"][:args.limit_prompts]
-                updates = train_velocity(model, (sequence, pooled), rows, args, tracker, target, stage)
-                entry["erase_sequence"], entry["erase_pooled"] = sequence.detach().cpu(), pooled.detach().cpu()
-            entry[f"{stage}_trained"] = True
-            entry[f"{stage}_updates"] = updates
-            entry[f"{stage}_samples"] = len(rows)
-            if stage == "detect":
-                entry.update(detect_loss=args.detect_loss, tau=args.tau, temperature=args.temperature)
-            else:
-                entry["cfg_scale"] = scale
-            torch.save(bank, directory / "prompts.pt")
-            print(f"[{target}:{stage}] completed {updates} updates", flush=True)
-    model.close()
-    if tracker:
-        tracker.finish()
-    print(f"Checkpoint: {directory / 'prompts.pt'}", flush=True)
+                    sequence = torch.nn.Parameter(entry["erase_sequence"].to(model.device).clone())
+                    pooled = torch.nn.Parameter(entry["erase_pooled"].to(model.device).clone())
+                    rows = erase_data[target]["pairs"][:args.limit_prompts]
+                    updates = train_velocity(model, (sequence, pooled), rows, args, tracker, target, stage)
+                    entry["erase_sequence"], entry["erase_pooled"] = sequence.detach().cpu(), pooled.detach().cpu()
+                entry[f"{stage}_trained"] = True
+                entry[f"{stage}_updates"] = updates
+                entry[f"{stage}_samples"] = len(rows)
+                if stage == "detect":
+                    entry.update(detect_loss=args.detect_loss, tau=args.tau, temperature=args.temperature)
+                else:
+                    entry["cfg_scale"] = scale
+                torch.save(bank, stage_dir / "prompts.pt")
+                print(f"[{target}:{stage}] completed {updates} updates", flush=True)
+            model.close()
+            if all(entry.get("detect_trained") and entry.get("erase_trained") for entry in bank["concepts"].values()):
+                torch.save(bank, directory / "prompts.pt")
+                update_run(directory, model_name, checkpoint=str(directory / "prompts.pt"))
+            if tracker:
+                tracker.finish()
+            print(f"Checkpoint: {stage_dir / 'prompts.pt'}", flush=True)
+    print(f"Run: {directory}", flush=True)
 
 
 if __name__ == "__main__":

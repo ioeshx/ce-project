@@ -7,7 +7,7 @@ import json
 import math
 from pathlib import Path
 
-from .common import atomic_text, concept_key, digest, locked, read_result_csv, write_csv
+from .common import atomic_text, concept_key, digest, locked, read_json, read_result_csv, write_csv, write_json
 from .sampling_profile import canonical_protocol
 
 
@@ -20,6 +20,18 @@ def read_rows(root, task):
 
 def result_key(row):
     return (row["method"], row.get("case_id") or "")
+
+
+def upsert_summary(root, name, row):
+    """A shared run summary: one latest row per case, safe across worker processes."""
+    root = Path(root)
+    with locked(root / f".{name}.lock"):
+        path = root / f"{name}.json"
+        rows = read_json(path)["cases"] if path.exists() else []
+        rows = sorted([r for r in rows if r["case_id"] != row["case_id"]] + [row],
+                      key=lambda r: r["case_id"])
+        write_json(path, {"cases": rows}, portable=True)
+        write_csv(root / f"{name}.csv", rows, portable=True)
 
 
 def upsert(root, task, row):

@@ -175,7 +175,8 @@ def configuration(path=None, task=None, base=None, model=None):
     result["model_name"] = name
     if result["base_model"] in MODEL_IDS.values() and model_name(result["base_model"]) != name:
         raise ValueError("model_name and base_model select different built-in models.")
-    result["output_dir"] = str(results_directory(result["output_dir"], name))
+    if result.get("result_layout") != "flat":
+        result["output_dir"] = str(results_directory(result["output_dir"], name))
     for field in ("output_dir", "cache_dir", "original_dir"):
         result[field] = str(Path(result[field]).expanduser().resolve())
     s, e = result["sampling"], result["evaluation"]

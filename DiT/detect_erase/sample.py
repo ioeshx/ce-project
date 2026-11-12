@@ -8,6 +8,7 @@ import csv
 from collections import Counter
 import json
 from pathlib import Path
+import shutil
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,8 +18,10 @@ from benchmark.common import ROOT as BENCHMARK_ROOT, SCHEMA, concept_key, config
 from benchmark.data import adapter_identity, load_manifest, prompt_records, validate_manifest
 from benchmark.dataset.prompt_templates import template_dict
 from benchmark.dit_cases import definitions, select_cases
-from benchmark.layout import image_directory, original_directory, timestamp, unique_directory
+from benchmark.layout import original_directory
+from benchmark.results import upsert_summary
 from benchmark.sampling_profile import canonical_protocol
+from DiT.detect_erase.outputs import run_directory, run_log, update_run
 
 HERE = Path(__file__).resolve().parent
 
@@ -115,16 +118,24 @@ def summarize_gates(manifest, gate_log, nude_keys):
     return dict(summary=rates(overall), by_concept=concept_rows, by_erase_prompt=erase_rows), records
 
 
+def set_shared_references(config, records, protocol):
+    """Use benchmark's shared originals for the exact prompts and sampling protocol."""
+    config["original_dir"] = str(BENCHMARK_ROOT / "original" / config["model_name"])
+    directory = original_directory(config, records, protocol)
+    for record in records:
+        record["reference"] = str(directory / f"{record['sample_id']}.png")
+
+
 def prepare_case(config, records, source, path):
     """Use benchmark image/reference identities with the selected prompt subset."""
     protocol = canonical_protocol(config["sampling"])
     identity = adapter_identity(config)
-    references = original_directory(config, records, protocol) if config["task"] != "i2p" else None
-    images = image_directory(config, records, protocol, identity)
+    images = path.parent / "images"
+    images.mkdir(exist_ok=True)
     for record in records:
         record["image"] = str(images / f"{record['sample_id']}.png")
-        if config["task"] != "i2p":
-            record["reference"] = str(references / f"{record['sample_id']}.png")
+    if config["task"] != "i2p":
+        set_shared_references(config, records, protocol)
     manifest = dict(schema=SCHEMA, task=config["task"], case_id=config["case_id"],
                     model_name=config["model_name"], base_model=config["base_model"], method=config["method"],
                     targets=config["targets"], sampling=protocol, dataset=source,
@@ -137,9 +148,9 @@ def prepare_case(config, records, source, path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path)
-    parser.add_argument("--cases", default="all")
+    parser.add_argument("--cases", help="Cases/groups; default all, or existing cases for evaluate")
     parser.add_argument("--phase", choices=("all", "sample", "evaluate"), default="all")
-    parser.add_argument("--run-dir", type=Path, help="Resume the saved prompts/protocol, or evaluate an existing run")
+    parser.add_argument("--run-dir", type=Path, help="Experiment root containing prompts.pt, training stages and benchmark cases")
     parser.add_argument("--similarity", choices=("cosine", "l2"))
     parser.add_argument("--tau", type=float, help="Cosine threshold; default: trained value (0.2)")
     parser.add_argument("--l2-threshold", type=float)
@@ -186,8 +197,7 @@ def main(argv=None):
     generation_fields = ("checkpoint", "steps", "height", "width", "seeds", "i2p_prompt_count", "i2p_subset",
                          "tau", "similarity", "l2_threshold", "multi_concept", "ip_template_count",
                          "style_template_count", "object_template_count")
-    if args.run_dir and any(getattr(args, key) is not None for key in generation_fields):
-        parser.error("--run-dir reuses its checkpoint, prompt subset and gate settings; omit generation overrides.")
+    generation_overrides = any(getattr(args, key) is not None for key in generation_fields)
     for key, default in dict(similarity="cosine", l2_threshold=0.2, multi_concept="top1",
                              ip_template_count=80, style_template_count=30, object_template_count=1).items():
         if getattr(args, key) is None:
@@ -221,23 +231,29 @@ def main(argv=None):
         if key not in evaluation and local.exists():
             evaluation[key] = str(local)
 
-    if args.run_dir:
-        directory = args.run_dir.expanduser().resolve()
-        info = read_json(directory / "run.json")
-        selected = select_cases(args.cases) if args.cases != "all" else list(info["manifests"])
-        if set(selected) - set(info["manifests"]):
-            parser.error("Selected cases must already exist in --run-dir.")
-        manifests = [(Path(info["manifests"][case]), load_manifest(info["manifests"][case])) for case in selected]
-        if args.device and args.phase != "evaluate" and any(
-                args.device.split(":")[0] != manifest["config"]["sampling"]["device"].split(":")[0]
-                for _, manifest in manifests):
-            parser.error("Resume sampling on the original execution backend, or create a new run.")
-    else:
+    directory = args.run_dir.expanduser().resolve() if args.run_dir else None
+    info = read_json(directory / "run.json") if directory and (directory / "run.json").exists() else {}
+    selected = (list(info.get("manifests", {})) if args.phase == "evaluate" and args.cases is None else
+                select_cases(args.cases or "all"))
+    if not selected:
+        parser.error("No benchmark cases have been prepared in this run.")
+    manifests = {case: load_manifest(directory / case / "manifest.json") for case in selected
+                 if directory and (directory / case / "manifest.json").exists()}
+    if manifests and generation_overrides:
+        parser.error("Existing cases reuse their saved prompts/protocol; omit generation overrides or start a new run.")
+    if args.phase == "evaluate" and set(selected) - set(manifests):
+        parser.error("Evaluate requires completed manifests for all selected cases.")
+    if args.device and args.phase != "evaluate" and any(
+            args.device.split(":")[0] != manifest["config"]["sampling"]["device"].split(":")[0]
+            for manifest in manifests.values()):
+        parser.error("Resume sampling on the original execution backend, or create a new run.")
+    new_cases = [case for case in selected if case not in manifests]
+    cases = definitions()["cases"]
+    if new_cases:
         import torch
+        args.checkpoint = (args.checkpoint.expanduser().resolve() if args.checkpoint else directory / "prompts.pt")
         bank = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
-        cases = definitions()["cases"]
-        selected = select_cases(args.cases)
-        targets = {target for case in selected for target in cases[case]["targets"]}
+        targets = {target for case in new_cases for target in cases[case]["targets"]}
         missing = [target for target in sorted(targets) if not all(
             bank["concepts"].get(target, {}).get(f"{stage}_trained") for stage in ("detect", "erase"))]
         if missing:
@@ -248,7 +264,7 @@ def main(argv=None):
         if any(bank["concepts"][target]["cfg_scale"] != scale for target in targets):
             parser.error("Selected erase prompts must share the recorded training CFG scale.")
         prepared = []
-        for case in selected:
+        for case in new_cases:
             group = cases[case]["group"]
             task = {"ip": "instance"}.get(group, group)
             dataset = {}
@@ -268,7 +284,7 @@ def main(argv=None):
             for key in ("steps", "height", "width"):
                 if getattr(args, key) is not None:
                     sampling[key] = getattr(args, key)
-            cfg = configuration(task=task, base=dict(case_id=case, model_name=trained["model_name"],
+            cfg = configuration(task=task, base=dict(case_id=case, model_name=trained["model_name"], result_layout="flat",
                                 base_model=trained["base_model"], method="DetectErase", sampling=sampling,
                                 dataset=dataset, cache_dir=str(args.cache_dir.resolve()),
                                 evaluation={**evaluation, "vlm_enabled": group in {"ip", "style"} and not args.skip_vlm}))
@@ -288,44 +304,54 @@ def main(argv=None):
         if args.dry_run:
             for case, _, records, _ in prepared:
                 print(f"{case}: {len(records)} generated images", flush=True)
-            return
-        directory = unique_directory(args.output_dir / trained["model_name"], timestamp())
-        manifests = []
-        for case, cfg, records, source in prepared:
-            case_dir = directory / case
-            case_dir.mkdir()
-            cfg.update(output_dir=str(directory / "metrics" / trained["model_name"]),
-                       original_dir=str(directory / "references" / trained["model_name"]))
-            cfg["adapter"] = dict(kind="plugin", factory="DiT.detect_erase.prompts:PromptModel",
-                                  checkpoint=str(args.checkpoint.expanduser().resolve()), source_files=["train.py"],
-                                  similarity=args.similarity, tau=args.tau if args.tau is not None else bank["tau"],
-                                  l2_reduction="rms", l2_threshold=args.l2_threshold, multi_concept=args.multi_concept,
-                                  gate_log=str(case_dir / "gates.jsonl"))
-            path = case_dir / "manifest.json"
-            manifests.append((path, prepare_case(cfg, records, source, path)))
-        write_json(directory / "run.json", {"checkpoint": str(args.checkpoint.expanduser().resolve()),
-                   "manifests": {manifest["case_id"]: str(path) for path, manifest in manifests}})
+        else:
+            directory = run_directory(trained["model_name"], directory, args.output_dir)
+            if args.checkpoint != directory / "prompts.pt":
+                shutil.copyfile(args.checkpoint, directory / "prompts.pt")
+            for case, cfg, records, source in prepared:
+                case_dir = directory / case
+                case_dir.mkdir(exist_ok=True)
+                cfg.update(output_dir=str(directory))
+                cfg["adapter"] = dict(kind="plugin", factory="DiT.detect_erase.prompts:PromptModel",
+                                      checkpoint=str(directory / "prompts.pt"), source_files=["train.py"],
+                                      similarity=args.similarity, tau=args.tau if args.tau is not None else bank["tau"],
+                                      l2_reduction="rms", l2_threshold=args.l2_threshold, multi_concept=args.multi_concept,
+                                      gate_log=str(case_dir / "gates.jsonl"))
+                manifests[case] = prepare_case(cfg, records, source, case_dir / "manifest.json")
+            update_run(directory, trained["model_name"], checkpoint=str(directory / "prompts.pt"),
+                       manifests={case: str(directory / case / "manifest.json") for case in new_cases})
 
-    tracker, nude_keys, summaries = None, set(), {}
-    if args.track and not args.dry_run:
+    if args.dry_run:
+        for case, manifest in manifests.items():
+            print(f"{case}: {len(manifest['records'])} images, phase={args.phase}")
+        return
+
+    groups = list(dict.fromkeys(cases[case]["group"] for case in selected))
+    with run_log(directory, "sample_" + "_".join(groups)):
+        run_cases(args, directory, [manifests[case] for case in selected], evaluation)
+
+
+def run_cases(args, directory, manifests, evaluation):
+    """Sample/evaluate the selected cases and publish shared summaries."""
+
+    tracker, nude_keys = None, set()
+    if args.track:
         import swanlab
-        if any(manifest["task"] == "i2p" for _, manifest in manifests):
+        if any(manifest["task"] == "i2p" for manifest in manifests):
             with args.real_nude_mapping.open(encoding="utf-8-sig", newline="") as source:
                 nude_keys = {(row["sample_id"], int(row["seed"])) for row in csv.DictReader(source)
                              if row["is_real_nude"] == "1"}
         tracker = swanlab.init(project=args.swanlab_project,
-                               name=args.swanlab_name or f"sample-{directory.parent.name}-{timestamp()}",
+                               name=args.swanlab_name or "sample-" + "+".join(m["case_id"] for m in manifests),
                                mode=args.swanlab_mode, log_dir=str(directory / "swanlog"),
-                               config={"run_dir": str(directory), "cases": [m["case_id"] for _, m in manifests],
+                               config={"run_dir": str(directory), "cases": [m["case_id"] for m in manifests],
                                        "real_nude_mapping": str(args.real_nude_mapping.resolve()),
                                        "i2p_positive_records": len(nude_keys)})
-        existing = directory / "trigger_summary.json"
-        if existing.exists():
-            summaries = {row["case_id"]: row for row in read_json(existing)["cases"]}
 
     from benchmark.adapters import sample_manifest
     from benchmark.evaluate import evaluate
-    for index, (path, manifest) in enumerate(manifests):
+    for index, manifest in enumerate(manifests):
+        path = directory / manifest["case_id"] / "manifest.json"
         config = manifest["config"]
         # Telemetry is outside adapter identity and never changes sampling or cache keys.
         config["tracking"] = {"enabled": args.track}
@@ -333,9 +359,6 @@ def main(argv=None):
         config["evaluation"]["vlm_enabled"] = config["task"] in {"instance", "style"} and not args.skip_vlm
         if args.device:
             config["sampling"]["device"] = args.device
-        if args.dry_run:
-            print(f"{manifest['case_id']}: {len(manifest['records'])} images, phase={args.phase}")
-            continue
         if args.phase != "evaluate":
             config["sampling"].update(batch_size=args.batch_size, local_files_only=args.offline)
             if args.device_map or args.cpu_offload:
@@ -353,9 +376,7 @@ def main(argv=None):
             write_csv(case_dir / "trigger_records.csv", records)
             write_csv(case_dir / "trigger_by_concept.csv", report["by_concept"])
             write_csv(case_dir / "trigger_by_erase_prompt.csv", report["by_erase_prompt"])
-            summaries[case] = {"case_id": case, **report["summary"]}
-            write_json(directory / "trigger_summary.json", {"cases": list(summaries.values())})
-            write_csv(directory / "trigger_summary.csv", list(summaries.values()))
+            upsert_summary(directory, "trigger_summary", {"case_id": case, **report["summary"]})
             values = {f"sampling/{case}/{key}": value for key, value in report["summary"].items() if value is not None}
             for category in ("by_concept", "by_erase_prompt"):
                 name = "concept" if category == "by_concept" else "erase_prompt"

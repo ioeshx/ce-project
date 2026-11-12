@@ -18,7 +18,7 @@ def number(row, key):
         return math.nan
 
 
-def plot(root, task):
+def plot(root, task, *, rows=None, directory=None):
     from .common import atomic_text
     config_dir = Path(tempfile.gettempdir()) / f"benchmark-plot-cache-user-{os.getuid()}"
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -36,7 +36,7 @@ def plot(root, task):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    directory = Path(root) / "plots" / task
+    directory = Path(directory) if directory is not None else Path(root) / "plots" / task
     directory.mkdir(parents=True, exist_ok=True)
     outputs = []
     descriptions = []
@@ -55,7 +55,7 @@ def plot(root, task):
                 outputs.append(dest)
         finally:
             plt.close(fig)
-    for group_number, (protocol, rows) in enumerate(groups(read_rows(root, task)), 1):
+    for group_number, (protocol, rows) in enumerate(groups(read_rows(root, task) if rows is None else rows), 1):
         name = plot_name(task, rows[0], group_number)
         descriptions.append({"name": name, "protocol_id": protocol, "rows": rows})
         methods = [r["method"] for r in rows]

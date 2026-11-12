@@ -171,10 +171,11 @@ def evaluate(path, config=None, method=None, targets=None):
         raise ValueError("Evaluation batch size must be positive.")
     task = manifest["task"]
     root = Path(config["output_dir"])
-    method_dir = method_directory(root, task, manifest["method"], manifest.get("case_id"))
+    flat = config.get("result_layout") == "flat"
+    method_dir = root / manifest["case_id"] if flat else method_directory(root, task, manifest["method"], manifest.get("case_id"))
     method_dir.mkdir(parents=True, exist_ok=True)
     started = timestamp()
-    pending = unique_directory(method_dir, f".evaluation-pending-{started}")
+    pending = unique_directory(method_dir, ".evaluation-pending" if flat else f".evaluation-pending-{started}")
     try:
         if task == "i2p":
             metrics, provenance = i2p(manifest, opts, pending)
@@ -204,7 +205,7 @@ def evaluate(path, config=None, method=None, targets=None):
         portable_protocol = portable(protocol, path)
         portable_protocol.pop(BASE_FIELD, None)
         updated = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        destination = unique_directory(method_dir / "evaluations", f"evaluation-{started}")
+        destination = method_dir if flat else unique_directory(method_dir / "evaluations", f"evaluation-{started}")
         row = {"method": manifest["method"], "task": task, "targets": json.dumps(manifest["targets"], ensure_ascii=False),
                "model_name": config["model_name"],
                "base_model": manifest["base_model"], "n": len(data), "protocol_id": digest(portable_protocol),
@@ -214,13 +215,22 @@ def evaluate(path, config=None, method=None, targets=None):
                "updated_at": updated, "manifest": str(Path(path).resolve()), "details_dir": str(destination), **metrics}
         if manifest.get("case_id"):
             row["case_id"] = manifest["case_id"]
-        write_json(pending / "result.json", {"row": row, "protocol": protocol, "evaluation_options": opts}, portable=True)
+        write_json(pending / ("metrics.json" if flat else "result.json"),
+                   {"row": row, "protocol": protocol, "evaluation_options": opts}, portable=True)
         # Save the exact evaluated manifest even if a future prepare replaces its input file.
         write_json(pending / "manifest.json", manifest, portable=True)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        pending.replace(destination)
-        from .results import publish
-        publish(root, task, row)
+        if flat:
+            for file in sorted(pending.iterdir(), key=lambda p: p.name == "metrics.json"):
+                file.replace(destination / file.name)
+            from .plotting import plot
+            from .results import upsert_summary
+            plot(root, task, rows=[row], directory=method_dir / "plots")
+            upsert_summary(root, "metrics", row)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            pending.replace(destination)
+            from .results import publish
+            publish(root, task, row)
         return row
     finally:
         if pending.exists():

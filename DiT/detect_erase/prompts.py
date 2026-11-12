@@ -182,12 +182,13 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Merge independently trained detect and erase checkpoints.")
-    parser.add_argument("--detect-checkpoint", type=Path, required=True)
-    parser.add_argument("--erase-checkpoint", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--run-dir", type=Path, required=True)
     args = parser.parse_args()
-    detector = torch.load(args.detect_checkpoint, map_location="cpu", weights_only=True)
-    eraser = torch.load(args.erase_checkpoint, map_location="cpu", weights_only=True)
+    directory = args.run_dir.expanduser().resolve()
+    detect_checkpoint = directory / "train_detect" / "prompts.pt"
+    erase_checkpoint = directory / "train_erase" / "prompts.pt"
+    detector = torch.load(detect_checkpoint, map_location="cpu", weights_only=True)
+    eraser = torch.load(erase_checkpoint, map_location="cpu", weights_only=True)
     if (any(detector["config"][key] != eraser["config"][key] for key in ("model_name", "base_model"))
             or any(detector["config"]["sampling"].get(key) != eraser["config"]["sampling"].get(key)
                    for key in ("max_sequence_length", "dtype", "model_revision"))):
@@ -200,7 +201,8 @@ if __name__ == "__main__":
         entry.update({key: value for key, value in detector["concepts"][target].items()
                       if key.startswith("detect_") or key in {"tau", "temperature"}})
     eraser.update(tau=detector["tau"], temperature=detector["temperature"], detect_loss=detector["detect_loss"],
-                  prompt_sources={"detect": str(args.detect_checkpoint.resolve()), "erase": str(args.erase_checkpoint.resolve())})
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(eraser, args.output)
-    print(f"Merged {len(eraser['concepts'])} concepts: {args.output}", flush=True)
+                  prompt_sources={"detect": str(detect_checkpoint), "erase": str(erase_checkpoint)})
+    from DiT.detect_erase.outputs import update_run
+    torch.save(eraser, directory / "prompts.pt")
+    update_run(directory, eraser["config"]["model_name"], checkpoint=str(directory / "prompts.pt"))
+    print(f"Merged {len(eraser['concepts'])} concepts: {directory / 'prompts.pt'}", flush=True)

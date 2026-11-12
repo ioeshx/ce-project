@@ -1,14 +1,16 @@
+#!/usr/bin/env bash
 set -euo pipefail
 cd /home/shx/code/ce-new
 
-MODEL=sd35_medium
-TRACK_MODE=local
+MODEL=${MODEL:-sd35_medium}
+TRACK_MODE=${TRACK_MODE:-local}
 RUN_TIME=$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)
-RUN_ROOT="DiT/detect_erase/results/parallel-${MODEL}-${RUN_TIME}"
+RUN_ROOT="/home/shx/code/ce-new/DiT/detect_erase/results/${MODEL}-${RUN_TIME}"
 mkdir -p "$RUN_ROOT"
 
 TRAIN_ARGS=(
   --model "$MODEL"
+  --run-dir "$RUN_ROOT"
   --cases all
   --learning-rate 1e-3
   --epochs 5
@@ -24,35 +26,25 @@ CUDA_VISIBLE_DEVICES=0 python DiT/detect_erase/train.py \
   "${TRAIN_ARGS[@]}" \
   --stage detect \
   --detect-loss clip \
-  --output-dir "$RUN_ROOT/train-detect" \
-  --swanlab-name "detect-${RUN_TIME}" \
-  > "$RUN_ROOT/detect.log" 2>&1 &
+  --swanlab-name detect &
 DETECT_PID=$!
 
 # GPU 1：独立训练所有 erase prompt
 CUDA_VISIBLE_DEVICES=1 python DiT/detect_erase/train.py \
   "${TRAIN_ARGS[@]}" \
   --stage erase \
-  --output-dir "$RUN_ROOT/train-erase" \
-  --swanlab-name "erase-${RUN_TIME}" \
-  > "$RUN_ROOT/erase.log" 2>&1 &
+  --swanlab-name erase &
 ERASE_PID=$!
 
 # 等待两项训练成功完成
 wait "$DETECT_PID"
 wait "$ERASE_PID"
 
-DETECT_CHECKPOINTS=("$RUN_ROOT/train-detect/$MODEL"/*/prompts.pt)
-ERASE_CHECKPOINTS=("$RUN_ROOT/train-erase/$MODEL"/*/prompts.pt)
-
 # 合并真实训练得到的两种 prompt
-python -m DiT.detect_erase.prompts \
-  --detect-checkpoint "${DETECT_CHECKPOINTS[0]}" \
-  --erase-checkpoint "${ERASE_CHECKPOINTS[0]}" \
-  --output "$RUN_ROOT/prompts.pt"
+python -m DiT.detect_erase.prompts --run-dir "$RUN_ROOT"
 
 SAMPLE_ARGS=(
-  --checkpoint "$RUN_ROOT/prompts.pt"
+  --run-dir "$RUN_ROOT"
   --phase all
   --device cuda:0
   --metric-device cuda:0
@@ -65,19 +57,17 @@ SAMPLE_ARGS=(
 CUDA_VISIBLE_DEVICES=0 python DiT/detect_erase/sample.py \
   "${SAMPLE_ARGS[@]}" \
   --cases i2p,style \
-  --output-dir "$RUN_ROOT/benchmark-i2p-style" \
-  --swanlab-name "i2p-style-${RUN_TIME}" \
-  > "$RUN_ROOT/i2p-style.log" 2>&1 &
+  --swanlab-name i2p-style &
 BENCHMARK_A_PID=$!
 
 # GPU 1：ip、object 采样及指标计算
 CUDA_VISIBLE_DEVICES=1 python DiT/detect_erase/sample.py \
   "${SAMPLE_ARGS[@]}" \
   --cases ip,object \
-  --output-dir "$RUN_ROOT/benchmark-ip-object" \
-  --swanlab-name "ip-object-${RUN_TIME}" \
-  > "$RUN_ROOT/ip-object.log" 2>&1 &
+  --swanlab-name ip-object &
 BENCHMARK_B_PID=$!
 
 wait "$BENCHMARK_A_PID"
 wait "$BENCHMARK_B_PID"
+
+echo "Results: $RUN_ROOT"
