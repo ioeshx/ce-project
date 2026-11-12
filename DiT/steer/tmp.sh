@@ -1,3 +1,23 @@
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:0 \
+  --steer-target text_token_output \
+  --prompt-mode bare \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
+  --offline > DiT/steer/logs/steer_text_token_output.log 2>&1
+
+DiT/steer/run.sh \
+  --cases all \
+  --device cuda:1 \
+  --steer-target text_token \
+  --prompt-mode bare \
+  --subset-eval \
+  --i2p-test-num 10 --mscoco-test-num 10 \
+  --ip-test-num 3 --style-test-num 3 --object-test-num 3 \
+  --offline > DiT/steer/logs/steer_text_token.log 2>&1
+
 # prompt-mode bare,subject,matched
 DiT/steer/run.sh \
   --cases all \

@@ -8,12 +8,13 @@
 
     "church":"Building",
     "golf ball": "ball",
+    "parachute": "cloth",
+    "cassette player": "electronic device",
+    "banana": "fruit",
+
     "English springer": "dog",
     "goose": "bird",
     "chain saw": "tool",
-    "cassette player": "electronic device",
     "French horn": "instrument",
-    "garbage truck": "car",
-    "banana": "fruit",
-    "parachute": "cloth"
+    "garbage truck": "car"
 }

@@ -1,0 +1,136 @@
+## 一、算法与 loss
+
+冻结 text encoder、DiT 和 VAE，仅学习 text encoder 输出位置的条件向量。每个概念分别保存一对 detect / erase prompt。
+
+**Detect**：学习 CLIP pooled 向量 $p_i^d$，初始化为目标概念的 pooled 编码。SD3.5 拼接两个 CLIP 的 pooled 输出，FLUX 使用 CLIP pooled 输出。
+
+$$
+r_i(q)=\cos(f_{\mathrm{CLIP}}(q),p_i^d),\quad
+\hat y_i=\sigma((r_i(q)-\tau)/T),\quad
+\mathcal L_d=\operatorname{BCE}(\hat y_i,y_i).
+$$
+
+默认使用 `dataset/` 中每个概念的全部 50 条正负样本，分类训练只使用 CLIP，不计算 velocity。初始化时额外保存概念的完整 CLIP/T5 编码，供 L2 检测使用，该序列不参与优化。备选 `--detect-loss velocity` 只使用正样本：序列条件固定为概念编码，仅优化 pooled，拟合完整正样本文本 $q^+$ 的输出：
+
+$$
+\mathcal L_{d,v}=\mathbb E\|v_\theta(x_t,t,H(c_i),p_i^d)-v_\theta(x_t,t,q^+)\|_2^2.
+$$
+
+**Erase**：学习完整 `prompt_embeds` 和 `pooled_prompt_embeds`，初始化为原模型空文本编码，包含 CLIP/T5 对应条件。使用 `erase/` 中的完整配对描述：
+
+$$
+v_{\mathrm{CFG}}=v_\theta(x_t,t,p_i^e)+s\big[v_\theta(x_t,t,q^+)-v_\theta(x_t,t,p_i^e)\big],\qquad
+\mathcal L_e=\mathbb E\|v_{\mathrm{CFG}}-v_\theta(x_t,t,q^a)\|_2^2.
+$$
+
+从随机噪声出发，用冻结基础模型的空负条件 CFG 推进轨迹。每个去噪步骤在**同一个** $x_t,t$ 上计算各分支，更新一次 prompt；停止 teacher 和轨迹的梯度，只通过当前学生分支反传。所有文本、种子和时间步共享同一个概念 prompt，不生成图像反馈。
+
+**采样**：余弦分数达到阈值后，将对应 erase embedding 传入 Diffusers 的 `negative_prompt_embeds`、`negative_pooled_prompt_embeds`；未触发时使用原模型空文本条件。各 benchmark case 只检测该 case 的目标概念，保留概念的输入也经过同一检测逻辑。
+
+## 二、超参数
+
+| 参数 | 默认值 / 含义 |
+|---|---|
+| `--model` | `sd35_medium`；支持 benchmark 中的 SD3 / FLUX 模型 |
+| `--detect-loss` | `clip`；可选 `velocity` |
+| `--learning-rate` | `1e-3`，AdamW，weight decay=0 |
+| `--epochs` | 5，每个概念、每个阶段分别计数 |
+| `--max-steps` / `--steps`（训练） | 每个概念、每个阶段最多 2000 次优化更新；0 表示不设上限 |
+| `--batch-size` | 1；velocity 训练表示同时推进的轨迹数量 |
+| `--tau` | 0.2，训练和采样的余弦阈值 |
+| `--temperature` | 0.1，检测 BCE 的温度 |
+| `--seed` | 0；训练中持续抽取新的噪声种子 |
+| `--sampling-steps`（训练） | 模型 benchmark 默认去噪步数；区别于优化更新数 |
+| `--steps`（采样） | 默认继承训练配置 |
+| CFG 系数 | SD3 继承 benchmark `guidance_scale`；FLUX `true_cfg_scale=2`，embedded guidance 继承 benchmark |
+| `--dtype` | 继承模型配置，默认 BF16；可选 FP32；可学习参数和优化器状态使用 FP32 |
+| `--gradient-checkpointing` | 默认开启，减少训练激活占用；可用 `--no-gradient-checkpointing` 关闭 |
+
+epoch 和更新次数上限先到者结束训练。CLIP 检测有 50 条文本，batch=1、5 epochs 对应 250 次更新。Erase 每个去噪步骤更新一次，50 对文本 × 40 步已经对应 2000 次更新；完整训练 5 epochs 使用 `--max-steps 0`。
+
+## 三、实现与可选配置
+
+- **数据**：直接使用已有 detect / erase JSON。非 i2p 的数据 anchor 是 `template.format("")`，不等于整条空文本；erase prompt 自身仍由整条空文本编码初始化。测试模板按本次要求直接用于训练。
+- **相似度**：默认 `--similarity cosine`，只比较 CLIP pooled；`--similarity l2` 比较完整序列和 pooled，计算全部元素的 RMS 距离，距离不超过 `--l2-threshold 0.2` 时触发。完整 detect 条件的序列固定为概念编码，只有 pooled 被学习。
+- **多概念**：默认 `--multi-concept top1`，在达到阈值的概念中选择最高余弦／最低距离的一项；`mean` 对所有触发概念的 erase 条件取平均。
+- **训练配置**：`--stage all/detect/erase`、`--cases`、`--targets`、`--limit-prompts`；`--checkpoint` 从已有 prompt 参数继续训练，重新创建优化器。Detect 和 erase 可分别从初始化独立训练，完成后合并 checkpoint。
+- **保存**：`checkpoints/<模型>/<开始时间>/` 下保存 `prompts.pt`、`training.json`；每个阶段结束保存 checkpoint。阶段未完成的概念不能用于采样。Loss 和时间日志仅在 `--track` 时保存。
+- **Benchmark**：`sample.py` 调用原生数据、参考图、采样 adapter 和评测接口。默认生成后计算指标；`--phase sample` 只生成，`--phase evaluate --run-dir ...` 只评测，不加载生成模型或 prompt 权重。I2P 使用 NudeNet（Q16 可选），IP/style 使用 CS、FID 和 VLM 分类，object 使用 ResNet Top1/Top3。
+- **参考图**：使用同一 prompt、种子、CFG 和采样配置，负条件为空文本；同一 run 内共享。结果位于 `results/<模型>/<开始时间>/`，每个 case 保存 manifest；`gates.jsonl` 仅在 `--track` 时记录。
+- **仍需实验选择**：学习率、温度、训练时长、检测阈值和平均组合的效果；上述默认值已按当前约定固定，代码不利用最终图像指标自动调整它们。
+
+训练：
+
+```bash
+python DiT/detect_erase/train.py --model sd35_medium --cases i2p
+python DiT/detect_erase/train.py --model flux1_dev --cases all --epochs 5 --max-steps 2000
+```
+
+双卡独立训练时分别使用 `--stage detect` 和 `--stage erase`；等待两边结束，再合并并用于采样：
+
+```bash
+python -m DiT.detect_erase.prompts \
+  --detect-checkpoint /path/to/detect/prompts.pt \
+  --erase-checkpoint /path/to/erase/prompts.pt \
+  --output /path/to/merged/prompts.pt
+```
+
+合并保留 erase 的采样配置，从 detect 文件复制已训练的检测参数；两份文件须使用相同模型、文本长度和精度。`CUDA_VISIBLE_DEVICES=1` 后，命令中的 `--device cuda:0` 表示物理第 1 张显卡。
+
+快速检查训练与采样（将路径替换为实际 checkpoint）：
+
+```bash
+python DiT/detect_erase/train.py --cases i2p --epochs 1 --max-steps 2 --limit-prompts 2 --sampling-steps 2
+python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases i2p --i2p-prompt-count 4 --phase sample
+```
+
+完整实验或缩小模板数量：
+
+```bash
+python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases all
+python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases ip --ip-template-count 2 --seeds 0 --similarity l2
+python DiT/detect_erase/sample.py --run-dir /path/to/run --phase evaluate
+```
+
+采样还可用 `--style-template-count`、`--object-template-count`、`--batch-size`、`--dry-run`；评测可用 `--metric-device`、`--metric-batch-size`、`--skip-vlm`、`--with-q16` 和各评测权重路径。`--run-dir` 复用已保存的数据与门控配置。
+
+**可选追踪**：训练和采样均添加 `--track` 开启 SwanLab；默认关闭，不导入 SwanLab、不写追踪文件。默认 `--swanlab-mode local`，数据保存在当前运行目录的 `swanlog/`。可配置 `--swanlab-project`、`--swanlab-name`；云端记录使用 `--swanlab-mode online`，提前执行 `swanlab login`。
+
+Local 模式需要安装看板扩展；只有 SwanLab 核心包时，可用 `--swanlab-mode offline` 保存离线记录，之后用 `swanlab sync` 同步到云端。
+
+```bash
+pip install 'swanlab[dashboard]'
+python DiT/detect_erase/train.py --cases i2p --track
+python DiT/detect_erase/sample.py --checkpoint /path/to/prompts.pt --cases all --track
+swanlab watch /path/to/run/swanlog
+```
+
+本地看板用法见 [SwanLab 文档](https://docs.swanlab.cn/guide_cloud/offline-board.html)。
+
+训练追踪保存 `loss.csv`、`epochs.csv`、`training_summary.json`，并同步到 SwanLab：
+
+- 每次更新的 loss、学习率、梯度 L2 范数、参数 L2 范数、epoch、更新次数和 velocity 时间步。
+- CLIP 检测的更新前训练批次准确率、正／负样本平均余弦分数；epoch loss 按批次样本数加权。
+- 每个概念、阶段的每轮 epoch 秒数。因 `--max-steps` 提前结束时标记 `partial=true`；velocity 的 `examples` 表示轨迹状态数量。
+- `total_seconds` 从模型加载前开始，到最终 checkpoint 保存和模型释放结束，包含文本预编码和追踪开销；`epoch_seconds` 为各 epoch 之和，`outside_epochs_seconds` 为模型加载、预编码、保存等其余时间。Epoch 边界同步参与训练的 GPU 后计时。
+
+采样逐批记录实际 `selected` 的 erase prompt，各 case 结束后汇总到 SwanLab 和以下文件：
+
+- 运行根目录：`trigger_summary.csv/json`，每个 case 的总数和比率。
+- Case 目录：`trigger_summary.json`、`trigger_records.csv`、`trigger_by_concept.csv`、`trigger_by_erase_prompt.csv`，分别保存汇总、逐条判定、按输入概念和按 erase prompt 的统计。
+
+| 指标 | 定义 / 分母 |
+|---|---|
+| `trigger_rate` | 使用任一 erase prompt 的数量 / 已记录输入数 |
+| `target_correct_rate` | 选中了对应 erase prompt / 目标输入数 |
+| `target_other_rate` | 选中了其他 erase prompt / 目标输入数 |
+| `target_wrong_only_rate` | 只选中错误项、未选中对应项 / 目标输入数 |
+| `target_no_trigger_rate` | 没选中任何项 / 目标输入数 |
+| `non_target_false_rate` | 无关输入选中了任一项 / 无关输入数 |
+| `overall_accuracy` | 目标输入仅选中对应项、无关输入未触发 / 已记录输入数 |
+
+所有比率同时保存对应 `*_count`；分母为 0 时记录 `null`。Mean 模式可以同时选中正确项和其他项，故 `target_correct_rate` 与 `target_other_rate` 可重叠；correct、wrong-only、no-trigger 三项互斥。
+
+IP/style/object 按输入概念与该 case 的 targets 判断。I2P 按 `real_nude_mapping.csv` 的 **sample_id＋seed** 对齐，仅 `is_real_nude=1` 的 125 条算 nudity，其余输入均算无关；`--real-nude-mapping` 可指定映射文件。此标签仅用于统计，不参与门控，也不重新运行 NudeNet。
+
+继续采样时按 sample_id＋seed 保留最后一次门控记录，不重复计数。`--phase evaluate --run-dir ... --track` 可仅汇总已有门控记录；缺少记录的缓存样本显示 `missing_count` 和 `coverage`，不当作未触发，相关比率仅统计已记录样本。

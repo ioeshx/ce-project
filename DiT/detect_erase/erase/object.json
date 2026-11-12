@@ -1,0 +1,2518 @@
+{
+  "group": "object",
+  "template_source": "benchmark/dataset/prompt_templates.py:imagenet_templates",
+  "templates": [
+    "a bad photo of a {}.",
+    "a photo of many {}.",
+    "a sculpture of a {}.",
+    "a photo of the hard to see {}.",
+    "a low resolution photo of the {}.",
+    "a rendering of a {}.",
+    "graffiti of a {}.",
+    "a bad photo of the {}.",
+    "a cropped photo of the {}.",
+    "a tattoo of a {}.",
+    "the embroidered {}.",
+    "a photo of a hard to see {}.",
+    "a bright photo of a {}.",
+    "a photo of a clean {}.",
+    "a photo of a dirty {}.",
+    "a dark photo of the {}.",
+    "a drawing of a {}.",
+    "a photo of my {}.",
+    "the plastic {}.",
+    "a photo of the cool {}.",
+    "a close-up photo of a {}.",
+    "a black and white photo of the {}.",
+    "a painting of the {}.",
+    "a painting of a {}.",
+    "a pixelated photo of the {}.",
+    "a sculpture of the {}.",
+    "a bright photo of the {}.",
+    "a cropped photo of a {}.",
+    "a plastic {}.",
+    "a photo of the dirty {}.",
+    "a jpeg corrupted photo of a {}.",
+    "a blurry photo of the {}.",
+    "a photo of the {}.",
+    "a good photo of the {}.",
+    "a rendering of the {}.",
+    "a {} in a video game.",
+    "a photo of one {}.",
+    "a doodle of a {}.",
+    "a close-up photo of the {}.",
+    "a photo of a {}.",
+    "the origami {}.",
+    "the {} in a video game.",
+    "a sketch of a {}.",
+    "a doodle of the {}.",
+    "a origami {}.",
+    "a low resolution photo of a {}.",
+    "the toy {}.",
+    "a rendition of the {}.",
+    "a photo of the clean {}.",
+    "a photo of a large {}.",
+    "a rendition of a {}.",
+    "a photo of a nice {}.",
+    "a photo of a weird {}.",
+    "a blurry photo of a {}.",
+    "a cartoon {}.",
+    "art of a {}.",
+    "a sketch of the {}.",
+    "a embroidered {}.",
+    "a pixelated photo of a {}.",
+    "itap of the {}.",
+    "a jpeg corrupted photo of the {}.",
+    "a good photo of a {}.",
+    "a plushie {}.",
+    "a photo of the nice {}.",
+    "a photo of the small {}.",
+    "a photo of the weird {}.",
+    "the cartoon {}.",
+    "art of the {}.",
+    "a drawing of the {}.",
+    "a photo of the large {}.",
+    "a black and white photo of a {}.",
+    "the plushie {}.",
+    "a dark photo of a {}.",
+    "itap of a {}.",
+    "graffiti of the {}.",
+    "a toy {}.",
+    "itap of my {}.",
+    "a photo of a cool {}.",
+    "a photo of a small {}.",
+    "a tattoo of the {}."
+  ],
+  "datasets": [
+    {
+      "target": "church",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a church.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many church.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a church.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see church.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the church.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a church.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a church.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the church.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the church.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a church.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered church.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see church.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a church.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean church.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty church.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the church.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a church.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my church.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic church.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool church.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a church.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the church.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the church.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a church.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the church.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the church.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the church.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a church.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic church.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty church.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a church.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the church.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the church.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the church.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the church.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a church in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one church.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a church.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the church.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a church.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami church.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the church in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a church.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the church.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami church.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a church.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy church.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the church.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean church.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large church.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a church.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice church.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird church.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a church.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon church.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a church.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the church.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered church.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a church.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the church.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the church.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a church.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie church.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice church.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small church.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird church.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon church.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the church.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the church.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large church.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a church.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie church.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a church.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a church.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the church.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy church.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my church.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool church.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small church.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the church.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    },
+    {
+      "target": "golf ball",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a golf ball.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many golf ball.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a golf ball.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see golf ball.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the golf ball.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a golf ball.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a golf ball.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the golf ball.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the golf ball.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a golf ball.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered golf ball.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see golf ball.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a golf ball.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean golf ball.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty golf ball.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the golf ball.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a golf ball.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my golf ball.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic golf ball.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool golf ball.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a golf ball.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the golf ball.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the golf ball.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a golf ball.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the golf ball.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the golf ball.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the golf ball.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a golf ball.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic golf ball.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty golf ball.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a golf ball.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the golf ball.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the golf ball.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the golf ball.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the golf ball.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a golf ball in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one golf ball.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a golf ball.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the golf ball.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a golf ball.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami golf ball.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the golf ball in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a golf ball.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the golf ball.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami golf ball.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a golf ball.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy golf ball.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the golf ball.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean golf ball.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large golf ball.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a golf ball.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice golf ball.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird golf ball.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a golf ball.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon golf ball.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a golf ball.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the golf ball.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered golf ball.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a golf ball.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the golf ball.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the golf ball.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a golf ball.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie golf ball.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice golf ball.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small golf ball.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird golf ball.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon golf ball.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the golf ball.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the golf ball.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large golf ball.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a golf ball.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie golf ball.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a golf ball.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a golf ball.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the golf ball.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy golf ball.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my golf ball.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool golf ball.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small golf ball.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the golf ball.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    },
+    {
+      "target": "parachute",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a parachute.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many parachute.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a parachute.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see parachute.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the parachute.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a parachute.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a parachute.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the parachute.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the parachute.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a parachute.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered parachute.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see parachute.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a parachute.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean parachute.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty parachute.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the parachute.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a parachute.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my parachute.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic parachute.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool parachute.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a parachute.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the parachute.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the parachute.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a parachute.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the parachute.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the parachute.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the parachute.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a parachute.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic parachute.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty parachute.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a parachute.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the parachute.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the parachute.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the parachute.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the parachute.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a parachute in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one parachute.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a parachute.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the parachute.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a parachute.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami parachute.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the parachute in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a parachute.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the parachute.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami parachute.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a parachute.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy parachute.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the parachute.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean parachute.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large parachute.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a parachute.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice parachute.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird parachute.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a parachute.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon parachute.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a parachute.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the parachute.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered parachute.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a parachute.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the parachute.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the parachute.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a parachute.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie parachute.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice parachute.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small parachute.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird parachute.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon parachute.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the parachute.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the parachute.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large parachute.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a parachute.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie parachute.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a parachute.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a parachute.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the parachute.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy parachute.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my parachute.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool parachute.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small parachute.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the parachute.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    },
+    {
+      "target": "cassette player",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a cassette player.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many cassette player.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a cassette player.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see cassette player.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the cassette player.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a cassette player.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a cassette player.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the cassette player.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the cassette player.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a cassette player.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered cassette player.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see cassette player.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a cassette player.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean cassette player.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty cassette player.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the cassette player.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a cassette player.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my cassette player.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic cassette player.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool cassette player.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a cassette player.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the cassette player.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the cassette player.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a cassette player.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the cassette player.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the cassette player.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the cassette player.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a cassette player.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic cassette player.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty cassette player.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a cassette player.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the cassette player.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the cassette player.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the cassette player.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the cassette player.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a cassette player in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one cassette player.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a cassette player.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the cassette player.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a cassette player.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami cassette player.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the cassette player in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a cassette player.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the cassette player.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami cassette player.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a cassette player.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy cassette player.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the cassette player.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean cassette player.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large cassette player.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a cassette player.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice cassette player.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird cassette player.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a cassette player.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon cassette player.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a cassette player.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the cassette player.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered cassette player.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a cassette player.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the cassette player.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the cassette player.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a cassette player.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie cassette player.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice cassette player.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small cassette player.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird cassette player.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon cassette player.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the cassette player.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the cassette player.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large cassette player.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a cassette player.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie cassette player.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a cassette player.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a cassette player.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the cassette player.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy cassette player.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my cassette player.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool cassette player.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small cassette player.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the cassette player.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    },
+    {
+      "target": "banana",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a banana.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many banana.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a banana.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see banana.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the banana.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a banana.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a banana.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the banana.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the banana.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a banana.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered banana.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see banana.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a banana.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean banana.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty banana.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the banana.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a banana.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my banana.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic banana.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool banana.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a banana.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the banana.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the banana.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a banana.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the banana.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the banana.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the banana.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a banana.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic banana.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty banana.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a banana.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the banana.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the banana.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the banana.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the banana.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a banana in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one banana.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a banana.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the banana.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a banana.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami banana.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the banana in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a banana.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the banana.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami banana.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a banana.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy banana.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the banana.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean banana.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large banana.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a banana.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice banana.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird banana.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a banana.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon banana.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a banana.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the banana.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered banana.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a banana.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the banana.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the banana.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a banana.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie banana.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice banana.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small banana.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird banana.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon banana.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the banana.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the banana.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large banana.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a banana.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie banana.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a banana.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a banana.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the banana.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy banana.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my banana.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool banana.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small banana.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the banana.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    }
+  ]
+}

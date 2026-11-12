@@ -1,0 +1,1264 @@
+{
+  "group": "style",
+  "template_source": "DiT/detect_erase/dataset/personalized_style.py:imagenet_templates_small (deduplicated)",
+  "templates": [
+    "a painting in the style of {}",
+    "a rendering in the style of {}",
+    "a cropped painting in the style of {}",
+    "the painting in the style of {}",
+    "a clean painting in the style of {}",
+    "a dirty painting in the style of {}",
+    "a dark painting in the style of {}",
+    "a picture in the style of {}",
+    "a cool painting in the style of {}",
+    "a close-up painting in the style of {}",
+    "a bright painting in the style of {}",
+    "a good painting in the style of {}",
+    "a rendition in the style of {}",
+    "a nice painting in the style of {}",
+    "a small painting in the style of {}",
+    "a weird painting in the style of {}",
+    "a large painting in the style of {}"
+  ],
+  "datasets": [
+    {
+      "target": "Van Gogh",
+      "similar_concepts": [
+        "Monet",
+        "Paul Gauguin"
+      ],
+      "ordinary_concepts": [
+        "pixel art",
+        "minimalism"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 0,
+          "prompt": "a painting in the style of Van Gogh"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Van Gogh"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Van Gogh"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 3,
+          "prompt": "the painting in the style of Van Gogh"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Van Gogh"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Van Gogh"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Van Gogh"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 7,
+          "prompt": "a picture in the style of Van Gogh"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Van Gogh"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Van Gogh"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 10,
+          "prompt": "a bright painting in the style of Van Gogh"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 11,
+          "prompt": "a good painting in the style of Van Gogh"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 12,
+          "prompt": "a rendition in the style of Van Gogh"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 13,
+          "prompt": "a nice painting in the style of Van Gogh"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 14,
+          "prompt": "a small painting in the style of Van Gogh"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 15,
+          "prompt": "a weird painting in the style of Van Gogh"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 16,
+          "prompt": "a large painting in the style of Van Gogh"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 0,
+          "prompt": "a painting in the style of Van Gogh"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Van Gogh"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Van Gogh"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 3,
+          "prompt": "the painting in the style of Van Gogh"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Van Gogh"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Van Gogh"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Van Gogh"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 7,
+          "prompt": "a picture in the style of Van Gogh"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Van Gogh"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Van Gogh"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 10,
+          "prompt": "a bright painting in the style of Van Gogh"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 11,
+          "prompt": "a good painting in the style of Van Gogh"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Van Gogh",
+          "template_index": 12,
+          "prompt": "a rendition in the style of Van Gogh"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Monet",
+          "template_index": 0,
+          "prompt": "a painting in the style of Monet"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Paul Gauguin",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Paul Gauguin"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Monet",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Monet"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Paul Gauguin",
+          "template_index": 3,
+          "prompt": "the painting in the style of Paul Gauguin"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Monet",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Monet"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Paul Gauguin",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Paul Gauguin"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Monet",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Monet"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Paul Gauguin",
+          "template_index": 7,
+          "prompt": "a picture in the style of Paul Gauguin"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Monet",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Monet"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Paul Gauguin",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Paul Gauguin"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 0,
+          "prompt": "a painting in the style of pixel art"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 1,
+          "prompt": "a rendering in the style of minimalism"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of pixel art"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 3,
+          "prompt": "the painting in the style of minimalism"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of pixel art"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of minimalism"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of pixel art"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 7,
+          "prompt": "a picture in the style of minimalism"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of pixel art"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of minimalism"
+        }
+      ]
+    },
+    {
+      "target": "Monet",
+      "similar_concepts": [
+        "Camille Pissarro",
+        "Alfred Sisley"
+      ],
+      "ordinary_concepts": [
+        "pixel art",
+        "minimalism"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 0,
+          "prompt": "a painting in the style of Monet"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Monet"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Monet"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 3,
+          "prompt": "the painting in the style of Monet"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Monet"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Monet"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Monet"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 7,
+          "prompt": "a picture in the style of Monet"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Monet"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Monet"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 10,
+          "prompt": "a bright painting in the style of Monet"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 11,
+          "prompt": "a good painting in the style of Monet"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 12,
+          "prompt": "a rendition in the style of Monet"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 13,
+          "prompt": "a nice painting in the style of Monet"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 14,
+          "prompt": "a small painting in the style of Monet"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 15,
+          "prompt": "a weird painting in the style of Monet"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 16,
+          "prompt": "a large painting in the style of Monet"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 0,
+          "prompt": "a painting in the style of Monet"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Monet"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Monet"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 3,
+          "prompt": "the painting in the style of Monet"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Monet"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Monet"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Monet"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 7,
+          "prompt": "a picture in the style of Monet"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Monet"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Monet"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 10,
+          "prompt": "a bright painting in the style of Monet"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 11,
+          "prompt": "a good painting in the style of Monet"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Monet",
+          "template_index": 12,
+          "prompt": "a rendition in the style of Monet"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Camille Pissarro",
+          "template_index": 0,
+          "prompt": "a painting in the style of Camille Pissarro"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Alfred Sisley",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Alfred Sisley"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Camille Pissarro",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Camille Pissarro"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Alfred Sisley",
+          "template_index": 3,
+          "prompt": "the painting in the style of Alfred Sisley"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Camille Pissarro",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Camille Pissarro"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Alfred Sisley",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Alfred Sisley"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Camille Pissarro",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Camille Pissarro"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Alfred Sisley",
+          "template_index": 7,
+          "prompt": "a picture in the style of Alfred Sisley"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Camille Pissarro",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Camille Pissarro"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Alfred Sisley",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Alfred Sisley"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 0,
+          "prompt": "a painting in the style of pixel art"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 1,
+          "prompt": "a rendering in the style of minimalism"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of pixel art"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 3,
+          "prompt": "the painting in the style of minimalism"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of pixel art"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of minimalism"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of pixel art"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 7,
+          "prompt": "a picture in the style of minimalism"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of pixel art"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of minimalism"
+        }
+      ]
+    },
+    {
+      "target": "Picasso",
+      "similar_concepts": [
+        "Georges Braque",
+        "Juan Gris"
+      ],
+      "ordinary_concepts": [
+        "pixel art",
+        "minimalism"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 0,
+          "prompt": "a painting in the style of Picasso"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Picasso"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Picasso"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 3,
+          "prompt": "the painting in the style of Picasso"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Picasso"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Picasso"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Picasso"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 7,
+          "prompt": "a picture in the style of Picasso"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Picasso"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Picasso"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 10,
+          "prompt": "a bright painting in the style of Picasso"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 11,
+          "prompt": "a good painting in the style of Picasso"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 12,
+          "prompt": "a rendition in the style of Picasso"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 13,
+          "prompt": "a nice painting in the style of Picasso"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 14,
+          "prompt": "a small painting in the style of Picasso"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 15,
+          "prompt": "a weird painting in the style of Picasso"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 16,
+          "prompt": "a large painting in the style of Picasso"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 0,
+          "prompt": "a painting in the style of Picasso"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Picasso"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Picasso"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 3,
+          "prompt": "the painting in the style of Picasso"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Picasso"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Picasso"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Picasso"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 7,
+          "prompt": "a picture in the style of Picasso"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Picasso"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Picasso"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 10,
+          "prompt": "a bright painting in the style of Picasso"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 11,
+          "prompt": "a good painting in the style of Picasso"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Picasso",
+          "template_index": 12,
+          "prompt": "a rendition in the style of Picasso"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Georges Braque",
+          "template_index": 0,
+          "prompt": "a painting in the style of Georges Braque"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Juan Gris",
+          "template_index": 1,
+          "prompt": "a rendering in the style of Juan Gris"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Georges Braque",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of Georges Braque"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Juan Gris",
+          "template_index": 3,
+          "prompt": "the painting in the style of Juan Gris"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Georges Braque",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of Georges Braque"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Juan Gris",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of Juan Gris"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Georges Braque",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of Georges Braque"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Juan Gris",
+          "template_index": 7,
+          "prompt": "a picture in the style of Juan Gris"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Georges Braque",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of Georges Braque"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Juan Gris",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of Juan Gris"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 0,
+          "prompt": "a painting in the style of pixel art"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 1,
+          "prompt": "a rendering in the style of minimalism"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 2,
+          "prompt": "a cropped painting in the style of pixel art"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 3,
+          "prompt": "the painting in the style of minimalism"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 4,
+          "prompt": "a clean painting in the style of pixel art"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 5,
+          "prompt": "a dirty painting in the style of minimalism"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 6,
+          "prompt": "a dark painting in the style of pixel art"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 7,
+          "prompt": "a picture in the style of minimalism"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "pixel art",
+          "template_index": 8,
+          "prompt": "a cool painting in the style of pixel art"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "minimalism",
+          "template_index": 9,
+          "prompt": "a close-up painting in the style of minimalism"
+        }
+      ]
+    }
+  ]
+}

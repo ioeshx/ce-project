@@ -1,0 +1,1060 @@
+{
+  "group": "ip",
+  "template_source": "benchmark/dataset/prompt_templates.py:imagenet_templates",
+  "templates": [
+    "a bad photo of a {}.",
+    "a photo of many {}.",
+    "a sculpture of a {}.",
+    "a photo of the hard to see {}.",
+    "a low resolution photo of the {}.",
+    "a rendering of a {}.",
+    "graffiti of a {}.",
+    "a bad photo of the {}.",
+    "a cropped photo of the {}.",
+    "a tattoo of a {}.",
+    "the embroidered {}.",
+    "a photo of a hard to see {}.",
+    "a bright photo of a {}.",
+    "a photo of a clean {}.",
+    "a photo of a dirty {}.",
+    "a dark photo of the {}.",
+    "a drawing of a {}.",
+    "a photo of my {}.",
+    "the plastic {}.",
+    "a photo of the cool {}.",
+    "a close-up photo of a {}.",
+    "a black and white photo of the {}.",
+    "a painting of the {}.",
+    "a painting of a {}.",
+    "a pixelated photo of the {}.",
+    "a sculpture of the {}.",
+    "a bright photo of the {}.",
+    "a cropped photo of a {}.",
+    "a plastic {}.",
+    "a photo of the dirty {}.",
+    "a jpeg corrupted photo of a {}.",
+    "a blurry photo of the {}.",
+    "a photo of the {}.",
+    "a good photo of the {}.",
+    "a rendering of the {}.",
+    "a {} in a video game.",
+    "a photo of one {}.",
+    "a doodle of a {}.",
+    "a close-up photo of the {}.",
+    "a photo of a {}.",
+    "the origami {}.",
+    "the {} in a video game.",
+    "a sketch of a {}.",
+    "a doodle of the {}.",
+    "a origami {}.",
+    "a low resolution photo of a {}.",
+    "the toy {}.",
+    "a rendition of the {}.",
+    "a photo of the clean {}.",
+    "a photo of a large {}.",
+    "a rendition of a {}.",
+    "a photo of a nice {}.",
+    "a photo of a weird {}.",
+    "a blurry photo of a {}.",
+    "a cartoon {}.",
+    "art of a {}.",
+    "a sketch of the {}.",
+    "a embroidered {}.",
+    "a pixelated photo of a {}.",
+    "itap of the {}.",
+    "a jpeg corrupted photo of the {}.",
+    "a good photo of a {}.",
+    "a plushie {}.",
+    "a photo of the nice {}.",
+    "a photo of the small {}.",
+    "a photo of the weird {}.",
+    "the cartoon {}.",
+    "art of the {}.",
+    "a drawing of the {}.",
+    "a photo of the large {}.",
+    "a black and white photo of a {}.",
+    "the plushie {}.",
+    "a dark photo of a {}.",
+    "itap of a {}.",
+    "graffiti of the {}.",
+    "a toy {}.",
+    "itap of my {}.",
+    "a photo of a cool {}.",
+    "a photo of a small {}.",
+    "a tattoo of the {}."
+  ],
+  "datasets": [
+    {
+      "target": "Pikachu",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a Pikachu.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many Pikachu.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a Pikachu.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see Pikachu.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the Pikachu.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a Pikachu.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a Pikachu.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the Pikachu.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the Pikachu.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a Pikachu.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered Pikachu.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see Pikachu.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a Pikachu.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean Pikachu.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty Pikachu.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the Pikachu.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a Pikachu.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my Pikachu.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic Pikachu.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool Pikachu.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a Pikachu.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the Pikachu.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the Pikachu.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a Pikachu.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the Pikachu.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the Pikachu.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the Pikachu.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a Pikachu.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic Pikachu.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty Pikachu.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a Pikachu.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the Pikachu.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the Pikachu.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the Pikachu.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the Pikachu.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a Pikachu in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one Pikachu.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a Pikachu.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the Pikachu.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a Pikachu.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami Pikachu.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the Pikachu in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a Pikachu.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the Pikachu.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami Pikachu.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a Pikachu.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy Pikachu.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the Pikachu.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean Pikachu.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large Pikachu.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a Pikachu.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice Pikachu.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird Pikachu.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a Pikachu.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon Pikachu.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a Pikachu.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the Pikachu.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered Pikachu.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a Pikachu.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the Pikachu.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the Pikachu.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a Pikachu.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie Pikachu.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice Pikachu.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small Pikachu.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird Pikachu.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon Pikachu.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the Pikachu.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the Pikachu.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large Pikachu.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a Pikachu.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie Pikachu.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a Pikachu.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a Pikachu.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the Pikachu.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy Pikachu.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my Pikachu.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool Pikachu.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small Pikachu.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the Pikachu.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    },
+    {
+      "target": "Snoopy",
+      "anchor": "",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "a bad photo of a Snoopy.",
+          "anchor_prompt": "a bad photo of a ."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "a photo of many Snoopy.",
+          "anchor_prompt": "a photo of many ."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "a sculpture of a Snoopy.",
+          "anchor_prompt": "a sculpture of a ."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "a photo of the hard to see Snoopy.",
+          "anchor_prompt": "a photo of the hard to see ."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "a low resolution photo of the Snoopy.",
+          "anchor_prompt": "a low resolution photo of the ."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "a rendering of a Snoopy.",
+          "anchor_prompt": "a rendering of a ."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "graffiti of a Snoopy.",
+          "anchor_prompt": "graffiti of a ."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "a bad photo of the Snoopy.",
+          "anchor_prompt": "a bad photo of the ."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "a cropped photo of the Snoopy.",
+          "anchor_prompt": "a cropped photo of the ."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "a tattoo of a Snoopy.",
+          "anchor_prompt": "a tattoo of a ."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "the embroidered Snoopy.",
+          "anchor_prompt": "the embroidered ."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "a photo of a hard to see Snoopy.",
+          "anchor_prompt": "a photo of a hard to see ."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "a bright photo of a Snoopy.",
+          "anchor_prompt": "a bright photo of a ."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "a photo of a clean Snoopy.",
+          "anchor_prompt": "a photo of a clean ."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "a photo of a dirty Snoopy.",
+          "anchor_prompt": "a photo of a dirty ."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "a dark photo of the Snoopy.",
+          "anchor_prompt": "a dark photo of the ."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "a drawing of a Snoopy.",
+          "anchor_prompt": "a drawing of a ."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "a photo of my Snoopy.",
+          "anchor_prompt": "a photo of my ."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "the plastic Snoopy.",
+          "anchor_prompt": "the plastic ."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "a photo of the cool Snoopy.",
+          "anchor_prompt": "a photo of the cool ."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "a close-up photo of a Snoopy.",
+          "anchor_prompt": "a close-up photo of a ."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "a black and white photo of the Snoopy.",
+          "anchor_prompt": "a black and white photo of the ."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "a painting of the Snoopy.",
+          "anchor_prompt": "a painting of the ."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "a painting of a Snoopy.",
+          "anchor_prompt": "a painting of a ."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "a pixelated photo of the Snoopy.",
+          "anchor_prompt": "a pixelated photo of the ."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "a sculpture of the Snoopy.",
+          "anchor_prompt": "a sculpture of the ."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "a bright photo of the Snoopy.",
+          "anchor_prompt": "a bright photo of the ."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "a cropped photo of a Snoopy.",
+          "anchor_prompt": "a cropped photo of a ."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "a plastic Snoopy.",
+          "anchor_prompt": "a plastic ."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "a photo of the dirty Snoopy.",
+          "anchor_prompt": "a photo of the dirty ."
+        },
+        {
+          "id": 31,
+          "template_index": 30,
+          "target_prompt": "a jpeg corrupted photo of a Snoopy.",
+          "anchor_prompt": "a jpeg corrupted photo of a ."
+        },
+        {
+          "id": 32,
+          "template_index": 31,
+          "target_prompt": "a blurry photo of the Snoopy.",
+          "anchor_prompt": "a blurry photo of the ."
+        },
+        {
+          "id": 33,
+          "template_index": 32,
+          "target_prompt": "a photo of the Snoopy.",
+          "anchor_prompt": "a photo of the ."
+        },
+        {
+          "id": 34,
+          "template_index": 33,
+          "target_prompt": "a good photo of the Snoopy.",
+          "anchor_prompt": "a good photo of the ."
+        },
+        {
+          "id": 35,
+          "template_index": 34,
+          "target_prompt": "a rendering of the Snoopy.",
+          "anchor_prompt": "a rendering of the ."
+        },
+        {
+          "id": 36,
+          "template_index": 35,
+          "target_prompt": "a Snoopy in a video game.",
+          "anchor_prompt": "a  in a video game."
+        },
+        {
+          "id": 37,
+          "template_index": 36,
+          "target_prompt": "a photo of one Snoopy.",
+          "anchor_prompt": "a photo of one ."
+        },
+        {
+          "id": 38,
+          "template_index": 37,
+          "target_prompt": "a doodle of a Snoopy.",
+          "anchor_prompt": "a doodle of a ."
+        },
+        {
+          "id": 39,
+          "template_index": 38,
+          "target_prompt": "a close-up photo of the Snoopy.",
+          "anchor_prompt": "a close-up photo of the ."
+        },
+        {
+          "id": 40,
+          "template_index": 39,
+          "target_prompt": "a photo of a Snoopy.",
+          "anchor_prompt": "a photo of a ."
+        },
+        {
+          "id": 41,
+          "template_index": 40,
+          "target_prompt": "the origami Snoopy.",
+          "anchor_prompt": "the origami ."
+        },
+        {
+          "id": 42,
+          "template_index": 41,
+          "target_prompt": "the Snoopy in a video game.",
+          "anchor_prompt": "the  in a video game."
+        },
+        {
+          "id": 43,
+          "template_index": 42,
+          "target_prompt": "a sketch of a Snoopy.",
+          "anchor_prompt": "a sketch of a ."
+        },
+        {
+          "id": 44,
+          "template_index": 43,
+          "target_prompt": "a doodle of the Snoopy.",
+          "anchor_prompt": "a doodle of the ."
+        },
+        {
+          "id": 45,
+          "template_index": 44,
+          "target_prompt": "a origami Snoopy.",
+          "anchor_prompt": "a origami ."
+        },
+        {
+          "id": 46,
+          "template_index": 45,
+          "target_prompt": "a low resolution photo of a Snoopy.",
+          "anchor_prompt": "a low resolution photo of a ."
+        },
+        {
+          "id": 47,
+          "template_index": 46,
+          "target_prompt": "the toy Snoopy.",
+          "anchor_prompt": "the toy ."
+        },
+        {
+          "id": 48,
+          "template_index": 47,
+          "target_prompt": "a rendition of the Snoopy.",
+          "anchor_prompt": "a rendition of the ."
+        },
+        {
+          "id": 49,
+          "template_index": 48,
+          "target_prompt": "a photo of the clean Snoopy.",
+          "anchor_prompt": "a photo of the clean ."
+        },
+        {
+          "id": 50,
+          "template_index": 49,
+          "target_prompt": "a photo of a large Snoopy.",
+          "anchor_prompt": "a photo of a large ."
+        },
+        {
+          "id": 51,
+          "template_index": 50,
+          "target_prompt": "a rendition of a Snoopy.",
+          "anchor_prompt": "a rendition of a ."
+        },
+        {
+          "id": 52,
+          "template_index": 51,
+          "target_prompt": "a photo of a nice Snoopy.",
+          "anchor_prompt": "a photo of a nice ."
+        },
+        {
+          "id": 53,
+          "template_index": 52,
+          "target_prompt": "a photo of a weird Snoopy.",
+          "anchor_prompt": "a photo of a weird ."
+        },
+        {
+          "id": 54,
+          "template_index": 53,
+          "target_prompt": "a blurry photo of a Snoopy.",
+          "anchor_prompt": "a blurry photo of a ."
+        },
+        {
+          "id": 55,
+          "template_index": 54,
+          "target_prompt": "a cartoon Snoopy.",
+          "anchor_prompt": "a cartoon ."
+        },
+        {
+          "id": 56,
+          "template_index": 55,
+          "target_prompt": "art of a Snoopy.",
+          "anchor_prompt": "art of a ."
+        },
+        {
+          "id": 57,
+          "template_index": 56,
+          "target_prompt": "a sketch of the Snoopy.",
+          "anchor_prompt": "a sketch of the ."
+        },
+        {
+          "id": 58,
+          "template_index": 57,
+          "target_prompt": "a embroidered Snoopy.",
+          "anchor_prompt": "a embroidered ."
+        },
+        {
+          "id": 59,
+          "template_index": 58,
+          "target_prompt": "a pixelated photo of a Snoopy.",
+          "anchor_prompt": "a pixelated photo of a ."
+        },
+        {
+          "id": 60,
+          "template_index": 59,
+          "target_prompt": "itap of the Snoopy.",
+          "anchor_prompt": "itap of the ."
+        },
+        {
+          "id": 61,
+          "template_index": 60,
+          "target_prompt": "a jpeg corrupted photo of the Snoopy.",
+          "anchor_prompt": "a jpeg corrupted photo of the ."
+        },
+        {
+          "id": 62,
+          "template_index": 61,
+          "target_prompt": "a good photo of a Snoopy.",
+          "anchor_prompt": "a good photo of a ."
+        },
+        {
+          "id": 63,
+          "template_index": 62,
+          "target_prompt": "a plushie Snoopy.",
+          "anchor_prompt": "a plushie ."
+        },
+        {
+          "id": 64,
+          "template_index": 63,
+          "target_prompt": "a photo of the nice Snoopy.",
+          "anchor_prompt": "a photo of the nice ."
+        },
+        {
+          "id": 65,
+          "template_index": 64,
+          "target_prompt": "a photo of the small Snoopy.",
+          "anchor_prompt": "a photo of the small ."
+        },
+        {
+          "id": 66,
+          "template_index": 65,
+          "target_prompt": "a photo of the weird Snoopy.",
+          "anchor_prompt": "a photo of the weird ."
+        },
+        {
+          "id": 67,
+          "template_index": 66,
+          "target_prompt": "the cartoon Snoopy.",
+          "anchor_prompt": "the cartoon ."
+        },
+        {
+          "id": 68,
+          "template_index": 67,
+          "target_prompt": "art of the Snoopy.",
+          "anchor_prompt": "art of the ."
+        },
+        {
+          "id": 69,
+          "template_index": 68,
+          "target_prompt": "a drawing of the Snoopy.",
+          "anchor_prompt": "a drawing of the ."
+        },
+        {
+          "id": 70,
+          "template_index": 69,
+          "target_prompt": "a photo of the large Snoopy.",
+          "anchor_prompt": "a photo of the large ."
+        },
+        {
+          "id": 71,
+          "template_index": 70,
+          "target_prompt": "a black and white photo of a Snoopy.",
+          "anchor_prompt": "a black and white photo of a ."
+        },
+        {
+          "id": 72,
+          "template_index": 71,
+          "target_prompt": "the plushie Snoopy.",
+          "anchor_prompt": "the plushie ."
+        },
+        {
+          "id": 73,
+          "template_index": 72,
+          "target_prompt": "a dark photo of a Snoopy.",
+          "anchor_prompt": "a dark photo of a ."
+        },
+        {
+          "id": 74,
+          "template_index": 73,
+          "target_prompt": "itap of a Snoopy.",
+          "anchor_prompt": "itap of a ."
+        },
+        {
+          "id": 75,
+          "template_index": 74,
+          "target_prompt": "graffiti of the Snoopy.",
+          "anchor_prompt": "graffiti of the ."
+        },
+        {
+          "id": 76,
+          "template_index": 75,
+          "target_prompt": "a toy Snoopy.",
+          "anchor_prompt": "a toy ."
+        },
+        {
+          "id": 77,
+          "template_index": 76,
+          "target_prompt": "itap of my Snoopy.",
+          "anchor_prompt": "itap of my ."
+        },
+        {
+          "id": 78,
+          "template_index": 77,
+          "target_prompt": "a photo of a cool Snoopy.",
+          "anchor_prompt": "a photo of a cool ."
+        },
+        {
+          "id": 79,
+          "template_index": 78,
+          "target_prompt": "a photo of a small Snoopy.",
+          "anchor_prompt": "a photo of a small ."
+        },
+        {
+          "id": 80,
+          "template_index": 79,
+          "target_prompt": "a tattoo of the Snoopy.",
+          "anchor_prompt": "a tattoo of the ."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2130 @@
+{
+  "group": "object",
+  "template_source": "DiT/detect_erase/dataset/personalized.py:imagenet_templates_small (deduplicated)",
+  "templates": [
+    "a photo of a {}",
+    "a rendering of a {}",
+    "a cropped photo of the {}",
+    "the photo of a {}",
+    "a photo of a clean {}",
+    "a photo of a dirty {}",
+    "a dark photo of the {}",
+    "a photo of my {}",
+    "a photo of the cool {}",
+    "a close-up photo of a {}",
+    "a bright photo of the {}",
+    "a cropped photo of a {}",
+    "a photo of the {}",
+    "a good photo of the {}",
+    "a photo of one {}",
+    "a close-up photo of the {}",
+    "a rendition of the {}",
+    "a photo of the clean {}",
+    "a rendition of a {}",
+    "a photo of a nice {}",
+    "a good photo of a {}",
+    "a photo of the nice {}",
+    "a photo of the small {}",
+    "a photo of the weird {}",
+    "a photo of the large {}",
+    "a photo of a cool {}",
+    "a photo of a small {}",
+    "an illustration of a {}",
+    "an illustration of a clean {}",
+    "an illustration of a dirty {}",
+    "an illustration of my {}",
+    "an illustration of the cool {}",
+    "an illustration of the {}",
+    "an illustration of one {}",
+    "an illustration of the clean {}",
+    "an illustration of a nice {}",
+    "an illustration of the nice {}",
+    "an illustration of the small {}",
+    "an illustration of the weird {}",
+    "an illustration of the large {}",
+    "an illustration of a cool {}",
+    "an illustration of a small {}",
+    "a depiction of a {}",
+    "a depiction of a clean {}",
+    "a depiction of a dirty {}",
+    "a depiction of my {}",
+    "a depiction of the cool {}",
+    "a depiction of the {}",
+    "a depiction of one {}",
+    "a depiction of the clean {}",
+    "a depiction of a nice {}",
+    "a depiction of the nice {}",
+    "a depiction of the small {}",
+    "a depiction of the weird {}",
+    "a depiction of the large {}",
+    "a depiction of a cool {}",
+    "a depiction of a small {}"
+  ],
+  "datasets": [
+    {
+      "target": "church",
+      "similar_concepts": [
+        "library",
+        "town hall"
+      ],
+      "ordinary_concepts": [
+        "apple",
+        "butterfly"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 0,
+          "prompt": "a photo of a church"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 1,
+          "prompt": "a rendering of a church"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 2,
+          "prompt": "a cropped photo of the church"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 3,
+          "prompt": "the photo of a church"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 4,
+          "prompt": "a photo of a clean church"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 5,
+          "prompt": "a photo of a dirty church"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 6,
+          "prompt": "a dark photo of the church"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 7,
+          "prompt": "a photo of my church"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 8,
+          "prompt": "a photo of the cool church"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 9,
+          "prompt": "a close-up photo of a church"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 10,
+          "prompt": "a bright photo of the church"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 11,
+          "prompt": "a cropped photo of a church"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 12,
+          "prompt": "a photo of the church"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 13,
+          "prompt": "a good photo of the church"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 14,
+          "prompt": "a photo of one church"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 15,
+          "prompt": "a close-up photo of the church"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 16,
+          "prompt": "a rendition of the church"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 17,
+          "prompt": "a photo of the clean church"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 18,
+          "prompt": "a rendition of a church"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 19,
+          "prompt": "a photo of a nice church"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 20,
+          "prompt": "a good photo of a church"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 21,
+          "prompt": "a photo of the nice church"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 22,
+          "prompt": "a photo of the small church"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 23,
+          "prompt": "a photo of the weird church"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 24,
+          "prompt": "a photo of the large church"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 25,
+          "prompt": "a photo of a cool church"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 26,
+          "prompt": "a photo of a small church"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 27,
+          "prompt": "an illustration of a church"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 28,
+          "prompt": "an illustration of a clean church"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "church",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty church"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "library",
+          "template_index": 0,
+          "prompt": "a photo of a library"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "town hall",
+          "template_index": 1,
+          "prompt": "a rendering of a town hall"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "library",
+          "template_index": 2,
+          "prompt": "a cropped photo of the library"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "town hall",
+          "template_index": 3,
+          "prompt": "the photo of a town hall"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "library",
+          "template_index": 4,
+          "prompt": "a photo of a clean library"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "town hall",
+          "template_index": 5,
+          "prompt": "a photo of a dirty town hall"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "library",
+          "template_index": 6,
+          "prompt": "a dark photo of the library"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "town hall",
+          "template_index": 7,
+          "prompt": "a photo of my town hall"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "library",
+          "template_index": 8,
+          "prompt": "a photo of the cool library"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "town hall",
+          "template_index": 9,
+          "prompt": "a close-up photo of a town hall"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 0,
+          "prompt": "a photo of a apple"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 1,
+          "prompt": "a rendering of a butterfly"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 2,
+          "prompt": "a cropped photo of the apple"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 3,
+          "prompt": "the photo of a butterfly"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 4,
+          "prompt": "a photo of a clean apple"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 5,
+          "prompt": "a photo of a dirty butterfly"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 6,
+          "prompt": "a dark photo of the apple"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 7,
+          "prompt": "a photo of my butterfly"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 8,
+          "prompt": "a photo of the cool apple"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 9,
+          "prompt": "a close-up photo of a butterfly"
+        }
+      ]
+    },
+    {
+      "target": "golf ball",
+      "similar_concepts": [
+        "tennis ball",
+        "table tennis ball"
+      ],
+      "ordinary_concepts": [
+        "teapot",
+        "bicycle"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 0,
+          "prompt": "a photo of a golf ball"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 1,
+          "prompt": "a rendering of a golf ball"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 2,
+          "prompt": "a cropped photo of the golf ball"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 3,
+          "prompt": "the photo of a golf ball"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 4,
+          "prompt": "a photo of a clean golf ball"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 5,
+          "prompt": "a photo of a dirty golf ball"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 6,
+          "prompt": "a dark photo of the golf ball"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 7,
+          "prompt": "a photo of my golf ball"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 8,
+          "prompt": "a photo of the cool golf ball"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 9,
+          "prompt": "a close-up photo of a golf ball"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 10,
+          "prompt": "a bright photo of the golf ball"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 11,
+          "prompt": "a cropped photo of a golf ball"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 12,
+          "prompt": "a photo of the golf ball"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 13,
+          "prompt": "a good photo of the golf ball"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 14,
+          "prompt": "a photo of one golf ball"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 15,
+          "prompt": "a close-up photo of the golf ball"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 16,
+          "prompt": "a rendition of the golf ball"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 17,
+          "prompt": "a photo of the clean golf ball"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 18,
+          "prompt": "a rendition of a golf ball"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 19,
+          "prompt": "a photo of a nice golf ball"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 20,
+          "prompt": "a good photo of a golf ball"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 21,
+          "prompt": "a photo of the nice golf ball"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 22,
+          "prompt": "a photo of the small golf ball"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 23,
+          "prompt": "a photo of the weird golf ball"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 24,
+          "prompt": "a photo of the large golf ball"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 25,
+          "prompt": "a photo of a cool golf ball"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 26,
+          "prompt": "a photo of a small golf ball"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 27,
+          "prompt": "an illustration of a golf ball"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 28,
+          "prompt": "an illustration of a clean golf ball"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "golf ball",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty golf ball"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "tennis ball",
+          "template_index": 0,
+          "prompt": "a photo of a tennis ball"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "table tennis ball",
+          "template_index": 1,
+          "prompt": "a rendering of a table tennis ball"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "tennis ball",
+          "template_index": 2,
+          "prompt": "a cropped photo of the tennis ball"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "table tennis ball",
+          "template_index": 3,
+          "prompt": "the photo of a table tennis ball"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "tennis ball",
+          "template_index": 4,
+          "prompt": "a photo of a clean tennis ball"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "table tennis ball",
+          "template_index": 5,
+          "prompt": "a photo of a dirty table tennis ball"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "tennis ball",
+          "template_index": 6,
+          "prompt": "a dark photo of the tennis ball"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "table tennis ball",
+          "template_index": 7,
+          "prompt": "a photo of my table tennis ball"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "tennis ball",
+          "template_index": 8,
+          "prompt": "a photo of the cool tennis ball"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "table tennis ball",
+          "template_index": 9,
+          "prompt": "a close-up photo of a table tennis ball"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 0,
+          "prompt": "a photo of a teapot"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 1,
+          "prompt": "a rendering of a bicycle"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 2,
+          "prompt": "a cropped photo of the teapot"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 3,
+          "prompt": "the photo of a bicycle"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 4,
+          "prompt": "a photo of a clean teapot"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 5,
+          "prompt": "a photo of a dirty bicycle"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 6,
+          "prompt": "a dark photo of the teapot"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 7,
+          "prompt": "a photo of my bicycle"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 8,
+          "prompt": "a photo of the cool teapot"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 9,
+          "prompt": "a close-up photo of a bicycle"
+        }
+      ]
+    },
+    {
+      "target": "parachute",
+      "similar_concepts": [
+        "umbrella",
+        "hot air balloon"
+      ],
+      "ordinary_concepts": [
+        "teapot",
+        "bicycle"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 0,
+          "prompt": "a photo of a parachute"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 1,
+          "prompt": "a rendering of a parachute"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 2,
+          "prompt": "a cropped photo of the parachute"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 3,
+          "prompt": "the photo of a parachute"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 4,
+          "prompt": "a photo of a clean parachute"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 5,
+          "prompt": "a photo of a dirty parachute"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 6,
+          "prompt": "a dark photo of the parachute"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 7,
+          "prompt": "a photo of my parachute"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 8,
+          "prompt": "a photo of the cool parachute"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 9,
+          "prompt": "a close-up photo of a parachute"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 10,
+          "prompt": "a bright photo of the parachute"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 11,
+          "prompt": "a cropped photo of a parachute"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 12,
+          "prompt": "a photo of the parachute"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 13,
+          "prompt": "a good photo of the parachute"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 14,
+          "prompt": "a photo of one parachute"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 15,
+          "prompt": "a close-up photo of the parachute"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 16,
+          "prompt": "a rendition of the parachute"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 17,
+          "prompt": "a photo of the clean parachute"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 18,
+          "prompt": "a rendition of a parachute"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 19,
+          "prompt": "a photo of a nice parachute"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 20,
+          "prompt": "a good photo of a parachute"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 21,
+          "prompt": "a photo of the nice parachute"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 22,
+          "prompt": "a photo of the small parachute"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 23,
+          "prompt": "a photo of the weird parachute"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 24,
+          "prompt": "a photo of the large parachute"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 25,
+          "prompt": "a photo of a cool parachute"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 26,
+          "prompt": "a photo of a small parachute"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 27,
+          "prompt": "an illustration of a parachute"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 28,
+          "prompt": "an illustration of a clean parachute"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "parachute",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty parachute"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "umbrella",
+          "template_index": 0,
+          "prompt": "a photo of a umbrella"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "hot air balloon",
+          "template_index": 1,
+          "prompt": "a rendering of a hot air balloon"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "umbrella",
+          "template_index": 2,
+          "prompt": "a cropped photo of the umbrella"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "hot air balloon",
+          "template_index": 3,
+          "prompt": "the photo of a hot air balloon"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "umbrella",
+          "template_index": 4,
+          "prompt": "a photo of a clean umbrella"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "hot air balloon",
+          "template_index": 5,
+          "prompt": "a photo of a dirty hot air balloon"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "umbrella",
+          "template_index": 6,
+          "prompt": "a dark photo of the umbrella"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "hot air balloon",
+          "template_index": 7,
+          "prompt": "a photo of my hot air balloon"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "umbrella",
+          "template_index": 8,
+          "prompt": "a photo of the cool umbrella"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "hot air balloon",
+          "template_index": 9,
+          "prompt": "a close-up photo of a hot air balloon"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 0,
+          "prompt": "a photo of a teapot"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 1,
+          "prompt": "a rendering of a bicycle"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 2,
+          "prompt": "a cropped photo of the teapot"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 3,
+          "prompt": "the photo of a bicycle"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 4,
+          "prompt": "a photo of a clean teapot"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 5,
+          "prompt": "a photo of a dirty bicycle"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 6,
+          "prompt": "a dark photo of the teapot"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 7,
+          "prompt": "a photo of my bicycle"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 8,
+          "prompt": "a photo of the cool teapot"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 9,
+          "prompt": "a close-up photo of a bicycle"
+        }
+      ]
+    },
+    {
+      "target": "cassette player",
+      "similar_concepts": [
+        "radio",
+        "CD player"
+      ],
+      "ordinary_concepts": [
+        "apple",
+        "butterfly"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 0,
+          "prompt": "a photo of a cassette player"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 1,
+          "prompt": "a rendering of a cassette player"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 2,
+          "prompt": "a cropped photo of the cassette player"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 3,
+          "prompt": "the photo of a cassette player"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 4,
+          "prompt": "a photo of a clean cassette player"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 5,
+          "prompt": "a photo of a dirty cassette player"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 6,
+          "prompt": "a dark photo of the cassette player"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 7,
+          "prompt": "a photo of my cassette player"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 8,
+          "prompt": "a photo of the cool cassette player"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 9,
+          "prompt": "a close-up photo of a cassette player"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 10,
+          "prompt": "a bright photo of the cassette player"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 11,
+          "prompt": "a cropped photo of a cassette player"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 12,
+          "prompt": "a photo of the cassette player"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 13,
+          "prompt": "a good photo of the cassette player"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 14,
+          "prompt": "a photo of one cassette player"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 15,
+          "prompt": "a close-up photo of the cassette player"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 16,
+          "prompt": "a rendition of the cassette player"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 17,
+          "prompt": "a photo of the clean cassette player"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 18,
+          "prompt": "a rendition of a cassette player"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 19,
+          "prompt": "a photo of a nice cassette player"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 20,
+          "prompt": "a good photo of a cassette player"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 21,
+          "prompt": "a photo of the nice cassette player"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 22,
+          "prompt": "a photo of the small cassette player"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 23,
+          "prompt": "a photo of the weird cassette player"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 24,
+          "prompt": "a photo of the large cassette player"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 25,
+          "prompt": "a photo of a cool cassette player"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 26,
+          "prompt": "a photo of a small cassette player"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 27,
+          "prompt": "an illustration of a cassette player"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 28,
+          "prompt": "an illustration of a clean cassette player"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "cassette player",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty cassette player"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "radio",
+          "template_index": 0,
+          "prompt": "a photo of a radio"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "CD player",
+          "template_index": 1,
+          "prompt": "a rendering of a CD player"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "radio",
+          "template_index": 2,
+          "prompt": "a cropped photo of the radio"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "CD player",
+          "template_index": 3,
+          "prompt": "the photo of a CD player"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "radio",
+          "template_index": 4,
+          "prompt": "a photo of a clean radio"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "CD player",
+          "template_index": 5,
+          "prompt": "a photo of a dirty CD player"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "radio",
+          "template_index": 6,
+          "prompt": "a dark photo of the radio"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "CD player",
+          "template_index": 7,
+          "prompt": "a photo of my CD player"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "radio",
+          "template_index": 8,
+          "prompt": "a photo of the cool radio"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "CD player",
+          "template_index": 9,
+          "prompt": "a close-up photo of a CD player"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 0,
+          "prompt": "a photo of a apple"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 1,
+          "prompt": "a rendering of a butterfly"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 2,
+          "prompt": "a cropped photo of the apple"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 3,
+          "prompt": "the photo of a butterfly"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 4,
+          "prompt": "a photo of a clean apple"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 5,
+          "prompt": "a photo of a dirty butterfly"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 6,
+          "prompt": "a dark photo of the apple"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 7,
+          "prompt": "a photo of my butterfly"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "apple",
+          "template_index": 8,
+          "prompt": "a photo of the cool apple"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "butterfly",
+          "template_index": 9,
+          "prompt": "a close-up photo of a butterfly"
+        }
+      ]
+    },
+    {
+      "target": "banana",
+      "similar_concepts": [
+        "lemon",
+        "pear"
+      ],
+      "ordinary_concepts": [
+        "teapot",
+        "bicycle"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 0,
+          "prompt": "a photo of a banana"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 1,
+          "prompt": "a rendering of a banana"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 2,
+          "prompt": "a cropped photo of the banana"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 3,
+          "prompt": "the photo of a banana"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 4,
+          "prompt": "a photo of a clean banana"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 5,
+          "prompt": "a photo of a dirty banana"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 6,
+          "prompt": "a dark photo of the banana"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 7,
+          "prompt": "a photo of my banana"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 8,
+          "prompt": "a photo of the cool banana"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 9,
+          "prompt": "a close-up photo of a banana"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 10,
+          "prompt": "a bright photo of the banana"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 11,
+          "prompt": "a cropped photo of a banana"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 12,
+          "prompt": "a photo of the banana"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 13,
+          "prompt": "a good photo of the banana"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 14,
+          "prompt": "a photo of one banana"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 15,
+          "prompt": "a close-up photo of the banana"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 16,
+          "prompt": "a rendition of the banana"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 17,
+          "prompt": "a photo of the clean banana"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 18,
+          "prompt": "a rendition of a banana"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 19,
+          "prompt": "a photo of a nice banana"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 20,
+          "prompt": "a good photo of a banana"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 21,
+          "prompt": "a photo of the nice banana"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 22,
+          "prompt": "a photo of the small banana"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 23,
+          "prompt": "a photo of the weird banana"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 24,
+          "prompt": "a photo of the large banana"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 25,
+          "prompt": "a photo of a cool banana"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 26,
+          "prompt": "a photo of a small banana"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 27,
+          "prompt": "an illustration of a banana"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 28,
+          "prompt": "an illustration of a clean banana"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "banana",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty banana"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "lemon",
+          "template_index": 0,
+          "prompt": "a photo of a lemon"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "pear",
+          "template_index": 1,
+          "prompt": "a rendering of a pear"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "lemon",
+          "template_index": 2,
+          "prompt": "a cropped photo of the lemon"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "pear",
+          "template_index": 3,
+          "prompt": "the photo of a pear"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "lemon",
+          "template_index": 4,
+          "prompt": "a photo of a clean lemon"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "pear",
+          "template_index": 5,
+          "prompt": "a photo of a dirty pear"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "lemon",
+          "template_index": 6,
+          "prompt": "a dark photo of the lemon"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "pear",
+          "template_index": 7,
+          "prompt": "a photo of my pear"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "lemon",
+          "template_index": 8,
+          "prompt": "a photo of the cool lemon"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "pear",
+          "template_index": 9,
+          "prompt": "a close-up photo of a pear"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 0,
+          "prompt": "a photo of a teapot"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 1,
+          "prompt": "a rendering of a bicycle"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 2,
+          "prompt": "a cropped photo of the teapot"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 3,
+          "prompt": "the photo of a bicycle"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 4,
+          "prompt": "a photo of a clean teapot"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 5,
+          "prompt": "a photo of a dirty bicycle"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 6,
+          "prompt": "a dark photo of the teapot"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 7,
+          "prompt": "a photo of my bicycle"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 8,
+          "prompt": "a photo of the cool teapot"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 9,
+          "prompt": "a close-up photo of a bicycle"
+        }
+      ]
+    }
+  ]
+}

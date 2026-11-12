@@ -1,0 +1,891 @@
+{
+  "group": "ip",
+  "template_source": "DiT/detect_erase/dataset/personalized.py:imagenet_templates_small (deduplicated)",
+  "templates": [
+    "a photo of a {}",
+    "a rendering of a {}",
+    "a cropped photo of the {}",
+    "the photo of a {}",
+    "a photo of a clean {}",
+    "a photo of a dirty {}",
+    "a dark photo of the {}",
+    "a photo of my {}",
+    "a photo of the cool {}",
+    "a close-up photo of a {}",
+    "a bright photo of the {}",
+    "a cropped photo of a {}",
+    "a photo of the {}",
+    "a good photo of the {}",
+    "a photo of one {}",
+    "a close-up photo of the {}",
+    "a rendition of the {}",
+    "a photo of the clean {}",
+    "a rendition of a {}",
+    "a photo of a nice {}",
+    "a good photo of a {}",
+    "a photo of the nice {}",
+    "a photo of the small {}",
+    "a photo of the weird {}",
+    "a photo of the large {}",
+    "a photo of a cool {}",
+    "a photo of a small {}",
+    "an illustration of a {}",
+    "an illustration of a clean {}",
+    "an illustration of a dirty {}",
+    "an illustration of my {}",
+    "an illustration of the cool {}",
+    "an illustration of the {}",
+    "an illustration of one {}",
+    "an illustration of the clean {}",
+    "an illustration of a nice {}",
+    "an illustration of the nice {}",
+    "an illustration of the small {}",
+    "an illustration of the weird {}",
+    "an illustration of the large {}",
+    "an illustration of a cool {}",
+    "an illustration of a small {}",
+    "a depiction of a {}",
+    "a depiction of a clean {}",
+    "a depiction of a dirty {}",
+    "a depiction of my {}",
+    "a depiction of the cool {}",
+    "a depiction of the {}",
+    "a depiction of one {}",
+    "a depiction of the clean {}",
+    "a depiction of a nice {}",
+    "a depiction of the nice {}",
+    "a depiction of the small {}",
+    "a depiction of the weird {}",
+    "a depiction of the large {}",
+    "a depiction of a cool {}",
+    "a depiction of a small {}"
+  ],
+  "datasets": [
+    {
+      "target": "Pikachu",
+      "similar_concepts": [
+        "Raichu",
+        "Pichu"
+      ],
+      "ordinary_concepts": [
+        "teapot",
+        "bicycle"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 0,
+          "prompt": "a photo of a Pikachu"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 1,
+          "prompt": "a rendering of a Pikachu"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 2,
+          "prompt": "a cropped photo of the Pikachu"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 3,
+          "prompt": "the photo of a Pikachu"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 4,
+          "prompt": "a photo of a clean Pikachu"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 5,
+          "prompt": "a photo of a dirty Pikachu"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 6,
+          "prompt": "a dark photo of the Pikachu"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 7,
+          "prompt": "a photo of my Pikachu"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 8,
+          "prompt": "a photo of the cool Pikachu"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 9,
+          "prompt": "a close-up photo of a Pikachu"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 10,
+          "prompt": "a bright photo of the Pikachu"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 11,
+          "prompt": "a cropped photo of a Pikachu"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 12,
+          "prompt": "a photo of the Pikachu"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 13,
+          "prompt": "a good photo of the Pikachu"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 14,
+          "prompt": "a photo of one Pikachu"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 15,
+          "prompt": "a close-up photo of the Pikachu"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 16,
+          "prompt": "a rendition of the Pikachu"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 17,
+          "prompt": "a photo of the clean Pikachu"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 18,
+          "prompt": "a rendition of a Pikachu"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 19,
+          "prompt": "a photo of a nice Pikachu"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 20,
+          "prompt": "a good photo of a Pikachu"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 21,
+          "prompt": "a photo of the nice Pikachu"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 22,
+          "prompt": "a photo of the small Pikachu"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 23,
+          "prompt": "a photo of the weird Pikachu"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 24,
+          "prompt": "a photo of the large Pikachu"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 25,
+          "prompt": "a photo of a cool Pikachu"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 26,
+          "prompt": "a photo of a small Pikachu"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 27,
+          "prompt": "an illustration of a Pikachu"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 28,
+          "prompt": "an illustration of a clean Pikachu"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Pikachu",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty Pikachu"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Raichu",
+          "template_index": 0,
+          "prompt": "a photo of a Raichu"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Pichu",
+          "template_index": 1,
+          "prompt": "a rendering of a Pichu"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Raichu",
+          "template_index": 2,
+          "prompt": "a cropped photo of the Raichu"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Pichu",
+          "template_index": 3,
+          "prompt": "the photo of a Pichu"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Raichu",
+          "template_index": 4,
+          "prompt": "a photo of a clean Raichu"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Pichu",
+          "template_index": 5,
+          "prompt": "a photo of a dirty Pichu"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Raichu",
+          "template_index": 6,
+          "prompt": "a dark photo of the Raichu"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Pichu",
+          "template_index": 7,
+          "prompt": "a photo of my Pichu"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Raichu",
+          "template_index": 8,
+          "prompt": "a photo of the cool Raichu"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Pichu",
+          "template_index": 9,
+          "prompt": "a close-up photo of a Pichu"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 0,
+          "prompt": "a photo of a teapot"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 1,
+          "prompt": "a rendering of a bicycle"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 2,
+          "prompt": "a cropped photo of the teapot"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 3,
+          "prompt": "the photo of a bicycle"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 4,
+          "prompt": "a photo of a clean teapot"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 5,
+          "prompt": "a photo of a dirty bicycle"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 6,
+          "prompt": "a dark photo of the teapot"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 7,
+          "prompt": "a photo of my bicycle"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 8,
+          "prompt": "a photo of the cool teapot"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 9,
+          "prompt": "a close-up photo of a bicycle"
+        }
+      ]
+    },
+    {
+      "target": "Snoopy",
+      "similar_concepts": [
+        "Droopy",
+        "Brian Griffin"
+      ],
+      "ordinary_concepts": [
+        "teapot",
+        "bicycle"
+      ],
+      "samples": [
+        {
+          "id": 1,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 0,
+          "prompt": "a photo of a Snoopy"
+        },
+        {
+          "id": 2,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 1,
+          "prompt": "a rendering of a Snoopy"
+        },
+        {
+          "id": 3,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 2,
+          "prompt": "a cropped photo of the Snoopy"
+        },
+        {
+          "id": 4,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 3,
+          "prompt": "the photo of a Snoopy"
+        },
+        {
+          "id": 5,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 4,
+          "prompt": "a photo of a clean Snoopy"
+        },
+        {
+          "id": 6,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 5,
+          "prompt": "a photo of a dirty Snoopy"
+        },
+        {
+          "id": 7,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 6,
+          "prompt": "a dark photo of the Snoopy"
+        },
+        {
+          "id": 8,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 7,
+          "prompt": "a photo of my Snoopy"
+        },
+        {
+          "id": 9,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 8,
+          "prompt": "a photo of the cool Snoopy"
+        },
+        {
+          "id": 10,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 9,
+          "prompt": "a close-up photo of a Snoopy"
+        },
+        {
+          "id": 11,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 10,
+          "prompt": "a bright photo of the Snoopy"
+        },
+        {
+          "id": 12,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 11,
+          "prompt": "a cropped photo of a Snoopy"
+        },
+        {
+          "id": 13,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 12,
+          "prompt": "a photo of the Snoopy"
+        },
+        {
+          "id": 14,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 13,
+          "prompt": "a good photo of the Snoopy"
+        },
+        {
+          "id": 15,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 14,
+          "prompt": "a photo of one Snoopy"
+        },
+        {
+          "id": 16,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 15,
+          "prompt": "a close-up photo of the Snoopy"
+        },
+        {
+          "id": 17,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 16,
+          "prompt": "a rendition of the Snoopy"
+        },
+        {
+          "id": 18,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 17,
+          "prompt": "a photo of the clean Snoopy"
+        },
+        {
+          "id": 19,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 18,
+          "prompt": "a rendition of a Snoopy"
+        },
+        {
+          "id": 20,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 19,
+          "prompt": "a photo of a nice Snoopy"
+        },
+        {
+          "id": 21,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 20,
+          "prompt": "a good photo of a Snoopy"
+        },
+        {
+          "id": 22,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 21,
+          "prompt": "a photo of the nice Snoopy"
+        },
+        {
+          "id": 23,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 22,
+          "prompt": "a photo of the small Snoopy"
+        },
+        {
+          "id": 24,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 23,
+          "prompt": "a photo of the weird Snoopy"
+        },
+        {
+          "id": 25,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 24,
+          "prompt": "a photo of the large Snoopy"
+        },
+        {
+          "id": 26,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 25,
+          "prompt": "a photo of a cool Snoopy"
+        },
+        {
+          "id": 27,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 26,
+          "prompt": "a photo of a small Snoopy"
+        },
+        {
+          "id": 28,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 27,
+          "prompt": "an illustration of a Snoopy"
+        },
+        {
+          "id": 29,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 28,
+          "prompt": "an illustration of a clean Snoopy"
+        },
+        {
+          "id": 30,
+          "label": 1,
+          "kind": "positive",
+          "concept": "Snoopy",
+          "template_index": 29,
+          "prompt": "an illustration of a dirty Snoopy"
+        },
+        {
+          "id": 31,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Droopy",
+          "template_index": 0,
+          "prompt": "a photo of a Droopy"
+        },
+        {
+          "id": 32,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Brian Griffin",
+          "template_index": 1,
+          "prompt": "a rendering of a Brian Griffin"
+        },
+        {
+          "id": 33,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Droopy",
+          "template_index": 2,
+          "prompt": "a cropped photo of the Droopy"
+        },
+        {
+          "id": 34,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Brian Griffin",
+          "template_index": 3,
+          "prompt": "the photo of a Brian Griffin"
+        },
+        {
+          "id": 35,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Droopy",
+          "template_index": 4,
+          "prompt": "a photo of a clean Droopy"
+        },
+        {
+          "id": 36,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Brian Griffin",
+          "template_index": 5,
+          "prompt": "a photo of a dirty Brian Griffin"
+        },
+        {
+          "id": 37,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Droopy",
+          "template_index": 6,
+          "prompt": "a dark photo of the Droopy"
+        },
+        {
+          "id": 38,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Brian Griffin",
+          "template_index": 7,
+          "prompt": "a photo of my Brian Griffin"
+        },
+        {
+          "id": 39,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Droopy",
+          "template_index": 8,
+          "prompt": "a photo of the cool Droopy"
+        },
+        {
+          "id": 40,
+          "label": 0,
+          "kind": "similar_negative",
+          "concept": "Brian Griffin",
+          "template_index": 9,
+          "prompt": "a close-up photo of a Brian Griffin"
+        },
+        {
+          "id": 41,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 0,
+          "prompt": "a photo of a teapot"
+        },
+        {
+          "id": 42,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 1,
+          "prompt": "a rendering of a bicycle"
+        },
+        {
+          "id": 43,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 2,
+          "prompt": "a cropped photo of the teapot"
+        },
+        {
+          "id": 44,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 3,
+          "prompt": "the photo of a bicycle"
+        },
+        {
+          "id": 45,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 4,
+          "prompt": "a photo of a clean teapot"
+        },
+        {
+          "id": 46,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 5,
+          "prompt": "a photo of a dirty bicycle"
+        },
+        {
+          "id": 47,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 6,
+          "prompt": "a dark photo of the teapot"
+        },
+        {
+          "id": 48,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 7,
+          "prompt": "a photo of my bicycle"
+        },
+        {
+          "id": 49,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "teapot",
+          "template_index": 8,
+          "prompt": "a photo of the cool teapot"
+        },
+        {
+          "id": 50,
+          "label": 0,
+          "kind": "ordinary_negative",
+          "concept": "bicycle",
+          "template_index": 9,
+          "prompt": "a close-up photo of a bicycle"
+        }
+      ]
+    }
+  ]
+}
