@@ -203,17 +203,21 @@ class TextEncoder:
                                   + (pooled.float() - pool.float()).square().sum(1)).div(count).sqrt()
                                   for seq, pool in self.prototypes], dim=1)
             best = scores.argmin(1)
-        if global_detection:
-            # Closed-set top1: no cosine or distance threshold.
+        if self.options["similarity"] == "cosine":
+            threshold = self.options.get("tau")
+            thresholds = [entry["tau"] if threshold is None else threshold for entry in self.entries.values()]
+            threshold_tensor = torch.tensor(thresholds, device=scores.device, dtype=scores.dtype)
+            hits = scores >= threshold_tensor
+            thresholds = threshold_tensor.tolist()
+            best = scores.masked_fill(~hits, -torch.inf).argmax(1)
+        elif global_detection:
+            # Global L2 retains its nearest-prototype decision without a distance cutoff.
+            thresholds = [None] * len(targets)
             hits = torch.zeros_like(scores, dtype=torch.bool)
             hits.scatter_(1, best[:, None], True)
-        elif self.options["similarity"] == "cosine":
-            thresholds = [entry["tau"] for entry in self.entries.values()]
-            threshold = self.options.get("tau")
-            hits = scores >= (threshold if threshold is not None else torch.tensor(thresholds, device=scores.device))
-            best = scores.masked_fill(~hits, -torch.inf).argmax(1)
         else:
-            hits = scores <= self.options["l2_threshold"]
+            thresholds = [scores.new_tensor(self.options["l2_threshold"]).item()] * len(targets)
+            hits = scores <= thresholds[0]
             best = scores.masked_fill(~hits, torch.inf).argmin(1)
         selected = hits.clone()
         if self.options["multi_concept"] == "top1":
@@ -224,6 +228,8 @@ class TextEncoder:
         for row, matched, chosen in zip(scores, hits, selected):
             predicted = [target for target, flag in zip(targets, chosen.tolist()) if flag]
             decisions.append({"scores": dict(zip(targets, row.tolist())),
+                              "thresholds": dict(zip(targets, thresholds)),
+                              "threshold_applied": self.options["similarity"] == "cosine" or not global_detection,
                               "matched": [target for target, flag in zip(targets, matched.tolist()) if flag],
                               "predicted": predicted,
                               "selected": [target for target in predicted if target in erase_targets]})

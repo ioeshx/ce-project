@@ -34,11 +34,11 @@ $$
 
 基础模型的空负条件 CFG 推进去噪轨迹，每一步共享同一个 $x_t,t$ 计算各分支，更新一次 erase prompt；teacher 和轨迹停止梯度。
 
-**检测与采样**：默认开启 `--all-detect-prompts`，扫描训练运行目录 `train_detect/*.pt`，所有已保存的 detect prompt 共同参与比较。`cosine` 选最高分，`l2` 选完整 CLIP/T5 序列与 pooled 的 RMS 距离最小值。全量模式直接取 top1，**不使用 tau 或 L2 阈值**；每条输入均有一个预测概念。
+**检测与采样**：默认开启 `--all-detect-prompts`，扫描训练运行目录 `train_detect/*.pt`，所有已保存的 detect prompt 共同参与比较。`cosine` 在达到 tau 的候选中选最高分；全部低于阈值时不预测、不触发。命令行 `--tau` 覆盖所有 detector 的阈值，未指定时分别使用 checkpoint 中的训练 tau。`l2` 选完整 CLIP/T5 序列与 pooled 的 RMS 距离最小值，全量 L2 模式仍不使用距离阈值。
 
-候选集合与实验擦除目标分开：`predicted` 是全量 top1，`selected` 是 `predicted ∩ case.targets`。只有选中的概念属于当前实验的擦除目标时，才使用对应 erase prompt；否则使用空文本负条件。例如 `ip_pikachu` 的输入被预测为 Snoopy 时，记录预测 Snoopy，但不触发 Pikachu 擦除。
+候选集合与实验擦除目标分开：`predicted` 是通过门控后的 top1（未达阈值时为空），`selected` 是 `predicted ∩ case.targets`。只有选中的概念属于当前实验的擦除目标时，才使用对应 erase prompt；否则使用空文本负条件。例如 `ip_pikachu` 的输入被预测为 Snoopy 时，记录预测 Snoopy，但不触发 Pikachu 擦除。
 
-使用 `--no-all-detect-prompts` 恢复 case.targets 内的阈值检测：余弦达到 tau／RMS 距离不超过阈值才触发。`top1` 选有效候选的最佳项，`mean` 对所有有效项的 erase 条件取平均。全量无阈值模式仅支持 top1。
+使用 `--no-all-detect-prompts` 限定为 case.targets 内的阈值检测：余弦达到 tau／RMS 距离不超过阈值才触发。`top1` 选有效候选的最佳项，`mean` 对所有有效项的 erase 条件取平均。全量模式仅支持 top1。
 
 ## 二、超参数
 
@@ -52,7 +52,7 @@ $$
 | `--epochs` | 5，每个概念、阶段分别计数 |
 | `--max-steps` / `--steps`（训练） | 每概念、阶段最多 2000 次优化更新；0 不设上限 |
 | `--batch-size` | 1 |
-| `--tau`、`--temperature` | 0.2、0.1，用于训练分类 loss；tau 仅在关闭全量检测时用于采样门控 |
+| `--tau`、`--temperature` | 0.2、0.1，用于训练分类 loss；tau 在全量和非全量 cosine 检测时均用于门控 |
 | `--seed` | 0，训练噪声、时间和 shuffle 的随机种子 |
 | `--ti-image-count` | 全部正样本，当前每概念 30 张；可限制前 N 条 |
 | `--ti-generation-steps` | 继承 `--sampling-steps`，用于固定训练图的生成 |
@@ -60,7 +60,7 @@ $$
 | `--sampling-steps`（训练） | benchmark 默认步数，用于 erase 轨迹和 TI 训练图 |
 | `--steps`（采样） | 继承训练采样配置；仅检测模式不使用 |
 | `--mscoco-prompt-count`（采样） | 1000，MSCOCO caption 数量 |
-| `--all-detect-prompts`（采样） | 默认开启：全部已保存 detector 参与 top1，无阈值；`--no-all-detect-prompts` 关闭 |
+| `--all-detect-prompts`（采样） | 默认开启：全部已保存 detector 参与 top1，cosine 使用 tau；`--no-all-detect-prompts` 关闭 |
 | `--output-dir`（采样） | 独立结果根目录；不填时写回 `--run-dir` |
 | `--similarity`（采样） | `cosine`；可选 `l2` |
 | `--l2-threshold` | 0.2，仅关闭全量模式时用于门控 |
@@ -167,6 +167,11 @@ results/sd35_medium-<开始时间>/
 │   │   ├── detect_by_concept.csv
 │   │   ├── detect_by_detect_prompt.csv
 │   │   ├── detect_plots/           # 混淆矩阵和比率图，各有 PNG/PDF
+│   │   ├── similarity_plot/       # 每个 detector 的正负文本分布图和分数明细
+│   │   │   ├── nudity.png, nudity.pdf
+│   │   │   ├── records.csv        # 按唯一文本 × detector 保存分数、阈值和选中情况
+│   │   │   ├── summary.csv, summary.json
+│   │   │   └── histogram.csv      # 每个区间的数量与组内百分比
 │   │   └── images/, manifest.json, metrics.json, sampling_time.json, …
 │   ├── mscoco_nudity/             # MSCOCO 保留能力及误触发对照
 │   ├── ip_pikachu/
@@ -177,13 +182,19 @@ results/sd35_medium-<开始时间>/
 
 Checkpoint 格式为 `detect-erase-concept-v2`。Soft 文件保存 `<stage>_soft_tokens`（每个 CLIP 一个 `[1, hidden_size]` 张量）、空间、固定文本和模板。Hidden detect 保存 `detect_pooled`，完整序列在需要 L2/TI 时由固定概念生成；hidden erase 保存 `erase_sequence` 和 `erase_pooled`。同时保存概念、阶段、loss、阈值、更新数等信息。Detect 与 erase 可采用不同空间，运行时分别编码。
 
-**检测统计**以实际触发的 selected 为准。日志和逐条 CSV 同时记录全部候选分数、`predicted`（全量 top1）和 `selected`（实际触发）；阈值模式下还保留 matched 列表。
+**检测统计**以实际触发的 selected 为准。日志和逐条 CSV 同时记录全部候选分数、`predicted`（门控后的 top1）和 `selected`（实际触发）；原始日志另保存实际阈值 `thresholds`、是否应用阈值和达到阈值的 `matched` 列表。
 
 - `detect_by_prediction.csv` 统计各候选被预测的次数和比率；该表覆盖全部已加载概念。JSON 同时记录 candidate_targets 和 threshold_applied。
 - 每个 case 擦除目标一对其余的 TP/TN/FP/FN，以及 precision、recall、F1、FPR、FNR、binary accuracy。判成其他目标同时产生正确目标的 FN 和错误目标的 FP；汇总计数的分母是“已记录文本数 × case 目标数”。预测为 case 外概念不触发擦除：目标输入计漏检，无关输入计正确不触发。
 - 保留正确触发率、其他目标触发率、完全未触发率、无关文本误触发率和 exact-set accuracy。分母为 0 记录 null；缺少日志的输入单独计为 missing，不充当 TN。
 - I2P 按 `benchmark/dataset/real_nude_mapping.csv` 的 sample_id＋seed 对齐，125 条 `is_real_nude=1` 为正，其余为无关文本；标签只用于评测。IP/style/object 使用 benchmark concept 标签；MSCOCO 按保留能力对照记为非目标输入。
-- 完整采样加 `--track` 也保存同样统计及 `trigger_plots/`，文件前缀为 `trigger_`，原始门控日志为 `gates.jsonl`。缓存图片对应日志缺失时显示 coverage；重复日志取最后一次。
+- 完整采样始终保存同样统计及 `trigger_plots/`，文件前缀为 `trigger_`，原始门控日志为 `gates.jsonl`。分数在检测完成后、图像生成前写入，不依赖 `--track`。缓存图片对应日志缺失时显示 coverage；重复日志取最后一次。
+
+**相似度分布**保存在各 case 的 `exps/<case>/similarity_plot/`，检测和完整采样都会输出，不依赖 `--track`。非全量模式只画 case.targets 中的 detector；全量模式为所有已加载 detector 分别画一张图。每张图只分为“该 detector 对应概念文本”和“其余文本”两组；多目标 case 的其他目标文本属于当前 detector 的负类。分组使用上述评测标签，不使用预测结果。
+
+横轴为 cosine similarity，纵轴为每个区间占该组文本总数的百分比，两组分别归一化到 100%。cosine 固定使用 [-1, 1]、宽度 0.02 的分箱，画出实际 tau 竖线，分别标注两组达到阈值（`score >= tau`）的数量和比例；另标注原始分数 top1 与实际 selected 数量。L2 图使用 RMS 距离，非全量模式标记距离阈值。没有正例或负例时显示 n=0，对应比例为空。
+
+原始门控日志保留每个 sample/seed 的记录，分布图和 `similarity_plot/records.csv` 按 case 内完整 prompt 文本去重，取最后一条已记录样本，`sample_count` 标记对应的样本数量。`summary.json` 同时记录缺失样本数、唯一文本数、分箱和归一化口径。已有全量日志若未使用阈值，补画时仍展示 checkpoint tau，但标注为参考阈值，不改写历史检测结果。
 
 **训练追踪**由 `--track` 开启：loss、学习率、梯度／参数范数、batch 大小、更新数；CLIP 分类额外记录训练批次准确率和正／负平均余弦；flow 记录时间步。每轮 epoch 同步 GPU 后计时，记录完整／部分 epoch 和总时间，TI 图生成、模型加载、预编码及保存计入总时间的 outside-epochs 部分。
 

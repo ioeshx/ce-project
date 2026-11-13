@@ -7,15 +7,12 @@ from pathlib import Path
 from benchmark.common import concept_key, slug, write_csv, write_json
 from benchmark.results import upsert_summary
 from DiT.detect_erase.outputs import experiment_directory
+from DiT.detect_erase.similarity import publish_similarity, read_gates
 
 
 def summarize_gates(manifest, gate_log, nude_keys):
     """Score actual selected prompts; repeated generation replaces the earlier decision."""
-    lines = gate_log.read_text(encoding="utf-8").splitlines() if gate_log.exists() else []
-    decisions = {}
-    for line in lines:
-        decision = json.loads(line)
-        decisions[(decision["sample_id"], int(decision["seed"]))] = decision
+    decisions = read_gates(gate_log)
     targets = {concept_key(target): target for target in manifest["targets"]}
     fields = ("total_count", "recorded_count", "trigger_count", "overall_correct_count", "target_count",
               "target_correct_count", "target_other_count", "target_wrong_only_count", "target_no_trigger_count",
@@ -65,8 +62,8 @@ def summarize_gates(manifest, gate_log, nude_keys):
                     counts["non_target_false_count"] += bool(selected)
                     counts["non_target_no_trigger_count"] += not selected
             for target_key, counts in by_erase.items():
-                actual, predicted = expected == target_key, target_key in selected
-                counts["TP" if actual and predicted else "FN" if actual else "FP" if predicted else "TN"] += 1
+                actual, predicted_target = expected == target_key, target_key in selected
+                counts["TP" if actual and predicted_target else "FN" if actual else "FP" if predicted_target else "TN"] += 1
             for selected_key in selected:
                 counts = by_erase[selected_key]
                 counts["selected_count"] += 1
@@ -178,6 +175,7 @@ def publish_report(directory, manifest, gate_log, nude_keys, label_path, *, dete
     case_dir = experiment_directory(directory, case)
     prefix = "detect" if detect_only else "trigger"
     report, records = summarize_gates(manifest, Path(gate_log), nude_keys)
+    similarity = publish_similarity(manifest, gate_log, nude_keys, case_dir / "similarity_plot")
     options = manifest.get("config", {}).get("adapter", {})
     saved_report = dict(report)
     if detect_only:
@@ -187,7 +185,8 @@ def publish_report(directory, manifest, gate_log, nude_keys, label_path, *, dete
     write_json(case_dir / f"{prefix}_summary.json", {"case_id": case, "task": manifest["task"],
                "targets": manifest["targets"], "candidate_targets": options.get("detect_targets", manifest["targets"]),
                "all_detect_prompts": options.get("all_detect_prompts", False),
-               "threshold_applied": not options.get("all_detect_prompts", False),
+               "threshold_applied": similarity["threshold_applied"],
+               "thresholds": similarity["thresholds"],
                "decision": "selected (prediction intersect case targets)",
                "confusion_denominator": "recorded prompts x target concepts; missing records excluded",
                "label_source": (str(label_path) if manifest["task"] == "i2p" else

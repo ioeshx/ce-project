@@ -70,7 +70,7 @@ def main(argv=None):
     parser.add_argument("--run-dir", type=Path, required=True, help="Experiment root containing per-concept files and run.json")
     parser.add_argument("--output-dir", type=Path, help="Separate test result root; checkpoints still come from run-dir")
     parser.add_argument("--all-detect-prompts", action=argparse.BooleanOptionalAction, default=None,
-                        help="Default on: all saved detectors compete for top1 without thresholds")
+                        help="Default on: all saved detectors compete for top1; cosine candidates must reach tau")
     parser.add_argument("--similarity", choices=("cosine", "l2"))
     parser.add_argument("--tau", type=float, help="Cosine threshold; default: trained value (0.2)")
     parser.add_argument("--l2-threshold", type=float)
@@ -104,7 +104,7 @@ def main(argv=None):
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--cache-dir", type=Path, default=BENCHMARK_ROOT / "cache")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--track", action="store_true", help="Record selected prompts, trigger counts/rates and SwanLab summaries")
+    parser.add_argument("--track", action="store_true", help="Sync detection/trigger summaries to SwanLab; local records and plots are always saved")
     parser.add_argument("--swanlab-mode", choices=("local", "offline", "online"), default="local")
     parser.add_argument("--swanlab-project", default="detect-erase")
     parser.add_argument("--swanlab-name")
@@ -125,7 +125,7 @@ def main(argv=None):
         if getattr(args, key) is None:
             setattr(args, key, default)
     if args.all_detect_prompts and args.multi_concept != "top1":
-        parser.error("All-detector mode uses top1; mean requires --no-all-detect-prompts and threshold gating.")
+        parser.error("All-detector mode uses top1; mean requires --no-all-detect-prompts.")
     object_templates = ["a photo of {}", *template_dict["object"]]
     if args.batch_size <= 0 or args.metric_batch_size <= 0 or args.l2_threshold < 0:
         parser.error("Batch sizes must be positive; l2-threshold must be nonnegative.")
@@ -265,7 +265,7 @@ def main(argv=None):
                                       checkpoints=case_checkpoints, source_files=["train.py", "encoding.py"],
                                       all_detect_prompts=args.all_detect_prompts,
                                       detect_targets=[item["target"] for item in case_detectors], erase_targets=cfg["targets"],
-                                      similarity=args.similarity, tau=None if args.all_detect_prompts else args.tau,
+                                      similarity=args.similarity, tau=args.tau,
                                       l2_reduction="rms", l2_threshold=args.l2_threshold, multi_concept=args.multi_concept,
                                       gate_log=str(case_dir / ("detect_gates.jsonl" if args.detect_only else "gates.jsonl")))
                 if args.detect_only:
@@ -293,7 +293,7 @@ def run_cases(args, directory, manifests, evaluation):
     """Sample/evaluate the selected cases and publish shared summaries."""
 
     tracker, nude_keys = None, set()
-    if (args.track or args.detect_only) and any(manifest["task"] == "i2p" for manifest in manifests):
+    if any(manifest["task"] == "i2p" for manifest in manifests):
         nude_keys = nude_labels(args.real_nude_mapping)
     if args.track:
         import swanlab
@@ -339,9 +339,9 @@ def run_cases(args, directory, manifests, evaluation):
                 config["sampling"].update(device_map=args.device_map, cpu_offload=args.cpu_offload,
                                            max_memory=args.max_memory)
             sample_manifest(manifest, mode="image" if config["task"] == "i2p" else "both", manifest_path=path)
+        values = publish_report(directory, manifest, config["adapter"]["gate_log"],
+                                nude_keys, args.real_nude_mapping)
         if tracker:
-            values = publish_report(directory, manifest, config["adapter"]["gate_log"],
-                                    nude_keys, args.real_nude_mapping)
             tracker.log(values, step=index)
         if args.phase != "sample":
             evaluate(path, config=config)

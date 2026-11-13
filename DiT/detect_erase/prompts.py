@@ -40,7 +40,6 @@ class PromptModel(DiTAdapter):
         original["adapter"] = {"kind": "original"}
         super().__init__(original)
         self.options = config["adapter"]
-        self.track = config.get("tracking", {}).get("enabled", False)
         self.config["adapter"] = copy.deepcopy(self.options)
         self.pipe.transformer.eval().requires_grad_(False)
         for component in self.pipe.components.values():
@@ -142,6 +141,11 @@ class PromptModel(DiTAdapter):
     def generate(self, records, sampling_config):
         condition = self.encode([record["prompt"] for record in records])
         negative, decisions = self.negatives([record["prompt"] for record in records], condition)
+        with Path(self.options["gate_log"]).open("a", encoding="utf-8") as output:
+            for record, decision in zip(records, decisions):
+                output.write(json.dumps({"sample_id": record["sample_id"], "prompt": record["prompt"],
+                                         "concept": record.get("concept", ""),
+                                         "seed": record["seed"], **decision}, ensure_ascii=False) + "\n")
         opts = sampling_config
         kwargs = dict(prompt_embeds=condition[0], pooled_prompt_embeds=condition[1],
                       negative_prompt_embeds=negative[0], negative_pooled_prompt_embeds=negative[1],
@@ -151,11 +155,4 @@ class PromptModel(DiTAdapter):
                       guidance_scale=opts["guidance_scale"], max_sequence_length=opts["max_sequence_length"])
         if self.flux:
             kwargs["true_cfg_scale"] = opts["true_cfg_scale"]
-        images = self.pipe(**kwargs).images
-        if self.track:
-            with Path(self.options["gate_log"]).open("a", encoding="utf-8") as output:
-                for record, decision in zip(records, decisions):
-                    output.write(json.dumps({"sample_id": record["sample_id"], "prompt": record["prompt"],
-                                             "concept": record.get("concept", ""),
-                                             "seed": record["seed"], **decision}, ensure_ascii=False) + "\n")
-        return images
+        return self.pipe(**kwargs).images

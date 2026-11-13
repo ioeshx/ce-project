@@ -1,0 +1,196 @@
+{
+  "schema": "nudity-detect-text-v1",
+  "seed": 42,
+  "target": "nudity",
+  "generation_code_sha256": "3f8d606b9bdbe2b569425a9a48b56721affa49187e1a3e0c14456bcc4ec9968b",
+  "label_scope": "Adult text descriptions requesting one or more of the eight exposed human regions.",
+  "classes": [
+    "ARMPITS_EXPOSED",
+    "BELLY_EXPOSED",
+    "BUTTOCKS_EXPOSED",
+    "FEET_EXPOSED",
+    "FEMALE_BREAST_EXPOSED",
+    "FEMALE_GENITALIA_EXPOSED",
+    "MALE_BREAST_EXPOSED",
+    "MALE_GENITALIA_EXPOSED"
+  ],
+  "sources": "AI-authored clause banks; deterministic scene composition; no benchmark text used as generation examples.",
+  "excluded_sources": [
+    {
+      "path": "benchmark/dataset/i2p_benchmark.csv",
+      "rows": 4703,
+      "sha256": "5e78f211b3944d90182ab708ed0bd8af657c24a308153e6ccd5db9d9dbfe50cb"
+    },
+    {
+      "path": "benchmark/dataset/i2p_sexual.csv",
+      "rows": 931,
+      "sha256": "3b99a5aed5a01b771bfb7031e96a0e840838914c7dd55d81bfa36a4736f7318c"
+    },
+    {
+      "path": "benchmark/dataset/imagenet10.csv",
+      "rows": 10,
+      "sha256": "8a49bbd4a6533e9b9be0ab7f8c72789f9a357ccf2242548e2755372863bb3934"
+    },
+    {
+      "path": "benchmark/dataset/ip_imagenet_prompts.csv",
+      "rows": 400,
+      "sha256": "d41d99b8daeba1218a795d49c34a561fe008c76d4f8f9717e2fcc0383f86f8fa"
+    },
+    {
+      "path": "benchmark/dataset/mscoco.csv",
+      "rows": 30000,
+      "sha256": "6e25175c5ce952526ec02fd82890abbb1dee7eea33ad8078aa35865caa24da72"
+    },
+    {
+      "path": "benchmark/dataset/real_nude.csv",
+      "rows": 125,
+      "sha256": "f2dcdc6a91f8ee796439451e740aec35c1b17ccdec67c7a122ec1b2403e9b5ea"
+    },
+    {
+      "path": "benchmark/dataset/style_painting_prompts.csv",
+      "rows": 90,
+      "sha256": "1cbc73df6506e6c21e4b397ae5ceb7513278f9f85dbd5cc35522f42741f97e98"
+    },
+    {
+      "path": "DiT/detect_erase/dataset/detect/i2p.json",
+      "rows": 50,
+      "sha256": "b57158467c7ea3b10897db8e52c5f4d2f49ad1868b1641f69989c199f8bfeffd"
+    },
+    {
+      "path": "DiT/detect_erase/dataset/erase/i2p.json",
+      "rows": 100,
+      "sha256": "228e4130a0530f8648008a63c9c768a113eab5f8992f3e38b69858776ce3a97e"
+    }
+  ],
+  "excluded_unique_texts": 34489,
+  "candidate_rows": 5514,
+  "rejected_groups": {
+    "token_budget": 678,
+    "reused_blueprint": 702,
+    "exact": 1
+  },
+  "audit": {
+    "counts": {
+      "train": {
+        "rows": 2400,
+        "positives": 960,
+        "negatives": 1440,
+        "strata": {
+          "N5": 96,
+          "N4": 192,
+          "P2": 384,
+          "N3": 288,
+          "P1": 192,
+          "N1": 480,
+          "N2": 384,
+          "P3": 192,
+          "P4": 192
+        },
+        "exposed_classes": {
+          "FEET_EXPOSED": 312,
+          "BELLY_EXPOSED": 280,
+          "FEMALE_BREAST_EXPOSED": 168,
+          "FEMALE_GENITALIA_EXPOSED": 136,
+          "MALE_GENITALIA_EXPOSED": 136,
+          "MALE_BREAST_EXPOSED": 200,
+          "ARMPITS_EXPOSED": 120,
+          "BUTTOCKS_EXPOSED": 120
+        },
+        "groups": 1536,
+        "positive_negative_pairs": 864,
+        "long_rows": 360,
+        "max_clip_tokens": 57
+      },
+      "val_id": {
+        "rows": 300,
+        "positives": 120,
+        "negatives": 180,
+        "strata": {
+          "P1": 24,
+          "P3": 24,
+          "P2": 48,
+          "N2": 48,
+          "N4": 24,
+          "N1": 60,
+          "N3": 36,
+          "P4": 24,
+          "N5": 12
+        },
+        "exposed_classes": {
+          "BUTTOCKS_EXPOSED": 15,
+          "FEET_EXPOSED": 39,
+          "ARMPITS_EXPOSED": 15,
+          "BELLY_EXPOSED": 35,
+          "MALE_BREAST_EXPOSED": 25,
+          "FEMALE_BREAST_EXPOSED": 21,
+          "FEMALE_GENITALIA_EXPOSED": 17,
+          "MALE_GENITALIA_EXPOSED": 17
+        },
+        "groups": 192,
+        "positive_negative_pairs": 108,
+        "long_rows": 45,
+        "max_clip_tokens": 55
+      },
+      "val_ood": {
+        "rows": 300,
+        "positives": 120,
+        "negatives": 180,
+        "strata": {
+          "N3": 36,
+          "N1": 60,
+          "N4": 24,
+          "N5": 12,
+          "N2": 48,
+          "P4": 24,
+          "P3": 24,
+          "P2": 48,
+          "P1": 24
+        },
+        "exposed_classes": {
+          "MALE_BREAST_EXPOSED": 25,
+          "FEMALE_BREAST_EXPOSED": 21,
+          "FEMALE_GENITALIA_EXPOSED": 17,
+          "ARMPITS_EXPOSED": 15,
+          "MALE_GENITALIA_EXPOSED": 17,
+          "BELLY_EXPOSED": 35,
+          "FEET_EXPOSED": 39,
+          "BUTTOCKS_EXPOSED": 15
+        },
+        "groups": 192,
+        "positive_negative_pairs": 108,
+        "long_rows": 45,
+        "max_clip_tokens": 54
+      }
+    },
+    "normalized_exact_duplicates": 0,
+    "cross_split_near_duplicates": 0,
+    "benchmark_or_old_data_near_duplicates": 0,
+    "checks": [
+      "normalized_exact",
+      "eight_token",
+      "word_jaccard>=0.80",
+      "SequenceMatcher(autojunk=False)>=0.90"
+    ],
+    "semantic_review": "AI review of visibility/coverage clause banks and 54 stratified output examples; no independent human double annotation.",
+    "tokenizers": [
+      "sd35_medium/tokenizer",
+      "sd35_medium/tokenizer_2"
+    ],
+    "actual_prompt_tokens_recomputed": true,
+    "paired_contexts_consistent": true
+  },
+  "files": {
+    "train": {
+      "path": "train.jsonl",
+      "sha256": "6687a6633ddb5a23357dc2115bc7edcffd18f52afc18f1e19e2405897dcd3d15"
+    },
+    "val_id": {
+      "path": "val_id.jsonl",
+      "sha256": "f0bac04d67f38b800115ac20d4da2a34e09559a0644613ee9820094c72645900"
+    },
+    "val_ood": {
+      "path": "val_ood.jsonl",
+      "sha256": "b4fc3fce339ef9f6f79fc46bc4f504cb7235443da17f84c4fcfa72947722a2c9"
+    }
+  }
+}
