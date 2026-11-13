@@ -1,4 +1,4 @@
-"""Frozen text encoders with one trainable CLIP input token per encoder."""
+"""Frozen text encoders with trainable detect and erase conditions."""
 import torch
 import torch.nn.functional as F
 
@@ -133,9 +133,20 @@ class TextEncoder:
     def initialize(self, entry, stage, space, template):
         entry[f"{stage}_space"] = space
         entry[f"{stage}_template"] = template
-        fixed = entry["target"] if stage == "detect" else ""
+        fixed = entry["target"] if stage == "detect" else ("A photo of " if space == "hidden" else "")
         entry[f"{stage}_fixed_text"] = fixed
-        if space == "soft":
+        if space == "condition":
+            entry["detect_template"] = "a photo of {}"
+            initial_text = entry["detect_template"].format(entry["target"])
+            with torch.no_grad():
+                sequences = self.clip([initial_text], project_features=False)[0]
+            entry["detect_clip_conditions"] = [sequence.detach().float().cpu() for sequence in sequences]
+            entry["detect_eos_positions"] = []
+            for tokenizer in self.tokenizers:
+                ids = tokenizer(initial_text, padding="max_length", max_length=tokenizer.model_max_length,
+                                truncation=True, return_tensors="pt").input_ids
+                entry["detect_eos_positions"].append((ids[0] == tokenizer.eos_token_id).int().argmax().item())
+        elif space == "soft":
             tokens = []
             for encoder, tokenizer in zip(self.encoders, self.tokenizers):
                 ids = tokenizer.encode(fixed, add_special_tokens=False) or [tokenizer.eos_token_id]
@@ -150,8 +161,13 @@ class TextEncoder:
             entry.update(erase_sequence=sequence.float().cpu(), erase_pooled=pooled.float().cpu())
 
     def parameters(self, entry, stage):
-        keys = [f"{stage}_soft_tokens"] if entry[f"{stage}_space"] == "soft" else (
-            ["detect_pooled"] if stage == "detect" else ["erase_sequence", "erase_pooled"])
+        space = entry[f"{stage}_space"]
+        if space == "condition":
+            keys = ["detect_clip_conditions"]
+        elif space == "soft":
+            keys = [f"{stage}_soft_tokens"]
+        else:
+            keys = ["detect_pooled"] if stage == "detect" else ["erase_sequence", "erase_pooled"]
         parameters = []
         for key in keys:
             if isinstance(entry[key], list):
@@ -164,6 +180,27 @@ class TextEncoder:
 
     def condition(self, entry, stage, *, features_only=False):
         fixed = entry[f"{stage}_fixed_text"]
+        if entry[f"{stage}_space"] == "condition":
+            sequences, pooled = [], []
+            for index, (encoder, hidden, eos) in enumerate(zip(
+                    self.encoders, entry["detect_clip_conditions"], entry["detect_eos_positions"])):
+                backbone = getattr(encoder, "text_model", encoder)
+                hidden = hidden.to(device=backbone.final_layer_norm.weight.device, dtype=encoder.dtype)
+                length = hidden.shape[1]
+                # H already includes position information. Resume at the final CLIP block.
+                causal = torch.full((length, length), torch.finfo(hidden.dtype).min,
+                                    device=hidden.device, dtype=hidden.dtype).triu(1)[None, None]
+                last = backbone.encoder.layers[-1](hidden_states=hidden, attention_mask=causal)
+                native_pool = backbone.final_layer_norm(last)[:, eos]
+                if not self.flux:
+                    native_pool = self.project(index, native_pool)
+                sequences.append(hidden)
+                pooled.append(native_pool)
+            if features_only:
+                return tuple(feature.to(self.device) for feature in self.split_features(torch.cat(pooled, dim=-1)))
+            if fixed not in self.fixed_t5:
+                self.fixed_t5[fixed] = self.t5_encode([fixed])
+            return self.combine(sequences, pooled, self.fixed_t5[fixed])
         if entry[f"{stage}_space"] == "soft":
             sequence, pooled, features = self.clip(
                 None, tokens=entry[f"{stage}_soft_tokens"], template=entry[f"{stage}_template"],

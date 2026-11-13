@@ -192,6 +192,8 @@ def main(argv=None):
         if missing:
             parser.error(f"Missing concept checkpoints: {', '.join(missing)}")
         entries = load_concept_prompts(checkpoints)
+        if args.similarity != "cosine" and any(entry["detect_space"] == "condition" for entry in entries.values()):
+            parser.error("Condition detectors use CLIP text cosine similarity; select --similarity cosine.")
         detector = source_info["config"]["detect"]
         trained = detector if args.detect_only else source_info["config"]["erase"]
         if not args.detect_only:

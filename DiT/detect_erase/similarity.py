@@ -1,6 +1,7 @@
 """Per-detector similarity records and target-versus-unrelated distributions."""
 from collections import Counter
 import json
+import math
 from pathlib import Path
 
 from benchmark.common import concept_key, slug, write_csv, write_json
@@ -96,8 +97,12 @@ def publish_similarity(manifest, gate_log, nude_keys, directory):
     else:
         maximum = max([row["score"] for row in rows] + [value for value in thresholds.values() if value is not None] + [1e-6])
         edges = np.linspace(0, maximum * 1.05, 51)
-    summaries, histograms = [], []
+    summaries, histograms, x_limits = [], [], {}
     for target in detectors:
+        scores = [row["score"] for row in rows if row["detector"] == target]
+        lower = math.floor(min(scores, default=edges[0]) * 20) / 20
+        upper = math.ceil(max(scores, default=edges[-1]) * 20) / 20
+        x_limits[target] = [lower, max(upper, lower + .05)]
         for group in ("target", "unrelated"):
             members = [row for row in rows if row["detector"] == target and row["group"] == group]
             count = len(members)
@@ -123,7 +128,7 @@ def publish_similarity(manifest, gate_log, nude_keys, directory):
                   normalization="bin count / unique prompt count in this detector's group * 100",
                   label_source="real_nude_mapping" if manifest["task"] == "i2p" else
                                "MSCOCO negative controls" if manifest["task"] == "mscoco" else "benchmark concept",
-                  bin_edges=edges.tolist(), groups=summaries)
+                  bin_edges=edges.tolist(), x_limits=x_limits, groups=summaries)
     write_csv(directory / "records.csv", rows)
     write_csv(directory / "summary.csv", summaries)
     write_csv(directory / "histogram.csv", histograms)
@@ -161,7 +166,7 @@ def plot_similarity(report, histograms, directory):
                 label += " (reference; not applied in saved decisions)"
             axis.axvline(threshold, color="#333333", linestyle="--", linewidth=1.4, label=label)
         axis.set(xlabel="Cosine similarity" if report["similarity"] == "cosine" else "RMS distance",
-                 ylabel="Prompts in bin (%)", xlim=(edges[0], edges[-1]), ylim=ylim,
+                 ylabel="Prompts in bin (%)", xlim=report["x_limits"][target], ylim=ylim,
                  title=f"{report['case_id']} / {target}")
         axis.yaxis.set_major_formatter(PercentFormatter(xmax=100))
         axis.grid(axis="y", alpha=.2)

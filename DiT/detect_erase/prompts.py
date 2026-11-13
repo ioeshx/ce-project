@@ -18,9 +18,10 @@ def classification_loss(scores, labels, tau, temperature):
     return F.binary_cross_entropy_with_logits((scores - tau) / temperature, labels.float())
 
 
-def cfg_loss(positive, anchor, negative, scale):
-    guided = negative.float() + scale * (positive.float() - negative.float())
-    return F.mse_loss(guided, anchor.float())
+def supervised_contrastive_loss(scores, labels, temperature):
+    """Use the learned detect prototype as anchor and all positive texts as positives."""
+    logits = scores.float() / temperature
+    return torch.logsumexp(logits, dim=0) - logits[labels.bool()].mean()
 
 
 def load_concept_prompts(checkpoints):
@@ -130,6 +131,11 @@ class PromptModel(DiTAdapter):
         negative_sequence = torch.cat([self.erase_conditions[target][0] for target in targets]).float()
         negative_pooled = torch.cat([self.erase_conditions[target][1] for target in targets]).float()
         combined_sequence = torch.einsum("bc,csd->bsd", weights, negative_sequence)
+        if not self.flux:
+            clip_length = self.text.tokenizers[0].model_max_length
+            clip_width = sum(encoder.config.hidden_size for encoder in self.text.encoders)
+            # Match normal SD3 prompt padding at the inference input.
+            combined_sequence[:, :clip_length, clip_width:] = 0
         combined_pooled = weights @ negative_pooled
         null_sequence, null_pooled = self.encode([""])
         active = weights.any(dim=1)
