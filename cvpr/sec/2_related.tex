@@ -1,0 +1,36 @@
+\section{Related work}
+\label{sec:related}
+
+\subsection{Concept erasure}
+Concept erasure aims to suppress designated concepts in a pretrained text-to-image model while preserving its ability to generate unrelated content.
+Early approaches achieve this by editing the model itself.
+ESD~\cite{Gandikota_2023_ICCV} fine-tunes diffusion weights using a target derived from negative guidance to reduce generation of the erased concept.
+UCE~\cite{Gandikota_2024_WACV} computes closed-form updates to cross-attention projections, allowing multiple concepts to be edited together.
+Concept Ablation~\cite{Kumari_2023_ICCV} fine-tunes the model to align the conditional distribution of a target concept with that of an anchor concept.
+Moving to rectified flow transformers, EraseAnything~\cite{pmlr-v267-gao25j} combines LoRA-based bi-level optimization with attention regularization and self-contrastive learning to balance erasure and preservation.
+SLD~\cite{Schramowski_2023_CVPR} keeps model weights fixed and introduces an additional safety-guidance term during sampling to suppress inappropriate content.
+
+Our method shares this use of inference-time control, with suppression encoded in a learned negative condition.
+We pair this suppression prompt with a separately learned detection prompt, which determines whether to apply it to an input while retaining the original model weights.
+
+\subsection{Negative prompts}
+Negative prompting specifies content to avoid through the negative condition used in classifier-free guidance, steering generation away from the corresponding prediction.
+Beyond manually written negative text, recent work explores learned conditions and modified guidance rules.
+Shin \etal~\cite{shin2025promptbasedsafetyguidanceineffective} use concept inversion~\cite{pham2023circumventing} to recover implicit negative embeddings, restoring safety guidance in models whose responses to explicit concept prompts have been weakened by unlearning.
+SafeCFG~\cite{pan2025safecfg} replaces the null-text embedding in CFG with an input-dependent embedding produced by a learned Transformer to suppress harmful content.
+ReNeg~\cite{Li_2025_CVPR_ReNeg} optimizes negative embeddings through reward guidance to improve image quality and human preference.
+TraSCE~\cite{jain2026rethinkingnegativepromptingconcept} combines unconditional anchoring with alignment-localized steering to counter guidance collapse, where positive and negative predictions become similar.
+
+These studies motivate learning effective negative representations and controlling how they enter sampling.
+We learn one suppression prompt per concept and reuse it across inputs selected by the detection prompt.
+This objective directly trains the negative prompt for concept suppression within a frozen generative model.
+
+\subsection{Prompt tuning}
+Prompt tuning adapts a pretrained model through learned prompt representations while keeping its backbone frozen.
+Lester \etal~\cite{lester-etal-2021-power} learn soft prompt embeddings prepended to language-model inputs, enabling task adaptation through a small set of trainable parameters.
+CoOp~\cite{zhou2022coop} replaces hand-crafted context words with learnable vectors, adapting frozen CLIP models to downstream image recognition tasks.
+Textual Inversion~\cite{Gal_TextualInversion} learns new token embeddings from a few reference images to represent objects or styles in a frozen text-to-image model.
+PEZ~\cite{NEURIPS2023_a0054803} combines gradient-based optimization with vocabulary projection to learn interpretable discrete prompts for text and image generation.
+
+We apply continuous prompt learning to selective concept suppression, using a detection prompt for input discrimination and a suppression prompt for negative generation conditioning.
+The two representations are optimized independently for their respective roles, with both the text encoders and the generative model kept frozen.

@@ -4,7 +4,7 @@ cd "$(dirname -- "${BASH_SOURCE[0]}")/../../.."
 
 # 直接修改下面的配置，然后运行本脚本。
 MODEL="sd35_medium"
-DETECT_LOSS="ti-flow-supcon" # clip / ti-flow / ti-flow-bce / ti-flow-supcon
+DETECT_LOSS="ti-flow-bce" # clip / ti-flow / ti-flow-bce / ti-flow-supcon
 ERASE_TARGET="cfg"          # cfg / conditional（无 CFG）
 ERASE_STATE="trajectory"    # trajectory / image-noise
 ERASE_TRAJECTORY="safe"     # unsafe / safe / student，仅 trajectory 使用

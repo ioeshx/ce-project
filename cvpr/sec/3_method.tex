@@ -1,0 +1,44 @@
+\section{Method}
+\label{sec:method}
+
+\subsection{Preliminaries}
+\label{sec:preliminaries}
+
+\noindent\textbf{Rectified flow transformers.}
+Flow matching learns a velocity field that transports samples between noise and data distributions~\cite{lipman2023flowmatchinggenerativemodeling}.
+For an image $x$, let $z_0=\mathcal E(x)$ denote its latent representation obtained from a VAE encoder $\mathcal E$, and let $C(q)$ denote the encoded condition of a text prompt $q$.
+Rectified flow~\cite{liu2022flow} defines a linear interpolation between the image latent and Gaussian noise:
+\begin{equation}
+    z_t=(1-t)z_0+t\epsilon,
+    \qquad \epsilon\sim\mathcal N(0,I),\quad t\in[0,1].
+    \label{eq:rf_interpolation}
+\end{equation}
+The path derivative $\epsilon-z_0$ provides the supervision for a text-conditioned velocity field $v_\theta(z_t,t;C(q))$, parameterized by a diffusion Transformer (DiT)~\cite{pmlr-v235-esser24a}.
+Its flow matching objective is
+\begin{equation}
+    \mathcal L_{\mathrm{FM}}(\theta)
+    =\mathbb E_{z_0,q,\epsilon,t}\!\left[
+    \left\|v_\theta(z_t,t;C(q))-(\epsilon-z_0)\right\|_2^2
+    \right],
+    \label{eq:flow_matching_objective}
+\end{equation}
+where the expectation is over image--text pairs, Gaussian noise, and sampled times.
+At inference, numerical integration of the learned velocity field transforms an initial Gaussian latent at $t=1$ into an image latent at $t=0$.
+
+\noindent\textbf{Classifier-free guidance.}
+CFG~\cite{CFG} combines predictions under text and null-text conditions to strengthen adherence to the text prompt.
+At the same state $(z_t,t)$, denote these predictions by $v_+=v_\theta(z_t,t;C(q))$ and $v_0=v_\theta(z_t,t;C(\varnothing))$, where $\varnothing$ denotes an empty text prompt.
+The guided velocity is
+\begin{equation}
+    \widehat v_{\mathrm{CFG}}=v_0+s(v_+-v_0),
+    \label{eq:cfg_velocity}
+\end{equation}
+where $s$ controls the guidance strength.
+Negative prompting~\cite{jain2026rethinkingnegativepromptingconcept} replaces the null-text condition with a negative condition $C_-$, yielding $v_-=v_\theta(z_t,t;C_-)$ and
+\begin{equation}
+    \widehat v_{\mathrm{neg}}
+    =v_-+s(v_+-v_-)
+    =s\,v_+-(s-1)v_-.
+    \label{eq:negative_cfg_velocity}
+\end{equation}
+For $s>1$, the negative-condition prediction enters with a negative coefficient, so the negative condition controls sampling through its contrast with the positive-condition prediction.

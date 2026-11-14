@@ -68,7 +68,11 @@ def main(argv=None):
     parser.add_argument("--detect-only", action="store_true", help="Evaluate detection without erase checkpoints, DiT, VAE or image generation")
     parser.add_argument("--phase", choices=("all", "sample", "evaluate"), default="all")
     parser.add_argument("--run-dir", type=Path, required=True, help="Experiment root containing per-concept files and run.json")
+    parser.add_argument("--detect-run-dir", type=Path,
+                        help="Reuse detect checkpoints/config from another run; erase still comes from --run-dir")
     parser.add_argument("--output-dir", type=Path, help="Separate test result root; checkpoints still come from run-dir")
+    parser.add_argument("--zero-erase-clip-padding", action=argparse.BooleanOptionalAction, default=None,
+                        help="Zero the SD3 erase condition's CLIP padding channels at inference; default off")
     parser.add_argument("--all-detect-prompts", action=argparse.BooleanOptionalAction, default=None,
                         help="Default on: all saved detectors compete for top1; cosine candidates must reach tau")
     parser.add_argument("--similarity", choices=("cosine", "l2"))
@@ -118,9 +122,11 @@ def main(argv=None):
             parser.error("Local SwanLab requires: pip install 'swanlab[dashboard]'; or use --swanlab-mode offline.")
     generation_fields = ("steps", "height", "width", "seeds", "i2p_prompt_count", "i2p_subset",
                          "tau", "similarity", "l2_threshold", "multi_concept", "ip_template_count",
-                         "style_template_count", "object_template_count", "mscoco_prompt_count", "all_detect_prompts")
+                         "style_template_count", "object_template_count", "mscoco_prompt_count", "all_detect_prompts",
+                         "detect_run_dir", "zero_erase_clip_padding")
     generation_overrides = any(getattr(args, key) is not None for key in generation_fields)
     for key, default in dict(similarity="cosine", l2_threshold=0.2, multi_concept="top1", all_detect_prompts=True,
+                             zero_erase_clip_padding=False,
                              ip_template_count=80, style_template_count=30, object_template_count=1).items():
         if getattr(args, key) is None:
             setattr(args, key, default)
@@ -155,6 +161,9 @@ def main(argv=None):
     source_info = read_json(checkpoint_dir / "run.json")
     directory = args.output_dir.expanduser().resolve() if args.output_dir else checkpoint_dir
     info = read_json(directory / "run.json") if (directory / "run.json").exists() else {"manifests": {}}
+    detect_dir = Path(args.detect_run_dir or info.get("detect_run_dir") or
+                      source_info.get("detect_run_dir", checkpoint_dir)).expanduser().resolve()
+    detect_info = source_info if detect_dir == checkpoint_dir else read_json(detect_dir / "run.json")
     if directory != checkpoint_dir and info.get("checkpoint_run_dir", str(checkpoint_dir)) != str(checkpoint_dir):
         parser.error("This output directory belongs to another checkpoint run; choose a new output-dir.")
     selected = (list(info.get("manifests", {})) if args.phase == "evaluate" and args.cases is None else
@@ -181,10 +190,10 @@ def main(argv=None):
     cases["mscoco_nudity"] = dict(group="mscoco", targets=cases["i2p_nudity"]["targets"])
     if new_cases:
         targets = {target for case in new_cases for target in cases[case]["targets"]}
-        detectors = (all_detect_checkpoints(checkpoint_dir) if args.all_detect_prompts else
-                     concept_checkpoints(checkpoint_dir, sorted(targets), ("detect",)))
+        detectors = (all_detect_checkpoints(detect_dir) if args.all_detect_prompts else
+                     concept_checkpoints(detect_dir, sorted(targets), ("detect",)))
         if not detectors:
-            parser.error("No detector checkpoints found in run-dir/train_detect/.")
+            parser.error(f"No detector checkpoints found in {detect_dir / 'train_detect'}.")
         if args.all_detect_prompts and targets - {item["target"] for item in detectors}:
             parser.error(f"Missing detectors for selected erasure targets: {sorted(targets - {item['target'] for item in detectors})}")
         checkpoints = detectors + ([] if args.detect_only else concept_checkpoints(checkpoint_dir, sorted(targets), ("erase",)))
@@ -194,7 +203,7 @@ def main(argv=None):
         entries = load_concept_prompts(checkpoints)
         if args.similarity != "cosine" and any(entry["detect_space"] == "condition" for entry in entries.values()):
             parser.error("Condition detectors use CLIP text cosine similarity; select --similarity cosine.")
-        detector = source_info["config"]["detect"]
+        detector = detect_info["config"]["detect"]
         trained = detector if args.detect_only else source_info["config"]["erase"]
         if not args.detect_only:
             if (any(trained[key] != detector[key] for key in ("model_name", "base_model"))
@@ -254,18 +263,20 @@ def main(argv=None):
                 print(f"{case}: {len(records)} {'text detections' if args.detect_only else 'generated images'}", flush=True)
         else:
             directory.mkdir(parents=True, exist_ok=True)
-            update_run(directory, trained["model_name"], checkpoint_run_dir=str(checkpoint_dir), config=source_info["config"])
+            update_run(directory, trained["model_name"], checkpoint_run_dir=str(checkpoint_dir),
+                       detect_run_dir=str(detect_dir), config={**source_info["config"], "detect": detector})
             for case, cfg, records, source in prepared:
                 case_dir = experiment_directory(directory, case)
                 case_dir.mkdir(parents=True, exist_ok=True)
                 cfg.update(output_dir=str(directory))
                 case_detectors = (detectors if args.all_detect_prompts else
-                                  concept_checkpoints(checkpoint_dir, cfg["targets"], ("detect",)))
+                                  concept_checkpoints(detect_dir, cfg["targets"], ("detect",)))
                 case_checkpoints = case_detectors + ([] if args.detect_only else
                                    concept_checkpoints(checkpoint_dir, cfg["targets"], ("erase",)))
                 cfg["adapter"] = dict(kind="plugin", factory="DiT.detect_erase.prompts:PromptModel",
                                       checkpoints=case_checkpoints, source_files=["train.py", "encoding.py"],
                                       all_detect_prompts=args.all_detect_prompts,
+                                      zero_erase_clip_padding=args.zero_erase_clip_padding,
                                       detect_targets=[item["target"] for item in case_detectors], erase_targets=cfg["targets"],
                                       similarity=args.similarity, tau=args.tau,
                                       l2_reduction="rms", l2_threshold=args.l2_threshold, multi_concept=args.multi_concept,

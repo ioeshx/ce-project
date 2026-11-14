@@ -125,7 +125,7 @@ SD3.5 的 CLIP 与 T5 序列部分均可训练；FLUX 的 T5 序列与 CLIP pool
 
 该方案使用 `hidden` 空间的完整条件表示；旧 soft token 保留为对照，仍初始化为 EOS 的输入 embedding，T5 固定为空文本。完整条件增加优化自由度，擦除效果与内容保留能力通过同一实验协议比较。
 
-**推理时的 CLIP padding**：SD3.5 的 erase 条件在构造最终 negative sequence 时，将 CLIP 段的补零区域 `[:, :77, 2048:]` 显式清零，与正常 prompt 的输入布局一致；CLIP 有效通道、T5 段和 pooled 保留训练值。代码从 CLIP 配置读取长度与宽度，支持单概念和多概念平均。该处理仅作用于推理输入，训练及 checkpoint 保存保持完整 condition；FLUX 使用 T5 序列，不执行此清零操作。
+**推理时的 CLIP padding**：默认保留训练得到的完整 erase condition，包括 SD3.5 的 CLIP 原补零区域中的训练值。仅采样时显式指定 `--zero-erase-clip-padding`，才将最终 negative sequence 的 CLIP 补零区域 `[:, :77, 2048:]` 清零；CLIP 有效通道、T5 段和 pooled 保留训练值。`--no-zero-erase-clip-padding` 显式关闭此处理。代码从 CLIP 配置读取长度与宽度，支持单概念和多概念平均；训练及 checkpoint 保存始终保持完整 condition。FLUX 使用 T5 序列，不执行此清零操作。该开关写入采样 manifest 的 adapter 配置和身份记录；切换开关重新采样时使用新的 `--output-dir`。
 
 **2. Safe target 支持有／无外层 CFG**
 
@@ -260,7 +260,7 @@ VAE 编码结果在一次训练中缓存在 CPU，优化时只抽取所需 laten
 | `--detect-loss` | Detect 训练必须显式指定：`ti-flow-bce`、`ti-flow-supcon`、`clip`、`ti-flow` |
 | `--learning-rate` | `1e-3`，AdamW，weight decay=0 |
 | `--epochs` | 5，每个概念、阶段分别计数 |
-| `--max-steps` / `--steps`（训练） | 每概念、阶段最多 2000 次优化更新；0 不设上限 |
+| `--max-steps` / `--steps`（训练） | 默认 0，不设上限，完成全部 epochs；正数限制每概念、阶段的优化更新数 |
 | `--batch-size` | 1 |
 | `--classification-batch-size` | 16；联合 loss 每次抽取等量正负文本，batch 内无放回 |
 | `--classification-weight` | 1；联合 loss 的分类项权重，TI 项权重固定为 1 |
@@ -275,6 +275,8 @@ VAE 编码结果在一次训练中缓存在 CPU，优化时只抽取所需 laten
 | `--mscoco-prompt-count`（采样） | 1000，MSCOCO caption 数量 |
 | `--all-detect-prompts`（采样） | 默认开启：全部已保存 detector 参与 top1，cosine 使用 tau；`--no-all-detect-prompts` 关闭 |
 | `--output-dir`（采样） | 独立结果根目录；不填时写回 `--run-dir` |
+| `--detect-run-dir`（采样） | 从指定运行读取 detect checkpoint 和模型配置；erase 仍从 `--run-dir` 读取；未指定时继承运行记录，否则使用同一 run |
+| `--zero-erase-clip-padding`（采样） | 默认关闭；仅显式开启时清零 SD3.5 erase 的 CLIP 补零通道 |
 | `--similarity`（采样） | `cosine`；旧 soft/hidden checkpoint 可选 `l2` |
 | `--l2-threshold` | 0.2，仅关闭全量模式时用于门控 |
 | `--multi-concept` | `top1`；关闭全量模式后可选 `mean` |
@@ -357,7 +359,7 @@ python DiT/detect_erase/train.py --run-dir "$ERASE_RUN" --model sd35_medium \
   --erase-image-count 10 --erase-reuse-images --track
 ```
 
-同样的 image-noise 命令加 `--no-erase-reuse-images` 可强制生成新批次；加 `--erase-image-generation-steps 40` 可指定缓存图像的生成步数。该路线不传 `--erase-trajectory`。只训练 erase 的新 run 尚无 detect checkpoint；完整门控采样需在同一 run 中另行训练 detect。
+同样的 image-noise 命令加 `--no-erase-reuse-images` 可强制生成新批次；加 `--erase-image-generation-steps 40` 可指定缓存图像的生成步数。该路线不传 `--erase-trajectory`。只训练 erase 的新 run 可在采样时通过 `--detect-run-dir` 复用其他运行的 detect checkpoint，无需重新训练 detect。
 
 `--phase sample` 仅生成，`--phase evaluate` 仅评测已生成图片。I2P 使用 NudeNet（Q16 可选），IP/style 使用 CS、FID、VLM，object 使用 ResNet Top1/Top3，MSCOCO 使用 CS、reference CS 和 FID。参考图复用 `benchmark/original/<模型>/` 中完整协议匹配的图片。
 
@@ -388,7 +390,29 @@ ERASE_IMAGE_COUNT=10
 ERASE_REUSE_IMAGES=false
 ```
 
-`DETECT_LOSS` 可选 `clip/ti-flow/ti-flow-bce/ti-flow-supcon`；`ERASE_TARGET=conditional` 表示无 CFG 的 safe target。`ERASE_STATE=image-noise` 时脚本不传轨迹参数；`ERASE_REUSE_IMAGES` 默认 `true`，设为 `false` 则生成新批次并保留旧图。双卡编号通过 `DETECT_GPU`、`ERASE_GPU` 指定，单卡通过 `GPU` 指定。`TRACK_MODE` 默认 `local`，可改为 `offline/online`；`SAMPLE_PHASE` 默认 `all`，设为 `sample` 仅采样。每次自动新建带时间的实验目录，也可用 `RUN_ROOT` 指定目录。训练默认学习率 `1e-3`、5 epochs、每概念每阶段最多 2000 次更新、batch=1，可通过 `LEARNING_RATE/EPOCHS/MAX_STEPS/BATCH_SIZE` 修改；采样 batch 使用 `SAMPLE_BATCH_SIZE`。
+`DETECT_LOSS` 可选 `clip/ti-flow/ti-flow-bce/ti-flow-supcon`；`ERASE_TARGET=conditional` 表示无 CFG 的 safe target。`ERASE_STATE=image-noise` 时脚本不传轨迹参数；`ERASE_REUSE_IMAGES` 默认 `true`，设为 `false` 则生成新批次并保留旧图。双卡编号通过 `DETECT_GPU`、`ERASE_GPU` 指定，单卡通过 `GPU` 指定。`TRACK_MODE` 默认 `local`，可改为 `offline/online`；`SAMPLE_PHASE` 默认 `all`，设为 `sample` 仅采样。每次自动新建带时间的实验目录，也可在脚本中修改 `RUN_ROOT`。这两个包含 detect 训练的脚本设置学习率 `1e-3`、5 epochs、batch=1，并显式传入 `MAX_STEPS=2000`；可在脚本中修改 `LEARNING_RATE/EPOCHS/MAX_STEPS/BATCH_SIZE`，采样 batch 使用 `SAMPLE_BATCH_SIZE`。下面仅训练 erase 的三个脚本不传该更新数上限。
+
+仅训练 erase、复用已有 detect 的单卡轨迹对照使用以下三个脚本。三者只有 `ERASE_TRAJECTORY` 的取值不同：
+
+```bash
+bash DiT/detect_erase/scripts/run_erase_unsafe.sh
+bash DiT/detect_erase/scripts/run_erase_safe.sh
+bash DiT/detect_erase/scripts/run_erase_student.sh
+```
+
+脚本顶部直接设置 `DETECT_RUN`，默认指向 `results/sd35_medium-dual-gpu-20261114-165237`。只运行 `--stage erase`，使用 `dataset/safe-describe`、完整 condition、CFG safe target、5 epochs，不传 `--max-steps`，使用入口默认值 0 完成全部轮次。按当前数据量、batch=1 和 40 步轨迹，每概念 I2P 更新 10000 次，IP/object 更新 16000 次，style 更新 6000 次。
+
+训练结束后在同一张 GPU 上采样及评测，使用 `--detect-run-dir "$DETECT_RUN"` 读取旧 detector，并显式传入 `--no-zero-erase-clip-padding` 保留完整 erase condition。训练和采样都开启追踪。每次新建 `results/<模型>-erase-<轨迹>-<时间>/`，旧 detect 和原运行保持原样。采样的 `run.json` 保存 `detect_run_dir`，各 manifest 保存实际 detect/erase checkpoint 路径；继续已有采样时可省略这些生成参数，沿用运行记录。
+
+单卡训练 erase、双卡分组采样及评测使用对应的三个脚本：
+
+```bash
+bash DiT/detect_erase/scripts/run_erase_unsafe_dual_sample.sh
+bash DiT/detect_erase/scripts/run_erase_safe_dual_sample.sh
+bash DiT/detect_erase/scripts/run_erase_student_dual_sample.sh
+```
+
+默认 `TRAIN_GPU=0` 完成全部 erase 训练后，`SAMPLE_GPU_A=0` 执行 i2p、MSCOCO、style，`SAMPLE_GPU_B=1` 同时执行 IP、object。三个 GPU 编号均在脚本顶部直接赋值。三份脚本只有 `ERASE_TRAJECTORY` 不同，其他训练和采样参数沿用上述单卡版本：复用相同 detect、5 epochs、不传 max-steps、关闭 erase 补零，所有阶段开启追踪。结果写入独立的 `results/<模型>-erase-<轨迹>-dual-sample-<时间>/`，两组采样各自保存日志和追踪记录。
 
 `--cases all` 包含 MSCOCO；也可单独指定 `--cases mscoco`（case ID 为 `mscoco_nudity`）。它复用 benchmark 中 nudity 的保留能力协议，默认取 `benchmark/dataset/mscoco.csv` 前 1000 条 caption，擦除目标仍为 nudity；默认与全部已训练 detector 比较，无需新增训练数据。仅检测时把这些 caption 作为无关文本对照，统计误触发率；完整采样时同样经过门控，计算 CS/FID，并复用协议一致的参考图。
 

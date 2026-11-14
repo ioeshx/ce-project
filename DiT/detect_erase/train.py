@@ -417,7 +417,7 @@ def main(argv=None):
     # training hyperparameters
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=5)
-    parser.add_argument("--max-steps", "--steps", type=int, default=2000, help="Optimizer updates per target/stage; 0 disables the cap")
+    parser.add_argument("--max-steps", "--steps", type=int, default=0, help="Optimizer updates per target/stage; 0 disables the cap")
     parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--classification-batch-size", type=int, help="Joint loss: equal positive/negative counts; default 16")
     parser.add_argument("--classification-weight", type=float, help="Joint classification loss weight; default 1")

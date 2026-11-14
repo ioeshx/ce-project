@@ -131,10 +131,10 @@ class PromptModel(DiTAdapter):
         negative_sequence = torch.cat([self.erase_conditions[target][0] for target in targets]).float()
         negative_pooled = torch.cat([self.erase_conditions[target][1] for target in targets]).float()
         combined_sequence = torch.einsum("bc,csd->bsd", weights, negative_sequence)
-        if not self.flux:
+        if not self.flux and self.options.get("zero_erase_clip_padding", False):
             clip_length = self.text.tokenizers[0].model_max_length
             clip_width = sum(encoder.config.hidden_size for encoder in self.text.encoders)
-            # Match normal SD3 prompt padding at the inference input.
+            # Optionally match normal SD3 prompt padding at the inference input.
             combined_sequence[:, :clip_length, clip_width:] = 0
         combined_pooled = weights @ negative_pooled
         null_sequence, null_pooled = self.encode([""])
