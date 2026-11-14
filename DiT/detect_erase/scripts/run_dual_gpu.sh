@@ -30,6 +30,7 @@ TRAIN_ARGS=(
   --track --swanlab-mode "$TRACK_MODE"
 )
 ERASE_ARGS=(
+  --erase-dir DiT/detect_erase/dataset/safe-describe
   --prompt-space hidden --erase-target "$ERASE_TARGET" --erase-state "$ERASE_STATE"
 )
 if [[ "$ERASE_STATE" == trajectory ]]; then

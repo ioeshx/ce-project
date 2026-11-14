@@ -371,7 +371,7 @@ bash DiT/detect_erase/scripts/run_dual_gpu.sh
 bash DiT/detect_erase/scripts/run_single_gpu.sh
 ```
 
-两者默认 `MODEL="sd35_medium"`、`DETECT_LOSS="ti-flow-supcon"`、`ERASE_TARGET="cfg"`、`ERASE_STATE="trajectory"`、`ERASE_TRAJECTORY="safe"`，detect 使用 `condition`，erase 使用 `hidden` 完整 sequence 和 pooled condition。所有配置均在脚本顶部直接赋值，修改后运行脚本即可。例如，要切换 BCE、无 CFG 教师和 student 轨迹，在脚本中修改：
+两者默认 `MODEL="sd35_medium"`、`DETECT_LOSS="ti-flow-supcon"`、`ERASE_TARGET="cfg"`、`ERASE_STATE="trajectory"`、`ERASE_TRAJECTORY="safe"`，detect 使用 `condition`，erase 使用 `hidden` 完整 sequence 和 pooled condition。两个脚本的 erase 训练均通过 `--erase-dir DiT/detect_erase/dataset/safe-describe` 使用正向画面描述数据集。所有配置均在脚本顶部直接赋值，修改后运行脚本即可。例如，要切换 BCE、无 CFG 教师和 student 轨迹，在脚本中修改：
 
 ```bash
 DETECT_LOSS="ti-flow-bce"

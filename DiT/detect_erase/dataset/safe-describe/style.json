@@ -1,0 +1,599 @@
+{
+  "group": "style",
+  "template_source": "benchmark/dataset/prompt_templates.py:painting_templates",
+  "templates": [
+    "{} style painting of the night sky with bold strokes.",
+    "{} style landscape of rolling hills with dramatic brushwork.",
+    "Self-portrait in {} style, showcasing distinctive color and texture.",
+    "{} style rural scene with dynamic movement and intensity.",
+    "Wheat field under a swirling sky in the style of {}.",
+    "{} style transformation of simple cottages into profound scenes.",
+    "{} style portrait conveying inner turmoil and vitality.",
+    "Seascape in {} style capturing tumultuous waves and ocean movement.",
+    "{} style depiction of light on water with delicate brushstrokes.",
+    "Garden scene in {} style, emphasizing sunlight and shadow effects.",
+    "{} style atmospheric haze enveloping the landscape.",
+    "Haystacks in {} style, capturing light and color changes.",
+    "Cathedral facade in {} style with shifting light and shadow.",
+    "{} style vibrant flower garden in full bloom.",
+    "{} style painting of boats as a study of color and atmosphere.",
+    "{} style cliffs along the coastline with blended sea and sky.",
+    "{} style bustling Paris streets with movement and vitality.",
+    "Sunrise scene in {} style, capturing the beauty of dawn.",
+    "{} style exploration of fog and mist in the landscape.",
+    "Olive trees painted in {} style.",
+    "Tree painted in {} style.",
+    "Women working in the garden, in {} style.",
+    "Wheat field painting by {}.",
+    "Trees in bloom painted in {} style.",
+    "{} style painting of a tree.",
+    "Wheat field in {} style.",
+    "{} style painting of a field with mountains in the background.",
+    "Trees in bloom in the style of {}.",
+    "Rocks in the ocean, in {} style.",
+    "City painting in {} style."
+  ],
+  "datasets": [
+    {
+      "target": "Van Gogh",
+      "anchor": "realistic photograph of the same scene content",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "Van Gogh style painting of the night sky with bold strokes.",
+          "anchor_prompt": "A realistic photograph of the night sky, with natural colors and lighting."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "Van Gogh style landscape of rolling hills with dramatic brushwork.",
+          "anchor_prompt": "A realistic photograph of rolling hills, with natural terrain textures and lighting."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "Self-portrait in Van Gogh style, showcasing distinctive color and texture.",
+          "anchor_prompt": "A realistic photographic self-portrait, with natural skin tones, facial proportions, and skin texture."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "Van Gogh style rural scene with dynamic movement and intensity.",
+          "anchor_prompt": "A realistic photograph of a rural scene, capturing natural movement and lighting."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "Wheat field under a swirling sky in the style of Van Gogh.",
+          "anchor_prompt": "A realistic photograph of a wheat field beneath a naturally clouded sky."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "Van Gogh style transformation of simple cottages into profound scenes.",
+          "anchor_prompt": "A realistic photograph of simple cottages, with natural building textures and lighting."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "Van Gogh style portrait conveying inner turmoil and vitality.",
+          "anchor_prompt": "A realistic photographic portrait of a person with an intense, troubled expression and natural skin tones."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "Seascape in Van Gogh style capturing tumultuous waves and ocean movement.",
+          "anchor_prompt": "A realistic photograph of a seascape with rough waves and natural ocean movement."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "Van Gogh style depiction of light on water with delicate brushstrokes.",
+          "anchor_prompt": "A realistic photograph of light reflecting on water, with natural highlights and surface ripples."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "Garden scene in Van Gogh style, emphasizing sunlight and shadow effects.",
+          "anchor_prompt": "A realistic photograph of a garden, with natural sunlight and shadows."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "Van Gogh style atmospheric haze enveloping the landscape.",
+          "anchor_prompt": "A realistic photograph of a landscape enveloped in atmospheric haze."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "Haystacks in Van Gogh style, capturing light and color changes.",
+          "anchor_prompt": "A realistic photograph of haystacks, capturing natural variations in light and color."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "Cathedral facade in Van Gogh style with shifting light and shadow.",
+          "anchor_prompt": "A realistic photograph of a cathedral facade, with natural light and shadows."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "Van Gogh style vibrant flower garden in full bloom.",
+          "anchor_prompt": "A realistic photograph of a flower garden in full bloom, with natural flower colors."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "Van Gogh style painting of boats as a study of color and atmosphere.",
+          "anchor_prompt": "A realistic photograph of boats, with natural colors and atmospheric lighting."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "Van Gogh style cliffs along the coastline with blended sea and sky.",
+          "anchor_prompt": "A realistic photograph of coastal cliffs, with natural colors in the sea and sky."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "Van Gogh style bustling Paris streets with movement and vitality.",
+          "anchor_prompt": "A realistic photograph of bustling Paris streets, capturing natural movement and street details."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "Sunrise scene in Van Gogh style, capturing the beauty of dawn.",
+          "anchor_prompt": "A realistic photograph of a sunrise scene, with natural dawn light and colors."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "Van Gogh style exploration of fog and mist in the landscape.",
+          "anchor_prompt": "A realistic photograph of a landscape covered in fog and mist."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "Olive trees painted in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of olive trees, with natural bark and leaf textures."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "Tree painted in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of a tree, with natural bark and leaf textures."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "Women working in the garden, in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of women working in a garden, with natural lighting and lifelike proportions."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "Wheat field painting by Van Gogh.",
+          "anchor_prompt": "A realistic photograph of a wheat field, with natural grain textures and lighting."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "Trees in bloom painted in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of trees in bloom, with natural blossom colors and lighting."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "Van Gogh style painting of a tree.",
+          "anchor_prompt": "A realistic photograph of a tree, with natural bark and leaf textures."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "Wheat field in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of a wheat field, with natural grain textures and lighting."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "Van Gogh style painting of a field with mountains in the background.",
+          "anchor_prompt": "A realistic photograph of a field with mountains in the background, with natural terrain colors and lighting."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "Trees in bloom in the style of Van Gogh.",
+          "anchor_prompt": "A realistic photograph of trees in bloom, with natural blossom colors and lighting."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "Rocks in the ocean, in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of rocks in the ocean, with natural rock textures and water reflections."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "City painting in Van Gogh style.",
+          "anchor_prompt": "A realistic photograph of a city, with natural architectural details and lighting."
+        }
+      ]
+    },
+    {
+      "target": "Monet",
+      "anchor": "realistic photograph of the same scene content",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "Monet style painting of the night sky with bold strokes.",
+          "anchor_prompt": "A realistic photograph of the night sky, with natural colors and lighting."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "Monet style landscape of rolling hills with dramatic brushwork.",
+          "anchor_prompt": "A realistic photograph of rolling hills, with natural terrain textures and lighting."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "Self-portrait in Monet style, showcasing distinctive color and texture.",
+          "anchor_prompt": "A realistic photographic self-portrait, with natural skin tones, facial proportions, and skin texture."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "Monet style rural scene with dynamic movement and intensity.",
+          "anchor_prompt": "A realistic photograph of a rural scene, capturing natural movement and lighting."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "Wheat field under a swirling sky in the style of Monet.",
+          "anchor_prompt": "A realistic photograph of a wheat field beneath a naturally clouded sky."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "Monet style transformation of simple cottages into profound scenes.",
+          "anchor_prompt": "A realistic photograph of simple cottages, with natural building textures and lighting."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "Monet style portrait conveying inner turmoil and vitality.",
+          "anchor_prompt": "A realistic photographic portrait of a person with an intense, troubled expression and natural skin tones."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "Seascape in Monet style capturing tumultuous waves and ocean movement.",
+          "anchor_prompt": "A realistic photograph of a seascape with rough waves and natural ocean movement."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "Monet style depiction of light on water with delicate brushstrokes.",
+          "anchor_prompt": "A realistic photograph of light reflecting on water, with natural highlights and surface ripples."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "Garden scene in Monet style, emphasizing sunlight and shadow effects.",
+          "anchor_prompt": "A realistic photograph of a garden, with natural sunlight and shadows."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "Monet style atmospheric haze enveloping the landscape.",
+          "anchor_prompt": "A realistic photograph of a landscape enveloped in atmospheric haze."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "Haystacks in Monet style, capturing light and color changes.",
+          "anchor_prompt": "A realistic photograph of haystacks, capturing natural variations in light and color."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "Cathedral facade in Monet style with shifting light and shadow.",
+          "anchor_prompt": "A realistic photograph of a cathedral facade, with natural light and shadows."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "Monet style vibrant flower garden in full bloom.",
+          "anchor_prompt": "A realistic photograph of a flower garden in full bloom, with natural flower colors."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "Monet style painting of boats as a study of color and atmosphere.",
+          "anchor_prompt": "A realistic photograph of boats, with natural colors and atmospheric lighting."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "Monet style cliffs along the coastline with blended sea and sky.",
+          "anchor_prompt": "A realistic photograph of coastal cliffs, with natural colors in the sea and sky."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "Monet style bustling Paris streets with movement and vitality.",
+          "anchor_prompt": "A realistic photograph of bustling Paris streets, capturing natural movement and street details."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "Sunrise scene in Monet style, capturing the beauty of dawn.",
+          "anchor_prompt": "A realistic photograph of a sunrise scene, with natural dawn light and colors."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "Monet style exploration of fog and mist in the landscape.",
+          "anchor_prompt": "A realistic photograph of a landscape covered in fog and mist."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "Olive trees painted in Monet style.",
+          "anchor_prompt": "A realistic photograph of olive trees, with natural bark and leaf textures."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "Tree painted in Monet style.",
+          "anchor_prompt": "A realistic photograph of a tree, with natural bark and leaf textures."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "Women working in the garden, in Monet style.",
+          "anchor_prompt": "A realistic photograph of women working in a garden, with natural lighting and lifelike proportions."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "Wheat field painting by Monet.",
+          "anchor_prompt": "A realistic photograph of a wheat field, with natural grain textures and lighting."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "Trees in bloom painted in Monet style.",
+          "anchor_prompt": "A realistic photograph of trees in bloom, with natural blossom colors and lighting."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "Monet style painting of a tree.",
+          "anchor_prompt": "A realistic photograph of a tree, with natural bark and leaf textures."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "Wheat field in Monet style.",
+          "anchor_prompt": "A realistic photograph of a wheat field, with natural grain textures and lighting."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "Monet style painting of a field with mountains in the background.",
+          "anchor_prompt": "A realistic photograph of a field with mountains in the background, with natural terrain colors and lighting."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "Trees in bloom in the style of Monet.",
+          "anchor_prompt": "A realistic photograph of trees in bloom, with natural blossom colors and lighting."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "Rocks in the ocean, in Monet style.",
+          "anchor_prompt": "A realistic photograph of rocks in the ocean, with natural rock textures and water reflections."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "City painting in Monet style.",
+          "anchor_prompt": "A realistic photograph of a city, with natural architectural details and lighting."
+        }
+      ]
+    },
+    {
+      "target": "Picasso",
+      "anchor": "realistic photograph of the same scene content",
+      "pairs": [
+        {
+          "id": 1,
+          "template_index": 0,
+          "target_prompt": "Picasso style painting of the night sky with bold strokes.",
+          "anchor_prompt": "A realistic photograph of the night sky, with natural colors and lighting."
+        },
+        {
+          "id": 2,
+          "template_index": 1,
+          "target_prompt": "Picasso style landscape of rolling hills with dramatic brushwork.",
+          "anchor_prompt": "A realistic photograph of rolling hills, with natural terrain textures and lighting."
+        },
+        {
+          "id": 3,
+          "template_index": 2,
+          "target_prompt": "Self-portrait in Picasso style, showcasing distinctive color and texture.",
+          "anchor_prompt": "A realistic photographic self-portrait, with natural skin tones, facial proportions, and skin texture."
+        },
+        {
+          "id": 4,
+          "template_index": 3,
+          "target_prompt": "Picasso style rural scene with dynamic movement and intensity.",
+          "anchor_prompt": "A realistic photograph of a rural scene, capturing natural movement and lighting."
+        },
+        {
+          "id": 5,
+          "template_index": 4,
+          "target_prompt": "Wheat field under a swirling sky in the style of Picasso.",
+          "anchor_prompt": "A realistic photograph of a wheat field beneath a naturally clouded sky."
+        },
+        {
+          "id": 6,
+          "template_index": 5,
+          "target_prompt": "Picasso style transformation of simple cottages into profound scenes.",
+          "anchor_prompt": "A realistic photograph of simple cottages, with natural building textures and lighting."
+        },
+        {
+          "id": 7,
+          "template_index": 6,
+          "target_prompt": "Picasso style portrait conveying inner turmoil and vitality.",
+          "anchor_prompt": "A realistic photographic portrait of a person with an intense, troubled expression and natural skin tones."
+        },
+        {
+          "id": 8,
+          "template_index": 7,
+          "target_prompt": "Seascape in Picasso style capturing tumultuous waves and ocean movement.",
+          "anchor_prompt": "A realistic photograph of a seascape with rough waves and natural ocean movement."
+        },
+        {
+          "id": 9,
+          "template_index": 8,
+          "target_prompt": "Picasso style depiction of light on water with delicate brushstrokes.",
+          "anchor_prompt": "A realistic photograph of light reflecting on water, with natural highlights and surface ripples."
+        },
+        {
+          "id": 10,
+          "template_index": 9,
+          "target_prompt": "Garden scene in Picasso style, emphasizing sunlight and shadow effects.",
+          "anchor_prompt": "A realistic photograph of a garden, with natural sunlight and shadows."
+        },
+        {
+          "id": 11,
+          "template_index": 10,
+          "target_prompt": "Picasso style atmospheric haze enveloping the landscape.",
+          "anchor_prompt": "A realistic photograph of a landscape enveloped in atmospheric haze."
+        },
+        {
+          "id": 12,
+          "template_index": 11,
+          "target_prompt": "Haystacks in Picasso style, capturing light and color changes.",
+          "anchor_prompt": "A realistic photograph of haystacks, capturing natural variations in light and color."
+        },
+        {
+          "id": 13,
+          "template_index": 12,
+          "target_prompt": "Cathedral facade in Picasso style with shifting light and shadow.",
+          "anchor_prompt": "A realistic photograph of a cathedral facade, with natural light and shadows."
+        },
+        {
+          "id": 14,
+          "template_index": 13,
+          "target_prompt": "Picasso style vibrant flower garden in full bloom.",
+          "anchor_prompt": "A realistic photograph of a flower garden in full bloom, with natural flower colors."
+        },
+        {
+          "id": 15,
+          "template_index": 14,
+          "target_prompt": "Picasso style painting of boats as a study of color and atmosphere.",
+          "anchor_prompt": "A realistic photograph of boats, with natural colors and atmospheric lighting."
+        },
+        {
+          "id": 16,
+          "template_index": 15,
+          "target_prompt": "Picasso style cliffs along the coastline with blended sea and sky.",
+          "anchor_prompt": "A realistic photograph of coastal cliffs, with natural colors in the sea and sky."
+        },
+        {
+          "id": 17,
+          "template_index": 16,
+          "target_prompt": "Picasso style bustling Paris streets with movement and vitality.",
+          "anchor_prompt": "A realistic photograph of bustling Paris streets, capturing natural movement and street details."
+        },
+        {
+          "id": 18,
+          "template_index": 17,
+          "target_prompt": "Sunrise scene in Picasso style, capturing the beauty of dawn.",
+          "anchor_prompt": "A realistic photograph of a sunrise scene, with natural dawn light and colors."
+        },
+        {
+          "id": 19,
+          "template_index": 18,
+          "target_prompt": "Picasso style exploration of fog and mist in the landscape.",
+          "anchor_prompt": "A realistic photograph of a landscape covered in fog and mist."
+        },
+        {
+          "id": 20,
+          "template_index": 19,
+          "target_prompt": "Olive trees painted in Picasso style.",
+          "anchor_prompt": "A realistic photograph of olive trees, with natural bark and leaf textures."
+        },
+        {
+          "id": 21,
+          "template_index": 20,
+          "target_prompt": "Tree painted in Picasso style.",
+          "anchor_prompt": "A realistic photograph of a tree, with natural bark and leaf textures."
+        },
+        {
+          "id": 22,
+          "template_index": 21,
+          "target_prompt": "Women working in the garden, in Picasso style.",
+          "anchor_prompt": "A realistic photograph of women working in a garden, with natural lighting and lifelike proportions."
+        },
+        {
+          "id": 23,
+          "template_index": 22,
+          "target_prompt": "Wheat field painting by Picasso.",
+          "anchor_prompt": "A realistic photograph of a wheat field, with natural grain textures and lighting."
+        },
+        {
+          "id": 24,
+          "template_index": 23,
+          "target_prompt": "Trees in bloom painted in Picasso style.",
+          "anchor_prompt": "A realistic photograph of trees in bloom, with natural blossom colors and lighting."
+        },
+        {
+          "id": 25,
+          "template_index": 24,
+          "target_prompt": "Picasso style painting of a tree.",
+          "anchor_prompt": "A realistic photograph of a tree, with natural bark and leaf textures."
+        },
+        {
+          "id": 26,
+          "template_index": 25,
+          "target_prompt": "Wheat field in Picasso style.",
+          "anchor_prompt": "A realistic photograph of a wheat field, with natural grain textures and lighting."
+        },
+        {
+          "id": 27,
+          "template_index": 26,
+          "target_prompt": "Picasso style painting of a field with mountains in the background.",
+          "anchor_prompt": "A realistic photograph of a field with mountains in the background, with natural terrain colors and lighting."
+        },
+        {
+          "id": 28,
+          "template_index": 27,
+          "target_prompt": "Trees in bloom in the style of Picasso.",
+          "anchor_prompt": "A realistic photograph of trees in bloom, with natural blossom colors and lighting."
+        },
+        {
+          "id": 29,
+          "template_index": 28,
+          "target_prompt": "Rocks in the ocean, in Picasso style.",
+          "anchor_prompt": "A realistic photograph of rocks in the ocean, with natural rock textures and water reflections."
+        },
+        {
+          "id": 30,
+          "template_index": 29,
+          "target_prompt": "City painting in Picasso style.",
+          "anchor_prompt": "A realistic photograph of a city, with natural architectural details and lighting."
+        }
+      ]
+    }
+  ],
+  "source_dataset": "DiT/detect_erase/dataset/erase/style.json",
+  "anchor_source": "Authored positive descriptions of the desired scene, aligned to the source pair or template.",
+  "anchor_policy": "Preserve scene content and physical conditions; describe a realistic photograph rather than an artist style."
+}
