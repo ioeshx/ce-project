@@ -66,8 +66,8 @@ HF_ENDPOINT="https://hf-mirror.com" baseline/EraseAnything/scripts/benchmark_sd3
 HF_ENDPOINT="https://hf-mirror.com" baseline/EraseAnything/scripts/benchmark_sd35_all.sh \
   --cases style,ip --device cuda:1 > benchmark/logs/eraseAnything_sd35_style_ip.log 2>&1
 
-git config --local http.proxy http://127.0.0.1:7890
-git config --local https.proxy http://127.0.0.1:7890
+git config --local http.proxy http://127.0.0.1:7891
+git config --local https.proxy http://127.0.0.1:7891
 
 git config --local --unset http.proxy 
 git config --local --unset https.proxy
