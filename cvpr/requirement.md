@@ -6,6 +6,8 @@
 
 - 输入概念检测使用 **detection prompt**。
 - 作为负向条件抑制目标内容生成使用 **suppression prompt**。
+- 文本编码器的输出优先称为 **text embeddings**，概括讨论时可用 **text representations**，少用 condition 指代编码结果。
+- 正、负提示分别记为 $q^{+}$、$q^{-}$，对应 velocity 使用上标 $v^{+}$、$v^{-}$。
 
 ## 篇幅与版式
 

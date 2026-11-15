@@ -14,11 +14,18 @@ Inference-time methods~\cite{Schramowski_2023_CVPR} offer an alternative by stee
 yet applying the same suppression condition indiscriminately can still alter generations for inputs that require no such intervention.
 Among inference-time approaches, negative prompting provides a flexible interface for controlling generation through the model's conditioning inputs.
 Within classifier-free guidance~\cite{CFG}, contrasting a negative prompt against the user's prompt steers generation away from unwanted content~\cite{jain2026rethinkingnegativepromptingconcept}.
-Although a natural-language description can specify what to avoid, directly using such text as a negative prompt often fails to effectively suppress the target concept.
+Although a natural-language description can specify what to avoid, directly using such text as a negative prompt often fails to effectively suppress the target concept, as shown in \cref{fig:negative_prompt}.
 TraSCE~\cite{jain2026rethinkingnegativepromptingconcept} demonstrates that naive negative prompting can fail on adversarial inputs when positive and negative predictions collapse together.
-This highlights the need to search for a better negative prompt while simultaneously deciding when it should be applied.
+This motivates learning an effective negative prompt and deciding when to activate it, as illustrated by our framework in \cref{fig:das_teaser}.
 
-Recognizing that detecting target concept in user's prompt and suppression such concept serve fundamentally different roles—one classifies inputs by semantic similarity, while the other reshapes generative trajectories—we introduce a safe generation framework: \textbf{Detect and Suppress}.
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/teaser-svg.pdf}
+    \caption{\textbf{Conceptual illustration of Detect and Suppress (DAS).} Safe inputs follow standard generation. When a detection prompt identifies a target concept, its paired suppression prompt is activated in the negative branch of the frozen diffusion model.}
+    \label{fig:das_teaser}
+\end{figure}
+
+Recognizing that detecting target concept in user's prompt and suppression such concept serve fundamentally different roles—one classifies inputs by semantic similarity, while the other reshapes generative trajectories—we introduce a safe generation framework: \textbf{Detect and Suppress} (DAS).
 Our framework assigns each target concept a pair of independently learned prompt embeddings tailored to these complementary objectives.
 Specifically, the \emph{detection prompt} establishes a concept-specific reference in the text embedding space, using similarity matching to determine whether the target concept is present in the input.
 This detection decision subsequently determines whether to activate the corresponding \emph{suppression prompt}, which acts as a tailored negative condition during generation.
@@ -28,6 +35,13 @@ We train the suppression prompt by aligning the guided predictions of inputs con
 % At a shared noisy state, the original input and the learned negative condition jointly determine the guided prediction, which is explicitly optimized to match the safe reference prediction.
 This training objective endows the suppression prompt with direct control over the sampling updates, forging a clear link between the learned condition and the desired safe behavior while keeping both text encoders and generative models entirely frozen.
 At inference time, detection is performed just once prior to sampling: an activated suppression prompt is injected as the negative condition, whereas inputs that bypass detection retain their original sampling pathways.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth,trim=45bp 87bp 0bp 60bp,clip]{figures/negative_prompt.pdf}
+    \caption{\textbf{Concept text can fail as a negative prompt.} The original output (left) and the output using ``Pikachu'' as the negative prompt (middle) both contain the character, whereas DAS suppresses it (right).}
+    \label{fig:negative_prompt}
+\end{figure}
 
 Our contributions are as follows:
 \begin{itemize}

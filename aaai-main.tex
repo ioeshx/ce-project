@@ -1,0 +1,487 @@
+\documentclass[letterpaper]{article} % DO NOT CHANGE THIS
+\usepackage[submission]{aaai2027} % DO NOT CHANGE THIS
+% The serif, sans-serif, and monospaced fonts are loaded automatically by
+% aaai2027.sty. Do not add any font packages.
+\usepackage[hyphens]{url} % DO NOT CHANGE THIS
+\usepackage{graphicx} % DO NOT CHANGE THIS
+\urlstyle{rm} % DO NOT CHANGE THIS
+\def\UrlFont{\rm} % DO NOT CHANGE THIS
+\usepackage{natbib} % DO NOT CHANGE THIS AND DO NOT ADD OPTIONS
+\usepackage{caption} % DO NOT CHANGE THIS AND DO NOT ADD OPTIONS
+\frenchspacing % DO NOT CHANGE THIS
+
+% Packages required by the migrated equations and tables.
+\usepackage{amsmath,amssymb}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{colortbl}
+\usepackage{hhline}
+\usepackage{booktabs}
+
+\graphicspath{{Figures/}}
+
+\pdfinfo{
+/TemplateVersion (2027.1)
+}
+
+\setcounter{secnumdepth}{0}
+
+% AAAI forbids the ulem package used by the ACM source. Italics retain the
+% visual distinction between erased and preserved concepts in the tables.
+\newcommand{\erased}[1]{\textit{#1}}
+
+\title{CASU: Concept Erasure in Diffusion Models via Contextual Anchors and Selective Updating}
+\author{Anonymous Submission}
+\affiliations{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The prevalence of text-to-image diffusion models has raised significant concerns regarding the generation of copyrighted or sensitive content. Consequently, concept erasure has emerged as a crucial area of research to safely remove specific concepts without compromising the generation of unrelated content. While recent closed-form solutions offer efficient erasure, they typically map the target concept onto a null-text or generic anchor and indiscriminately apply weight updates across all cross-attention layers. This often leads to abrupt semantic shifts and excessive degradation of unrelated content.
+
+In this paper, we propose a novel \textbf{Contextual Anchors and Selective Updating (CASU)} framework, featuring two key innovations. First, we introduce \textbf{Contextual Anchors}, which replace the rigid null-text anchor with an anchor representing the typical linguistic context of the target concept. This contextual anchor guides the closed-form optimization toward a more semantically coherent erasure process. Second, we propose an \textbf{Attention-Guided Selective Updating} mechanism. Instead of uniformly modifying Key and Value (KV) projection matrices across all network layers, we score the layers based on the activation levels of their attention maps during the generation of the target concept and the corresponding anchor concept. By doing so, we estimate layer sensitivity and update only the cross-attention layers most responsive to the synthesis of the target concept. Extensive experiments demonstrate that our proposed method compares favorably with existing baselines, achieving effective concept erasure while maintaining high generation quality and preserving the integrity of unrelated concepts.
+\end{abstract}
+
+
+
+\section{Introduction}
+
+Text-to-image (T2I) models~\cite{ddpm,ddim,latentSD,sdxl,imagen,beatsGAN} have recently become a dominant paradigm in generative artificial intelligence due to their strong synthesis capabilities, robust prompt controllability, and broad applicability in various scenarios. Despite these benefits, the same capability also raises serious safety and legal concerns. In practice, diffusion models can reproduce copyright-protected visual patterns~\cite{digitalforgery, carlini2023extracting}, artist-specific styles~\cite{glaze}, and sensitive or NSFW content~\cite{sld} that should not be generated. Such risks have motivated increasing research on techniques that can remove targeted content from models while preserving their general generative ability. Conventional strategies generally fall into two categories: post-generation filtering~\cite{redTeam} and retraining on sanitized datasets~\cite{sd20}. Although safety filters can be applied during inference to screen outputs, they can be easily circumvented~\cite{SafetyFilter}. Conversely, retraining the model from scratch on a carefully curated, clean corpus offers a fundamental solution but requires substantial computational resources.
+
+Therefore, concept erasure~\cite{Ablating, ESD, UCE, sld, AdaVD, MACE, SPEED, SPM, FMN, Conceptcorrector} has emerged as a promising direction for controllable safety alignment in diffusion models. Instead of retraining from scratch, concept erasure methods modify a trained model so that prompts related to a target concept no longer produce the undesired content. Recent closed-form approaches~\cite{UCE,RECE,TRCE,MACE,AdaVD,SPEED,ACE} are particularly attractive due to their computational efficiency and practical scalability. Existing methods commonly adopt two practices: (1) mapping the target concept to a generic concept or null-text anchor, and (2) applying uniform updates across all cross-attention layers. However, these practices often ignore contextual semantics and layer-wise functional heterogeneity, leading to abrupt semantic drift, over-erasure, and collateral damage to non-target concept generation.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{Figures/motivate-1.pdf}
+  \caption{Comparison of target-concept, null-text, and context-mean prompts. Context mean replaces the target tokens with the average embedding of the surrounding context.}
+  \label{fig:motivate-1}
+
+\end{figure}
+
+Our intuition is that mapping a target concept to a null-text or generic concept abruptly disrupts the continuous semantic embedding space and distorts the cross-attention distribution of the surrounding prompt. MACE~\cite{MACE} discovered that semantic information about target concepts can be encoded in other words within the prompt context. Building on this insight, we argue that this contextual information can also facilitate the generation of semantically consistent, high-quality images while avoiding the recurrence of the target concept. To validate our assumption, we conducted a pilot study to investigate the impact of contextual information. Specifically, using a pretrained diffusion model, we compared the generation outcomes of three prompt variations: (a) Target concept, the original prompt containing the target concept (e.g., Snoopy); (b) Null text, a prompt in which the target concept is replaced with null text; and (c) Context mean, a prompt in which the target-concept tokens are replaced with the average embedding of the surrounding context tokens. The example results (see Figure~\ref{fig:motivate-1}) reveal that while both the null-text and context-mean substitutions successfully prevent the generation of the target concept, the context-mean approach preserves the overall image composition and unrelated semantic elements notably better than the null-text prompt. This suggests that grounding the target in its local linguistic context enables a smoother and less destructive semantic redirection.
+
+Furthermore, recent studies~\cite{localize,HiRM} reveal that knowledge regarding distinct visual attributes or concepts is not stored uniformly across the model but is instead distributed among specific components. Specifically, the causal mediation analysis in~\cite{localize} demonstrates that different visual attributes rely on different sets of components within the diffusion model. This indicates that the common practice of applying uniform updates across all cross-attention layers may not be optimal, since the relevance of individual layers varies significantly for a given concept. Therefore, indiscriminately modifying all layers can lead to over-editing and cause unnecessary collateral damage to the generation of unrelated concepts.
+
+To address these limitations, we propose a new concept erasure framework that improves both semantic faithfulness and structural precision. First, we introduce \textbf{Contextual Anchors (CA)}, which replace the rigid null-text or generic anchor with a linguistically meaningful anchor that reflects the typical context of the erased concept. This design guides optimization toward smoother and more coherent semantic redirection. Second, we propose an \textbf{Attention-Guided Selective Updating (AGSU)} mechanism that ranks cross-attention layers by their target--anchor residual attention scores and updates only the most relevant Key--Value projection matrices. By restricting parameter modifications to selected layers, our method reduces unnecessary interference with unrelated concepts and preserves overall generation quality.
+
+Extensive experiments show that our proposed method achieves strong concept suppression while maintaining better fidelity on non-target concepts, demonstrating a more favorable trade-off between erasure effectiveness and content preservation. These results indicate that combining contextual semantic guidance with layer-selective updating provides a practical and robust path toward safer diffusion model deployment.
+
+
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{Figures/overview-1.pdf}
+  \caption{Overview of the CASU framework. (1) \textbf{Contextual Anchors} are constructed by averaging text embeddings extracted from LLM-generated contextual templates. (2) \textbf{Attention-Guided Selective Updating (AGSU)} identifies responsive cross-attention layers by computing residual attention scores between target and anchor attention maps. (3) The \textbf{Closed-form Solution} applies targeted weight updates to these selected layers within the null space of preserved concepts, enabling targeted erasure while limiting degradation of overall generative capacity.}
+  \label{fig:overview-1}
+
+\end{figure*}
+
+\section{Related Work}
+\paragraph{Training-Based Methods}
+Training-based methods erase concepts through iterative gradient-based weight updates. ESD~\cite{ESD} fine-tunes model parameters using negative guidance derived from the target description. Concept Ablation~\cite{Ablating} maps the target distribution to a broader anchor concept, but may degrade closely related concepts. SPM~\cite{SPM} inserts a lightweight one-dimensional adapter into the frozen U-Net and employs concept anchoring for selective erasure. FMN~\cite{FMN} suppresses target concepts by minimizing their cross-attention activations during fine-tuning.
+
+\paragraph{Training-Free Methods}
+Training-free methods directly edit pretrained weights or structural representations, offering greater computational and memory efficiency. Closed-form approaches typically neutralize target concepts by updating the Key and Value projections in cross-attention layers. Inspired by LLM model editing~\cite{MEMIT,LLM}, UCE~\cite{UCE} first introduced such analytical updates for concept erasure. RECE~\cite{RECE} extends UCE by iteratively deriving adversarial target embeddings and aligning them with harmless concepts. MACE~\cite{MACE} combines LoRA-based adaptation~\cite{lora} with closed-form projection for scalable multi-concept erasure. SPEED~\cite{SPEED} uses SVD to restrict updates to the null space of preserved concepts, while TRCE~\cite{TRCE} refines special-token embeddings in closed form and applies contrastive denoising trajectory steering.
+
+
+
+
+
+
+\section{Method}
+\subsection{Closed-form Solution with Null Space Constraint} An overview of our method is illustrated in Figure~\ref{fig:overview-1}. We first formalize the mathematical foundation of our framework: closed-form concept erasure within cross-attention projection matrices. The solution operates by directly updating the weights of the projection matrices. Consequently, the embeddings of prompts containing the target concepts are significantly altered, shifting the conditional information fed into the model.
+
+Let $W$ denote the projection matrix within the cross-attention layers. For simplicity, we omit the layer superscript $(l)$ and the projection type identifier (i.e., Key or Value), allowing $W$ to serve as generic notation without ambiguity. Following the closed-form formulation established in UCE~\cite{UCE}, closed-form methods aim to map each \textbf{target concept} $c^t_{i} \in \mathbb{R}^{d_c \times 1}$ associated with undesirable content onto a corresponding \textbf{anchor concept} $c^a_{i} \in \mathbb{R}^{d_c \times 1}$ (typically a generic concept or null text). This ensures that representations of the target concept are redirected toward the safe anchor. The problem can be formulated as the following objective function:
+\begin{equation}
+    \min_{\Delta}\left\|\big(W+\Delta\big)C_{T}-WC_{A}\right\|^2
+    +\beta\left\|\Delta\right\|^2 .
+\end{equation}
+Here, $\Delta$ represents the weight update applied to the matrix for redirecting target concepts, and $\beta$ is a regularization coefficient controlling the magnitude of $\Delta$. $C_{T}$ and $C_{A}$ are constructed by horizontally stacking the corresponding $N$ individual embeddings $c^{t}_i$ and $c^{a}_i$:
+\begin{equation}
+    C_T = \begin{bmatrix} c^{t}_1, c^{t}_2, \dots, c^{t}_N \end{bmatrix}, \quad 
+    C_A = \begin{bmatrix} c^{a}_1, c^{a}_2, \dots, c^{a}_N \end{bmatrix} .
+\end{equation}
+
+To prevent the degradation of the model's overall generative capacity, the representations of the \textbf{preserved concepts}, denoted by $C_P$, must remain invariant after the weight modification. Similarly, $C_P$ is formed by stacking $M$ preserved-concept embeddings:
+\begin{equation}
+    C_P = \begin{bmatrix} c^{p}_1, c^{p}_2, \dots, c^{p}_M \end{bmatrix} .
+\end{equation}
+Incorporating the preservation term into the objective function yields:
+\begin{equation}
+\begin{aligned}
+\min_{\Delta}\quad
+& \left\|\bigl(W+\Delta\bigr)C_T-WC_A\right\|^2 + \beta\left\|\Delta\right\|^2\\
+& + \lambda^{p}
+  \left\|\bigl(W+\Delta\bigr)C_P-WC_P\right\|^2 . 
+\end{aligned}
+\end{equation}
+By expanding the preservation term, we can cancel out the $WC_P$ components. The objective thus simplifies to:
+\begin{equation}\label{eq:mid_obj}
+    \min_{\Delta} 
+    \underbrace{\left\|\big(W+\Delta\big)C_{T}-WC_{A}\right\|^2}_{t_{1}} 
+    + 
+    \underbrace{\lambda^{p}\left\|\Delta C_{P}\right\|^2}_{t_2} 
+    + 
+    \beta\left\|\Delta\right\|^2 ,
+\end{equation}
+where $\lambda^{p}$ is the preservation scale. The mapping term $t_1$ enforces the redirection of the target concept to the anchor, while the preservation term $t_2$ minimizes the deviation of the preserved concepts. However, as demonstrated by SPEED~\cite{SPEED}, this preservation term possesses a non-zero lower bound, meaning that some residual deviation in the preserved concepts is mathematically inevitable under this specific formulation.
+
+Inspired by SPEED~\cite{SPEED}, we eliminate this deviation entirely by projecting the weight update $\Delta$ into the null space of the preserved concepts $C_P$. The null space of $C_P$ comprises all vectors $v$ such that $v C_P = 0$. To enforce this constraint, we introduce an orthogonal projection matrix $P_{null}$ that maps any candidate weight update into the null space of preserved concepts (the detailed derivation of $P_{null}$ is provided in the supplementary material). By reparameterizing the update as $\Delta := \Delta P_{null}$ and substituting it into Equation~\eqref{eq:mid_obj}, the preservation term $\left\|\Delta P_{null} C_P\right\|^2$ evaluates exactly to zero. Consequently, the optimization problem is reformulated as:
+\begin{equation}\label{equa:final}
+\begin{aligned}
+    \min_{\Delta}\left\| (W + \Delta P_{null}) C_{T} - W C_{A} \right\|^2 + \beta \left\| \Delta P_{null} \right\|^2 .
+\end{aligned}
+\end{equation}
+
+The detailed derivation for solving Equation~\eqref{equa:final} is provided in the supplementary material. The closed-form solution is given by:
+\begin{equation}\label{delta_P_null}
+    \Delta P_{null} = W(C_A - C_T) C_T^T P_{null} (C_T C_T^T P_{null} + \beta I)^{-1} .
+\end{equation}
+Finally, the targeted projection matrix is updated as follows:
+\begin{equation}
+    W \leftarrow W + \Delta P_{null} .
+\end{equation}
+
+
+
+\subsection{Contextual Anchors}
+
+While the closed-form formulation guarantees the redirection of a target concept toward an anchor, the actual choice of this anchor strongly affects the resulting generation quality. Conventional methods default to mapping the target onto a rigid null-text or generic concept, and this substitution disrupts the continuous semantic embedding space, often resulting in unnatural visual compositions and collateral damage. To ensure a smoother optimization trajectory, we introduce \textbf{Contextual Anchors}.
+
+The construction of the contextual anchor consists of three primary steps:
+
+First, we leverage a large language model (LLM)~\cite{LLM} to generate a diverse set of contextual prompt templates, denoted as $\mathcal{T} = \{t_1, t_2, \dots, t_K\}$. These templates describe scenes or environments where the concept naturally occurs. A critical constraint during this generation process is that the context must not directly or indirectly point to the target concept, nor should it contain highly correlated associative triggers. For instance, when attempting to erase the concept ``Snoopy,'' the generated templates must strictly avoid describing target-specific visual attributes (e.g., ``a black and white beagle'') as well as strong associative contexts (e.g., ``a boy in a yellow zig-zag shirt'' or ``resting on a red doghouse''). Such indirect references act as strong triggers that can inadvertently cause the target concept to re-emerge during image synthesis. Instead, a valid contextual template should focus on the typical, generic environment where the concept's broader category would naturally appear, such as ``A sunny day at the park, with [CONCEPT] running joyfully on the green grass,'' where \texttt{[CONCEPT]} serves as the placeholder. Preventing this contextual leakage ensures a clean and robust semantic baseline for anchoring.
+
+Second, we format all generated templates in $\mathcal{T}$ by substituting the placeholder with a generic concept, yielding a set of context-aware prompts. 
+
+Finally, we process these formatted prompts through the frozen text encoder. To distill these sequences into a single, robust representation, we compute the mean across both the $K$ generated templates and their $L_k$ effective sequence tokens. This aggregated embedding serves as our contextual anchor concept $c_{A}^*$:
+\begin{equation}
+    c_{A}^* = \frac{1}{K} \sum_{k=1}^K \frac{1}{L_k} \sum_{j=1}^{L_k} \big[\mathcal{E}_{\text{text}}(t_k \oplus c_{\text{generic}})\big]_j ,
+\end{equation}
+where $\mathcal{E}_{\text{text}}(\cdot)$ denotes the text encoder, $c_{\text{generic}}$ represents the null-text or generic concept, $\oplus$ denotes the string insertion operation into the template placeholder, and $[\cdot]_j$ represents the extracted embedding of the $j$-th effective token in the sequence of length $L_k$.
+
+This aggregated embedding $c_A^*$ is subsequently used to construct the contextual anchor matrix $C_A^*$. We then substitute $C_A^*$ for the original anchor matrix $C_A$ in the closed-form objective in Equation~\eqref{equa:final}. This contextual anchor guides parameter optimization toward a smoother and more semantically coherent redirection trajectory.
+
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+
+Erasing \textbf{Snoopy}
+
+\begin{tabular}{!{\vrule width 1pt}l|cc|cc|cc|cc|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c!{\vrule width 1pt}}
+\Xhline{1pt}
+\multirow{2}{*}{} & \multicolumn{2}{c|}{Hello Kitty} & \multicolumn{2}{c|}{Pikachu} & \multicolumn{2}{c|}{Spongebob} & \multicolumn{2}{c|}{Mickey} & \multicolumn{2}{c!{\vrule width 1pt}}{\erased{Snoopy}} \\ \hhline{~|--|--|--|--|--|}
+                  & FID $\downarrow$       & CS $\uparrow$      & FID      & CS     & FID      & CS      & FID      & CS      & FID $\uparrow$      & CS $\downarrow$      \\ \hline
+UCE WACV'24        & 40.79           & 27.53          & 32.89          & 27.07          & 47.87          & 27.30          & 45.09          & 25.72          & 81.29                  & 24.03           \\
+RECE ECCV'24      & 53.68           & 25.85    & 29.42          & \underline{27.84} & 35.01          & \textbf{27.96} & 37.99          & \underline{26.84} & \textbf{132.50}           & \textbf{18.94}        \\
+MACE CVPR'24      & 77.61           & 25.23          & 66.84          & 25.98          & 102.77         & 23.35          & 103.86         & 24.56          & 110.45        & 23.56                 \\
+TRCE ICCV'25      & 38.18           & 27.65          & 29.16          & 27.26          & 42.57          & 26.41          & 36.30          & 25.82          & 56.43                  & 25.62                 \\
+ACE ACMMM'25       & 32.24           & 26.74          & 35.12          & 25.94          & 40.84          & 26.98          & 33.25          & 25.82         & 65.54                  & 25.88                 \\
+SPEED ICLR'26    & \underline{22.67}     & 27.95          & \underline {17.35}    & 27.48    & \underline{27.39}          & \underline{27.40}    & \underline{26.63}          & 26.58          & 108.38                 & 27.45                 \\
+Ours  & \textbf{20.32}  & \textbf{28.01} & \textbf{14.08} & \textbf{28.32}         & \textbf{26.36} & 27.38          & \textbf{22.61} & \textbf{27.21}    & \underline{115.28}                  & \underline{23.31}                \\ \Xhline{1pt}
+\end{tabular}
+
+Erasing \textbf{Snoopy and Mickey}
+
+\begin{tabular}{!{\vrule width 1pt}l|cc|cc|cc|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c!{\vrule width 1pt}}
+\Xhline{1pt}
+\multirow{2}{*}{} & \multicolumn{2}{c|}{Hello Kitty} & \multicolumn{2}{c|}{Pikachu} & \multicolumn{2}{c|}{Spongebob} & \multicolumn{2}{c|}{\erased{Mickey}} & \multicolumn{2}{c!{\vrule width 1pt}}{\erased{Snoopy}} \\ \hhline{~|--|--|--|--|--|}
+                  & FID $\downarrow$       & CS $\uparrow$      & FID      & CS     & FID      & CS      & FID      & CS      & FID $\uparrow$      & CS $\downarrow$     \\ \hline
+UCE                           & 61.45           & 26.93          & 57.40          & 27.30          & 78.67          & 25.10          & 76.33           & 22.60          & 97.30           & 25.53    \\
+RECE                          & 41.54           & \textbf{28.61} & 30.05          & 27.37          & 37.52          & \textbf{26.14} & \underline{115.39} & \textbf{19.79} & 102.42    & 22.16 \\
+MACE                          & 104.86          & 23.61          & 93.10          & 25.86          & 113.85         & 22.56          & \textbf{129.36}    & \underline{21.76}    & \textbf{137.02} & \underline{21.05}         \\
+ACE                           & 45.12           & 26.43          & 40.64          & 26.98          & 34.48          & 23.18          & 97.49           & 23.84          & 104.12          & 22.32          \\
+SPEED                         & \underline{26.81}     & 27.96          & \underline{22.14}          & \underline{27.44}    & \textbf{30.84} & \underline{27.36}    & 101.62           & 23.49          & 110.14          & 23.64          \\
+Ours                          & \textbf{23.07}  & \underline{28.12}    & \textbf{16.94} & \textbf{27.84} & \underline{31.12}    & \textbf{27.42}          & 106.74           & 22.26          & \underline{113.38}          & \textbf{20.91}          \\ \Xhline{1pt}
+\end{tabular}
+
+Erasing \textbf{Snoopy, Mickey, and Spongebob}
+
+\begin{tabular}{!{\vrule width 1pt}l|cc|cc|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c!{\vrule width 1pt}}
+\Xhline{1pt}
+\multirow{2}{*}{} & \multicolumn{2}{c|}{Hello Kitty} & \multicolumn{2}{c|}{Pikachu} & \multicolumn{2}{c|}{\erased{Spongebob}} & \multicolumn{2}{c|}{\erased{Mickey}} & \multicolumn{2}{c!{\vrule width 1pt}}{\erased{Snoopy}} \\ \hhline{~|--|--|--|--|--|}
+                  & FID $\downarrow$       & CS $\uparrow$      & FID      & CS     & FID      & CS      & FID      & CS      & FID $\uparrow$      & CS $\downarrow$ \\ \hline
+UCE                           & 57.60            & 27.04          & 55.59          & 27.31          & 100.35            & 21.67           & 77.74           & 23.13          & 97.33           & 22.64           \\
+RECE                          & 63.10            & 26.97    & 50.10          & 26.76    & \underline{121.09}  & \textbf{17.38}  & \textbf{122.86} & \textbf{20.51} & 107.80    & 24.76  \\
+MACE                          & 126.74           & 22.87          & 111.57         & 19.93          & \textbf{129.61}      & 20.75           & 111.85    & 22.86    & \textbf{137.86} & \textbf{21.84}     \\
+ACE                           & 45.35            & 25.48          & 50.12          & 26.12          & 112.84            & 21.98           & 107.46          & 21.45          & 106.30          & 23.71           \\
+SPEED                         & \underline{28.64}      & \underline{27.81}          & \underline{23.84}    & \underline{27.48}          & 106.72            & 21.35           & 94.93           & 23.96          & 102.98          & 23.68           \\
+Ours                          & \textbf{25.75}   & \textbf{28.01} & \textbf{18.56} & \textbf{28.10} & 115.74             & \underline{20.11}         & \underline{117.48}           & \underline{21.42}         & \underline{110.18}           & \underline{22.30}           \\ \Xhline{1pt}
+\end{tabular}
+\caption{Results on instance erasure. The best and second-best results are highlighted in \textbf{bold} and \underline{underlined}, respectively. The columns corresponding to the erased concepts are in gray, and the names of the erased concepts are shown in \textit{italics}.}
+\label{tab:instance}
+\end{table*}
+
+
+\subsection{Attention-Guided Selective Updating}
+
+As previously discussed, applying uniform weight modifications across all cross-attention layers might lead to over-erasure and semantic drift. To address this, we propose an \textbf{Attention-Guided Selective Updating} mechanism that identifies and modifies only the cross-attention layers most responsive to the generation of the target concept.
+
+Our mechanism operates by dynamically probing the cross-attention maps during the denoising process. Instead of analyzing the entire set of denoising timesteps, we isolate a ``key window'' of denoising timesteps, denoted as $W=[t_{\text{start}}, t_{\text{end}}]$, during which the structural and semantic layouts of the generated image are primarily established.
+
+Within this key window, we compute a layer-wise attention score for each cross-attention layer $l$. For a given prompt containing the target concept, we extract the cross-attention weights corresponding specifically to the last subject token of the target concept. These weights are averaged across all attention heads and spatial dimensions, and subsequently averaged over all timesteps within the key window $W$ to obtain a scalar activation score, denoted as $S_{\text{target}}^{(l)}$.
+
+Mathematically, let $A_{t,h}^{(l)}$ denote the cross-attention map at layer $l$, timestep $t$, and attention head $h$. Let $j$ be the index iterating over the $N$ spatial visual tokens. Let $i^*$ be the specific index of the last subject token of the target concept in the prompt. The element $A_{t,h}^{(l)}(i^*, j)$ represents the attention weight, which quantifies the degree to which the $j$-th spatial patch is influenced by the $i^*$-th text token. The scalar activation score $S_{\text{target}}^{(l)}$ is calculated by averaging these weights:
+\begin{equation}
+    S_{\text{target}}^{(l)} = \frac{1}{|W| \cdot H \cdot N} \sum_{t = t_{\text{start}}}^{t_{\text{end}}} \sum_{h=1}^{H} \sum_{j=1}^{N} A_{t,h}^{(l)}(i^*, j) ,
+\end{equation}
+where $W = [t_{\text{start}}, t_{\text{end}}]$ denotes the key window, $|W|$ is the total number of timesteps within this window, and $H$ represents the total number of attention heads.
+
+Relying solely on the absolute activation $S_{\text{target}}^{(l)}$ can be misleading, as certain layers may inherently exhibit high activation levels due to positional biases or generic syntactic routing, rather than target-specific semantic processing. We argue that a substantial difference in activation between the target-conditioned and anchor-conditioned generation processes suggests that a layer is more responsive to the features of the target concept. Therefore, to estimate a layer's sensitivity to the target concept, we employ a residual scoring approach. We compute a baseline attention score, $S_{\text{anchor}}^{(l)}$, using the same probing procedure but replacing the target concept with the contextual anchor \(c_A^*\). Similarly, let $A_{t,h}^{\prime (l)}$ denote the cross-attention map generated under this modified anchor prompt, and let $\hat{i}$ be the token index corresponding to the anchor concept. The baseline attention score $S_{\text{anchor}}^{(l)}$ is formulated as:
+\begin{equation}
+    S_{\text{anchor}}^{(l)} = \frac{1}{|W| \cdot H \cdot N} \sum_{t = t_{\text{start}}}^{t_{\text{end}}} \sum_{h=1}^{H} \sum_{j=1}^{N} A_{t,h}^{\prime (l)}(\hat{i}, j) .
+\end{equation}
+The estimated sensitivity of layer $l$ is then defined by the absolute residual score:
+\begin{equation}
+    \Delta S^{(l)} = \left| S_{\text{target}}^{(l)} - S_{\text{anchor}}^{(l)} \right| .
+\end{equation}
+This residual score $\Delta S^{(l)}$ highlights the layers that are more responsive to the target semantics.
+
+Finally, we rank all cross-attention layers based on their residual scores $\Delta S^{(l)}$ in descending order and apply a Top-$K$ masking strategy. Let $\mathcal{L}_{\text{top-}K}$ denote the set of indices of the $K$ cross-attention layers that exhibit the highest residual scores. We assign a binary mask value $\gamma^{(l)}$ to each layer, which is formally defined as:
+\begin{equation}
+    \gamma^{(l)} = \begin{cases} 1, & \text{if } l \in \mathcal{L}_{\text{top-}K} \\ 0, & \text{otherwise} \end{cases} .
+\end{equation}
+For each layer, the candidate weight update $\Delta P_{\text{null}}^{(l)}$ is computed using Equation~\eqref{delta_P_null} and the contextual anchor matrix $C^*_A$ defined in the previous section. The final layer-wise parameter modification is then modulated by this binary mask:
+\begin{equation}
+    W^{(l)} \leftarrow W^{(l)} + \gamma^{(l)} \Delta P_{\text{null}}^{(l)} .
+\end{equation}
+By restricting parameter modifications exclusively to these highly responsive layers and guiding the optimization trajectory with contextual anchors, our selective update mechanism reduces collateral damage to unrelated concepts and helps preserve the model's overall generative capacity.
+
+
+
+\section{Experiments}
+In this section, we comprehensively evaluate the effectiveness of our proposed method across various concept erasure tasks. Following experimental setups similar to SPEED~\cite{SPEED}, we evaluate our method on instance, art-style, and mass concept erasure. We use the CLIP Score (CS)~\cite{clip}, Fr\'echet Inception Distance (FID)~\cite{FID}, and Learned Perceptual Image Patch Similarity (LPIPS)~\cite{LPIPS} to assess erasure and content preservation. Metric definitions and additional analyses are provided in the supplementary material.
+
+% Specifically, we first conduct \textbf{instance erasure} to remove specific copyrighted characters (e.g., Snoopy and Mickey). Next, we perform \textbf{art style erasure} to eliminate the influence of specific artists, such as Van Gogh. Subsequently, we demonstrate the scalability of our approach through \textbf{mass concept erasure}, evaluating the model's capability to maintain general generative fidelity while simultaneously ablating a large number of concepts. We use the CLIP Score (CS)~\cite{clip}, Fr\'echet Inception Distance (FID)~\cite{FID}, and Learned Perceptual Image Patch Similarity (LPIPS)~\cite{LPIPS} to evaluate erasure effectiveness and content preservation. Detailed descriptions of these metrics are provided in the supplementary material. Additional hyperparameter ablation experiments are provided in the supplementary material.
+
+
+\subsection{Experiment Setup}
+\paragraph{Models and Baselines}
+All experiments use Stable Diffusion v1.4~\cite{SD1-4}. We compare against task-applicable baselines, including UCE~\cite{UCE}, RECE~\cite{RECE}, MACE~\cite{MACE}, TRCE~\cite{TRCE}, SPEED~\cite{SPEED}, and ACE~\cite{ACE}. 
+Experiments are conducted on a single NVIDIA RTX 4090 GPU. Implementation details  and additional results on SDXL~\cite{SDXL-model} and SD2.1~\cite{StableDiffusion2.1} are provided in the supplementary material.
+
+\paragraph{Experimental Configuration}
+For image generation during evaluation, we use the DPM solver with 20 inference steps and set the classifier-free guidance scale to $7.5$. The regularization coefficient $\beta$ is set to $1$. For the Contextual Anchors, we use $K=30$ augmented prompt templates for each target concept to obtain robust contextual embeddings. For Attention-Guided Selective Updating, the key denoising window $[t_{\text{start}},t_{\text{end}}]$ spans from $30\%$ to $70\%$ of the total inference steps, and AGSU updates the top 75\% of cross-attention layers according to their residual scores.
+
+\subsection{Instance Erasure}
+To evaluate instance erasure efficacy, we progressively erase one (\textit{Snoopy}), two (\textit{Snoopy, Mickey}), and three (\textit{Snoopy, Mickey, Spongebob}) targets. After erasure, we use instance prompt templates(details are provided in supplementary material) to generate image sets across five concepts: \textit{Snoopy, Mickey, Spongebob, Hello Kitty, Pikachu}. The target concepts are used to evaluate erasure efficacy, while the unrelated concepts are used to measure erasure precision and verify that the model's generative capability is preserved. 
+
+The full results of the experiment are shown in Table~\ref{tab:instance}. Although our proposed framework may not achieve the absolute best FID and CLIP scores, it still effectively erases the target concepts and achieves a favorable balance while preserving the model's general generative capabilities; a similar observation is discussed in SPEED~\cite{SPEED}. Furthermore, this preservation advantage becomes increasingly pronounced as the number of erased concepts grows. FID scores for non-target concepts remain consistently low as the number of target concepts increases.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+
+Erasing \textbf{Van Gogh}
+
+\begin{tabular}{!{\vrule width 1pt}l|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c|cc|cc!{\vrule width 1pt}}
+\Xhline{1pt}
+\multirow{2}{*}{} & \multicolumn{2}{c|}{\erased{Van Gogh}} & \multicolumn{2}{c|}{Monet} & \multicolumn{2}{c!{\vrule width 1pt}}{Picasso} \\ \hhline{~|--|--|--|}
+                  & FID $\uparrow$      & CS$\downarrow$      & FID$\downarrow$      & CS$\uparrow$     & FID      & CS      \\ \hline
+UCE                           & \underline{166.08}           & 25.83           & 90.12          & 27.51          & 80.47          & 26.60          \\
+RECE                          & 146.54           & \textbf{22.51}  & 55.50          & 22.70          & 47.65          & 22.64          \\
+MACE                          & 160.84     & 24.23           & 70.84          & 27.65          & 78.41          & 25.12          \\
+TRCE                          & \textbf{206.78}  & \underline{23.24}     & 141.34         & 23.70          & 187.77         & 24.29          \\
+SPEED                         & 128.40           & 26.81           & \underline{30.01}    & \underline{29.06}    & \underline{43.35}    & \textbf{28.02} \\
+Ours                          & 124.41           & 25.67           & \textbf{27.74} & \textbf{29.86} & \textbf{40.08} & \underline{27.97}    \\ \Xhline{1pt}
+\end{tabular}
+
+Erasing \textbf{Monet}
+
+\begin{tabular}{!{\vrule width 1pt}l|cc|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c|cc!{\vrule width 1pt}}
+\Xhline{1pt}
+\multirow{2}{*}{} & \multicolumn{2}{c|}{Van Gogh} & \multicolumn{2}{c|}{\erased{Monet}} & \multicolumn{2}{c!{\vrule width 1pt}}{Picasso} \\ \hhline{~|--|--|--|}
+                  & FID $\downarrow$      & CS $\uparrow$     & FID $\uparrow$     & CS $\downarrow$    & FID      & CS      \\ \hline
+UCE                           & 62.82          & 24.32          & 107.93    & 25.14    & 70.96          & 27.19          \\
+RECE                          & 42.35          & 25.33          & 98.44           & \textbf{22.18} & \textbf{38.86} & 22.64          \\
+MACE                          & 29.31          & 27.45          & 49.67           & 26.63          & 120.42         & 26.04          \\
+TRCE                          & 79.14          & 25.23          & 112.03          & 26.08          & 63.50          & 26.84          \\
+SPEED                         & \underline{28.61}    & \underline{28.80}     & \textbf{126.46} & 25.78          & 43.56          & \underline{27.61}    \\
+Ours                          & \textbf{24.15} & \textbf{28.86} & \underline{118.25}          & \underline{24.71}          & \underline{41.18}          & \textbf{27.86} \\ \Xhline{1pt}
+\end{tabular}
+
+Erasing \textbf{Picasso}
+
+\begin{tabular}{!{\vrule width 1pt}l|cc|cc|>{\columncolor{gray!20}}c>{\columncolor{gray!20}}c!{\vrule width 1pt}}
+\Xhline{1pt}
+\multirow{2}{*}{} & \multicolumn{2}{c|}{Van Gogh} & \multicolumn{2}{c|}{Monet} & \multicolumn{2}{c!{\vrule width 1pt}}{\erased{Picasso}} \\ \hhline{~|--|--|--|}
+                  & FID $\downarrow$      & CS $\uparrow$     & FID      & CS     & FID  $\uparrow$    & CS $\downarrow$     \\ \hline
+UCE                           & 60.99          & 26.58          & 64.21          & 28.03          & 112.36          & 25.95    \\
+RECE                          & 43.55          & 23.31          & 28.58          & 22.78          & 107.30          & \textbf{22.18} \\
+MACE                          & 63.62          & 27.19          & 40.15          & 26.88          & \textbf{140.44} & 26.33          \\
+TRCE                          & 74.62          & 26.77 & 76.15          & 26.92          & 73.15           & 27.94          \\
+SPEED                         & \underline{26.33}    & \underline{27.71}          & \underline{24.22}    & \textbf{28.85} & 115.75          & 26.24          \\
+Ours                          & \textbf{22.05} & \textbf{28.73}    & \textbf{21.19} & \underline{28.83}    & \underline{122.61}    & \underline{24.39}          \\ \Xhline{1pt}
+\end{tabular}
+\caption{Results of art style erasure. The best and second-best results are highlighted in \textbf{bold} and \underline{underlined}, respectively. The columns corresponding to the erased concepts are in gray, and the names of the erased concepts are shown in \textit{italics}.}
+\label{tab:art}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{|c|l|ccc|}
+\hline
+\# Erased & Method & FID $\downarrow$ & CS $\uparrow$ & LPIPS $\downarrow$ \\ \hline
+\multirow{3}{*}{50}
+ & UCE   & 159.13 & 19.21 & 0.67 \\
+ & SPEED & 42.86 & 26.24 & \textbf{0.38} \\
+ & Ours  & \textbf{35.56} & \textbf{26.34} & \textbf{0.38} \\ \hline
+\multirow{3}{*}{75}
+ & UCE   & 170.65 & 19.68 & 0.67 \\
+ & SPEED & 45.08 & 25.97 & 0.40 \\
+ & Ours  & \textbf{38.98} & \textbf{26.01} & \textbf{0.38} \\ \hline
+\multirow{3}{*}{100}
+ & UCE   & 194.53 & 18.71 & 0.70 \\
+ & SPEED & 53.84 & 25.46 & 0.41 \\
+ & Ours  & \textbf{42.05} & \textbf{25.97} & \textbf{0.38} \\ \hline
+\end{tabular}
+\caption{Results of mass concept erasure, where 50, 75, and 100 denote the number of target concepts concurrently erased from the model. The best results are highlighted in \textbf{bold}.}
+\label{tab:mass}
+\end{table}
+
+
+
+
+\subsection{Art Style Erasure}
+We conduct three art style erasure experiments, independently targeting \textit{Van Gogh}, \textit{Claude Monet}, and \textit{Pablo Picasso}, respectively. For each edited model, we generate images across all three styles using artist prompt templates (details are provided in the supplementary material). The targeted style is used to measure erasure efficacy, while the remaining two unedited styles serve to evaluate erasure specificity and preservation of the model's generative capability.
+
+The results of art style erasure are shown in Table~\ref{tab:art}. Our method demonstrates strong performance in the art style erasure task. As also observed in SPEED~\cite{SPEED}, our method may not always yield the absolute lowest FID or highest CLIP scores; nevertheless, it effectively suppresses the targeted artistic styles and strikes a favorable trade-off while preserving the generative fidelity of unrelated styles. Qualitative visualizations of art style erasure are provided in the supplementary material.
+
+\subsection{Mass Concept Erasure}
+To evaluate the scalability of our approach and its robustness against catastrophic forgetting, we concurrently erase $N \in \{50,75,100\}$ CIFAR-100 classes~\cite{CIFAR}. To quantify knowledge preservation under these settings, we sample 1,000 distinct prompts from the MS-COCO validation set~\cite{coco} to synthesize a diverse evaluation image set. By comparing these generated images with those produced by the original pretrained model, we use FID and LPIPS to measure overall visual fidelity and perceptual deviation.
+
+The results are shown in Table~\ref{tab:mass}. Our method exhibits strong robustness under large-scale erasure settings. While baseline methods suffer from substantial performance degradation and catastrophic forgetting when erasing large numbers of concepts, our framework maintains relatively stable general generative capabilities.
+
+\subsection{Component Ablation Study}
+
+To evaluate the individual contributions of the proposed components, we conduct an ablation study on the instance erasure task. Specifically, we erase \textit{Snoopy} and assess the model's ability to preserve the generation fidelity of Pikachu. We compare the complete method with two variants: one without the Contextual Anchor (CA) and one without Attention-Guided Selective Updating (AGSU). 
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{|l|cc|cc|}
+\hline
+\multirow{2}{*}{} & \multicolumn{2}{c|}{\erased{Snoopy}} & \multicolumn{2}{c|}{Pikachu} \\ \cline{2-5}
+                  & FID $\uparrow$ & CS $\downarrow$ & FID $\downarrow$ & CS $\uparrow$ \\ \hline
+w/o CA   & \textbf{120.41} & \textbf{22.17} & 18.98 & 26.57 \\
+w/o AGSU & 105.69 & 22.37 & 19.45 & 25.97 \\
+Ours     & 113.94 & 22.31 & \textbf{14.76} & \textbf{27.95} \\ \hline
+\end{tabular}
+\caption{Component ablation results. The erased concept is shown in \textit{italics}.}
+\label{tab:ablation}
+\end{table}
+
+As shown in Table~\ref{tab:ablation}, omitting either CA or AGSU causes greater deviation on the unrelated concept, even though the incomplete variant without CA produces more aggressive target-side changes. This result indicates that using both components provides a more favorable balance between target erasure and non-target knowledge preservation.
+
+Additional analyses of CA stability and AGSU layer selection are provided in the supplementary material.
+
+
+\subsection{AGSU Hyperparameter Ablation}
+
+Because AGSU determines both which layers are updated and when their attention responses are measured, its performance may depend on the layer-selection ratio and denoising window. We therefore examine these choices to assess the robustness of AGSU and to justify the common configuration used across different erasure tasks.
+
+Specifically, we study the two hyperparameters used by AGSU: the Top-$K$ layer ratio and the key denoising window. In each experiment, all other components and settings are fixed while only the examined hyperparameter is changed.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\caption{Sensitivity to the Top-$K$ layer ratio. Each entry reports target FID / non-target FID, followed by their difference in parentheses.}
+\label{tab:app-agsu-topk}
+\begin{tabular}{lccc}
+\toprule
+Task & 50\% & 75\% & 85\% \\
+\midrule
+Instance
+& 26.6 / 22.3 (4.3)
+& \textbf{97.5 / 24.1 (73.4)}
+& 103.0 / 42.4 (60.6) \\
+Style
+& 28.4 / 27.2 (1.2)
+& \textbf{116.7 / 37.6 (79.1)}
+& 122.5 / 56.8 (65.7) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\caption{Sensitivity to the key denoising window. Instance and style entries report target FID / non-target FID, while mass erasure reports non-target FID on MS-COCO prompts.}
+\label{tab:app-agsu-window}
+\begin{tabular}{lccc}
+\toprule
+Window (\%) & Instance & Style & Mass \\
+\midrule
+$[30,70]$
+& \textbf{96.54 / 24.76}
+& \textbf{112.85} / 37.62
+& 43.12 \\
+$[40,60]$
+& 78.32 / 33.46
+& 78.12 / \textbf{35.37}
+& 47.53 \\
+$[20,80]$
+& 80.61 / 31.12
+& 90.17 / 43.12
+& \textbf{42.76} \\
+$[0,30]\cup[70,100]$
+& 70.12 / 29.42
+& 88.51 / 39.46
+& 50.81 \\
+$[0,20]\cup[80,100]$
+& 60.03 / 28.32
+& 93.10 / 41.86
+& 52.13 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:app-agsu-topk} shows that updating too few layers leads to insufficient erasure, whereas updating too many layers increases the deviation of unrelated concepts. Among the evaluated ratios, 75\% yields the largest target--non-target FID gap for both instance and style erasure. Table~\ref{tab:app-agsu-window} further shows that the middle portion of the denoising trajectory is more informative than the early and late portions alone. Although $[20,80]$ gives a slightly lower FID for mass erasure, $[30,70]$ provides the strongest target suppression for both instance and style erasure while retaining competitive preservation. We therefore use a 75\% Top-$K$ ratio and the $[30,70]$ window in all experiments as a common empirical setting across tasks.
+
+\subsection{Resource and Computation Cost}
+
+Concept erasure may need to be applied repeatedly or to many concepts, making practical resource requirements an important complement to erasure quality. We therefore evaluate whether the CASU framework introduces prohibitive memory or editing-time overhead.
+
+We compare peak GPU memory and wall-clock editing time under the single-concept setting of erasing \emph{Snoopy}.  Table~\ref{tab:app-resource} shows that CASU completes the editing in seconds and keeps its memory requirement within a practical range. The offline generation of contextual prompt templates is separate from the model-editing time reported here.
+
+\begin{table}[b]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\caption{Peak GPU memory and wall-clock model-editing time for single-concept erasure on one NVIDIA RTX 4090.}
+\label{tab:app-resource}
+\begin{tabular}{lcc}
+\toprule
+Method & Memory & Time \\
+\midrule
+UCE & 5,244 MiB & 1.09 s \\
+RECE & 13,070 MiB & 3.28 s \\
+MACE & 23,720 MiB & 30 min \\
+TRCE & 17,658 MiB & 20 min \\
+SPEED & 7,292 MiB & 6.92 s \\
+Ours & 7,920 MiB & 9.27 s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+In this paper, we presented the Contextual Anchors and Selective Updating (CASU) framework, an effective approach to concept erasure in text-to-image diffusion models. By introducing Contextual Anchors and the Attention-Guided Selective Updating mechanism, we help mitigate the issues of over-erasure and catastrophic forgetting.
+% In this paper, we presented the Contextual Anchors and Selective Updating (CASU) framework, a robust solution for precise concept erasure in text-to-image diffusion models. By introducing Contextual Anchors (CA) to maintain the integrity of the semantic embedding space and the Attention-Guided Selective Updating (AGSU) mechanism to localize weight modifications to critical layers, we effectively mitigate the pervasive issues of over-erasure and catastrophic forgetting. 
+
+Extensive evaluations demonstrate that our method achieves a balance between the suppression of targeted concepts and the preservation of unrelated content. Additional experiments, examples, and derivations are provided in the supplementary material.
+
+
+
+
+\bibliography{aaai2027}
+\end{document}

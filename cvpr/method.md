@@ -378,19 +378,19 @@ $$
 
 ## 6. 建议的 Method 章节结构
 
-建议四个小节，按“统一接口 → 两类独立学习 → 配对使用”的顺序展开。
+建议四个小节，按“生成基础 → 两类独立学习 → 配对使用”的顺序展开。论文的 detection 默认目标已确定为 **TI-flow + SupCon**；这是论文主配置选择，不改变训练入口和已有脚本的默认参数。
 
 | 小节 | 段落任务 | 核心公式 |
 |---|---|---|
-| **3.1 Preliminaries and overview** | 定义目标概念、文本条件和 flow/CFG；说明冻结模型、每概念两个独立学习的 prompt；给出训练与部署的整体关系 | F1、F2；两组参数的定义 |
-| **3.2 Learning detection prompts** | 先说明 detection 表示如何形成文本参照，再介绍标签与分类目标；若主配置包含 TI，解释重建如何约束同一表示；最后说明训练后缓存参照 | D1–D3；D4/D5 中选定的主目标；需要时加 D6–D7 |
+| **3.1 Preliminaries** | 潜空间、rectified flow 的训练目标、CFG 与负向提示；沿用当前正文的符号 | 当前 `3_method.tex` 的四个基础公式 |
+| **3.2 Learning detection prompts** | 开头单独一段介绍两类 prompt 的目的与推理分工；随后说明 detection 的连续表示、概念参照、SupCon 和 TI-flow 联合目标 | 见下方 6.4 的表示与四组公式 |
 | **3.3 Learning suppression prompts** | 从 unsafe/safe 文本对引出期望预测；说明 sequence/pooled 参数化，再给出学生、教师和匹配损失；最后交代训练状态如何取得 | S1；将 S2–S4 合成一组核心公式；主配置对应的 S5 或 F1 |
 | **3.4 Selective inference with prompt pairs** | 描述一次检测、阈值筛选、top1 与负条件选择，最后解释未触发分支及计算开销 | I1、I2 |
 
 ### 6.1 各节的写作重点
 
-- **Overview**：先说明两个问题分别是什么——输入是否匹配目标概念、采用什么负条件抑制该概念；再介绍对应的两组可训练表示。
-- **Detection**：按“表示 → 比较 → 监督信号”叙述。主配置若是 soft+BCE，直接用单 token 参数化和 D4；若是 condition 联合训练，再展开 D1–D2 和重建项。避免把全部实现选项平铺为主方法。
+- **方法开场段**：放在 Preliminary 之后的第一个方法小节开头，单独成段，不另设 Overview 小节。说明 detection prompt 学习输入概念匹配，suppression prompt 学习负向生成控制；二者独立训练、按概念配对，推理时先检测，再启用匹配的 suppression prompt，未启用时使用空文本负分支。
+- **Detection**：按“同一连续表示 → 两种用途 → SupCon 与 TI-flow → 联合优化”叙述。正文不展开张量尺寸、初始化模板、数据构造、batch、优化器和底层编码操作。
 - **Suppression**：重点解释为何优化的是“原输入 + learned negative”的 guided prediction，而不是孤立的负分支或最终图片。安全参考只用于离线训练，推理保留用户原始正文本。
 - **Inference**：用明确的分支公式呈现 selective suppression；默认 top1 与可选 mean 分开说明。
 - **两类学习的关系**：分别写 `Phi_c^d*=argmin L_c^d` 与 `Phi_c^s*=argmin L_c^s`。可在 detection 内写 TI+分类联合目标，整套 prompt pair 则保持独立训练的表述。
@@ -407,14 +407,115 @@ $$
 
 正文统一称这些参数为 learned prompt representations 或 prompt embeddings，并说明实际优化位置；完整 condition 包括隐藏序列与 pooled 表示。当前实现没有跨概念联合训练、prompt pair 共享参数或端到端联合损失。
 
-### 6.3 后续落正文前需要确定的配置
+### 6.3 已确定与待确定的配置
 
-1. Detection 主表示：单输入 token，还是完整 CLIP hidden condition。
-2. Detection 主目标：BCE、TI+BCE 或 TI+SupCon；当前脚本同时保留这些配置。
+1. Detection 主目标已确定为 TI-flow + SupCon，BCE 及单项 loss 保留为对照。
+2. 当前联合训练实现要求 `condition` 表示，因此主方法学习连续的中间文本表示；其尺寸和底层读出操作放在实现细节中。
 3. Suppression 主状态来源及轨迹：入口默认 unsafe，完整脚本当前是 safe；image-noise 是另一条实现路线。
 4. 主实验的训练文本与阈值协议：原始小检测集或新的 nudity 数据；suppression 使用 erase 或 safe-describe；推理采用全量 top1 或其他已实现设置。
 
-以上可从最终采用实验的配置记录确定，不需要改动总体章节结构。
+剩余设置可从最终采用实验的配置记录确定，不需要改动总体章节结构。
+
+### 6.4 Detection prompt：当前写作规划
+
+本节只规划机制、数学定义和论述顺序，尚不撰写英文正文。主文以 TI-flow + SupCon 为默认目标，省略尺寸、具体模板和数据构造过程。
+
+#### 方法开场段：先交代两类 prompt 的分工
+
+这一段属于 Preliminary 之后的第一个方法小节开头，说明四件事：
+
+1. 为每个目标概念分别学习 detection prompt 与 suppression prompt。
+2. Detection 的目的是判断输入文本是否匹配目标概念；suppression 的目的是提供有效的负向生成引导。
+3. 两类 prompt 分别优化，通过目标概念关联；基础模型与文本编码器冻结。
+4. 推理在采样前完成检测，随后启用所选概念的 suppression prompt 作为负分支的 text embeddings；未启用时使用空文本 embeddings。
+
+这里先交代目的与使用关系，阈值筛选、top1 和多概念选择规则留到最后的 inference 小节。
+
+#### 第一段：表示形式与匹配分数
+
+定义概念 `c` 的 detection prompt 为可学习的连续文本表示 `p_c^d`。它位于文本编码器的中间表示空间，由概念相关的文本表示初始化。正文说明优化发生在表示空间，不展开隐藏层索引、长度、维度或具体初始化文本。
+
+同一组 detection 参数具有两种用途：
+
+- 通过原模型的冻结读出，获得概念参照 `g_c,k`，与输入文本进行匹配。
+- 组成生成侧 text embeddings `e_c^d`，送入冻结 DiT 计算 flow 重建目标。
+
+这两种用途共享同一个 `p_c^d`，不是两组独立学习的 detection 参数。读出与组合复用原模型的固定计算。
+
+符号沿用 Preliminary，并新增以下必要记号：
+
+| 符号 | 在本节中的含义 |
+|---|---|
+| `E`、`mathcal E` | 分别为 VAE 编码器、文本编码器 |
+| `z_0,z_t,t,epsilon,v_theta` | 沿用 Preliminary 的潜变量、时间、噪声与 velocity 预测 |
+| `p_c^d` | 概念 `c` 的可学习 detection 表示 |
+| `g_c,k` | 从 detection 表示读出的第 `k` 路概念参照 |
+| `h_k(q)` | 从文本编码器 `mathcal E` 的相应 CLIP 分支获得的输入文本特征 |
+| `e_c^d` | 由同一 detection 表示组成、可送入 DiT 的 text embeddings |
+
+通过 cosine similarity 定义匹配分数：
+
+$$
+r_c(q)=\frac1K\sum_{k=1}^{K}
+\operatorname{cos}\!\left(h_k(q),g_{c,k}\right).
+\tag{PD1}
+$$
+
+`K` 只表示所用特征分支数，正文不列具体分支配置。此式保留实现中“各分支 cosine 等权平均”的操作。
+
+#### 第二段：SupCon 提供文本判别监督
+
+先解释目标：让同一概念的正文本与概念参照具有更高匹配程度，同时与非目标文本拉开差距。对一个概念，记正、负文本集合分别为 `B_c^pos` 和 `B_c^neg`：
+
+$$
+\mathcal L_{\mathrm{SupCon}}^{(c)}
+=-\frac1{|\mathcal B_c^{\mathrm{pos}}|}
+\sum_{q\in\mathcal B_c^{\mathrm{pos}}}
+\log\frac{\exp(r_c(q)/T)}
+{\sum_{q'\in\mathcal B_c^{\mathrm{pos}}\cup
+\mathcal B_c^{\mathrm{neg}}}\exp(r_c(q')/T)}.
+\tag{PD2}
+$$
+
+解释两个关键点即可：anchor 是 detection 表示读出的概念参照；正负输入文本的编码器保持冻结，目标更新 detection 表示。`T` 为对比温度，具体数值放入实验配置。
+
+`q^-` 保留为 Preliminary 中 CFG 的负向提示。对比学习的负文本用 `B_c^neg` 集合表示，以区分训练标签与生成控制角色。
+
+#### 第三段：TI-flow 提供图像重建监督
+
+定义概念图像集合 `I_c` 作为训练输入，省略其构造过程。沿用 Preliminary，令 `z_0=E(x)`，按原插值式得到 `z_t`。将同一 detection 表示组成的 `e_c^d` 输入 DiT：
+
+$$
+\mathcal L_{\mathrm{TI\text{-}flow}}^{(c)}
+=\mathbb E_{x\in\mathcal I_c,\epsilon,t}
+\left\|v_\theta(z_t,t;\mathbf e_c^d)
+-(\epsilon-z_0)\right\|_2^2.
+\tag{PD3}
+$$
+
+本段说明与 SupCon 的互补关系：SupCon 监督文本匹配的相对关系，TI-flow 让同一 detection 表示接受目标概念图像的 velocity 重建约束。写作中将后者表述为训练约束；检测收益由实验报告。
+
+两个目标共享 detection 参数，但可以使用独立的文本与图像训练输入；主文无需展开 batch 抽样过程。模型保持冻结，重建梯度通过 DiT 返回 detection 表示。
+
+#### 第四段：联合目标与训练后使用
+
+$$
+\mathcal L_{\mathrm{det}}^{(c)}
+=\mathcal L_{\mathrm{TI\text{-}flow}}^{(c)}
++\lambda\mathcal L_{\mathrm{SupCon}}^{(c)},
+\qquad
+\mathbf p_c^{d,*}
+=\arg\min_{\mathbf p_c^d}\mathcal L_{\mathrm{det}}^{(c)}.
+\tag{PD4}
+$$
+
+说明两项共同优化同一个 detection prompt，并按概念分别训练。段末用一句话承接部署：训练后预先获得概念参照，在线只需编码输入文本、计算匹配分数；图像重建仅用于训练。
+
+本小节的主线为：
+
+`连续 detection 表示 → 概念参照与生成 embeddings → 文本判别 + 图像重建 → 一个联合训练目标`。
+
+主文保留：连续表示的实际优化空间、两种用途共享参数、匹配分数、SupCon、TI-flow 和联合目标。张量形状、模板、图像获取方式、数据数量、最后一层读出细节、分支拼接、优化器及超参数数值，放到实现细节或实验部分。
 
 ## 7. 代码定位与复现要点
 

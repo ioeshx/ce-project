@@ -4,41 +4,185 @@
 \subsection{Preliminaries}
 \label{sec:preliminaries}
 
-\noindent\textbf{Rectified flow transformers.}
-Flow matching learns a velocity field that transports samples between noise and data distributions~\cite{lipman2023flowmatchinggenerativemodeling}.
-For an image $x$, let $z_0=\mathcal E(x)$ denote its latent representation obtained from a VAE encoder $\mathcal E$, and let $C(q)$ denote the encoded condition of a text prompt $q$.
+\noindent\textbf{Diffusion Transformer.}
+Diffusion Transformers (DiTs) trained with flow matching~\cite{lipman2022flow} underpin recent text-to-image models such as SD3 and FLUX~\cite{pmlr-v235-esser24a,flux2024}.
+These models learn a velocity field that continuously transports samples between noise and image distributions.
+For an image $x$, a VAE encoder $E$ produces the latent $z_0=E(x)$, while a text encoder $\mathcal E$ maps its prompt $q$ to text embeddings $\mathcal E(q)$.
 Rectified flow~\cite{liu2022flow} defines a linear interpolation between the image latent and Gaussian noise:
 \begin{equation}
     z_t=(1-t)z_0+t\epsilon,
     \qquad \epsilon\sim\mathcal N(0,I),\quad t\in[0,1].
     \label{eq:rf_interpolation}
 \end{equation}
-The path derivative $\epsilon-z_0$ provides the supervision for a text-conditioned velocity field $v_\theta(z_t,t;C(q))$, parameterized by a diffusion Transformer (DiT)~\cite{pmlr-v235-esser24a}.
+At $t=1$, the endpoint $z_1=\epsilon\sim\mathcal N(0,I)$ is pure Gaussian noise.
+The path derivative $\epsilon-z_0$ provides the supervision for the DiT's conditional velocity prediction $v_\theta(z_t,t;\mathcal E(q))$.
 Its flow matching objective is
 \begin{equation}
     \mathcal L_{\mathrm{FM}}(\theta)
     =\mathbb E_{z_0,q,\epsilon,t}\!\left[
-    \left\|v_\theta(z_t,t;C(q))-(\epsilon-z_0)\right\|_2^2
-    \right],
+    \left\|v_\theta(z_t,t;\mathcal E(q))-(\epsilon-z_0)\right\|_2^2
+    \right].
     \label{eq:flow_matching_objective}
 \end{equation}
-where the expectation is over image--text pairs, Gaussian noise, and sampled times.
 At inference, numerical integration of the learned velocity field transforms an initial Gaussian latent at $t=1$ into an image latent at $t=0$.
 
 \noindent\textbf{Classifier-free guidance.}
-CFG~\cite{CFG} combines predictions under text and null-text conditions to strengthen adherence to the text prompt.
-At the same state $(z_t,t)$, denote these predictions by $v_+=v_\theta(z_t,t;C(q))$ and $v_0=v_\theta(z_t,t;C(\varnothing))$, where $\varnothing$ denotes an empty text prompt.
+CFG~\cite{CFG} combines text-guided and unconditional predictions to strengthen adherence to a positive prompt $q^{+}$.
+At the same state $(z_t,t)$, denote these predictions by $v^{+}=v_\theta(z_t,t;\mathcal E(q^{+}))$ and $v_0=v_\theta(z_t,t;\mathcal E(\varnothing))$, where $\varnothing$ denotes an empty text prompt.
 The guided velocity is
 \begin{equation}
-    \widehat v_{\mathrm{CFG}}=v_0+s(v_+-v_0),
+    v_{\mathrm{CFG}}=v_0+s(v^{+}-v_0),
     \label{eq:cfg_velocity}
 \end{equation}
 where $s$ controls the guidance strength.
-Negative prompting~\cite{jain2026rethinkingnegativepromptingconcept} replaces the null-text condition with a negative condition $C_-$, yielding $v_-=v_\theta(z_t,t;C_-)$ and
+Negative prompting~\cite{Ban_2024_ECCV} uses a negative prompt $q^{-}$ in place of the empty prompt, yielding $v^{-}=v_\theta(z_t,t;\mathcal E(q^{-}))$ and
 \begin{equation}
-    \widehat v_{\mathrm{neg}}
-    =v_-+s(v_+-v_-)
-    =s\,v_+-(s-1)v_-.
+     v_{\mathrm{neg}}
+    =v^{-}+s(v^{+}-v^{-})
+    =s\,v^{+}-(s-1)v^{-}.
     \label{eq:negative_cfg_velocity}
 \end{equation}
-For $s>1$, the negative-condition prediction enters with a negative coefficient, so the negative condition controls sampling through its contrast with the positive-condition prediction.
+For $s>1$, $v^{-}$ enters with a negative coefficient, so the guided velocity depends on the contrast between the positive and negative prompts.
+
+\subsection{Learning detection prompts}
+\label{sec:detection_prompt}
+
+For each target concept $c$, we independently learn a detection prompt to identify inputs containing $c$ and a suppression prompt to guide generation away from $c$.
+Before sampling, an input prompt identified as containing concept $c$ activates the corresponding suppression prompt in CFG's negative branch. Safe inputs retain null-text negative prompt and follow the model's standard image generation process.
+All pretrained models remain frozen.
+
+We represent the detection prompt by its learnable embedding $\mathbf p_c^d$ in the frozen CLIP text encoder's output space.
+For detection, $\mathcal E(q)$ denotes the CLIP text feature of an input prompt $q$.
+Given a description $q_c^d$ of concept $c$, its initial value is
+\begin{equation}
+    \mathbf p_c^{d,(0)}=\mathcal E(q_c^d).
+    \label{eq:detection_initialization}
+\end{equation}
+We measure concept affinity by cosine similarity:
+\begin{equation}
+    r_c(q)=\operatorname{cos}\!\left(\mathcal E(q),\mathbf p_c^d\right).
+    \label{eq:detection_similarity}
+\end{equation}
+
+Using $\mathbf p_c^d$ as the anchor, we adapt supervised contrastive learning (SupCon)~\cite{NEURIPS2020_d89a66c7} to distinguish texts matching $c$ from other inputs.
+Let $\mathcal B_c^{\mathrm{pos}}$ contain prompts describing concept $c$ and $\mathcal B_c^{\mathrm{neg}}$ contain prompts unrelated to $c$, with $\mathcal B_c=\mathcal B_c^{\mathrm{pos}}\cup\mathcal B_c^{\mathrm{neg}}$.
+The contrastive objective is
+\begin{equation}
+    \mathcal L_{\mathrm{con}}^{(c)}
+    =-\frac1{|\mathcal B_c^{\mathrm{pos}}|}
+    \sum_{q\in\mathcal B_c^{\mathrm{pos}}}
+    \log\frac{\exp(r_c(q)/T)}
+    {\sum_{q'\in\mathcal B_c}\exp(r_c(q')/T)},
+    \label{eq:detection_supcon}
+\end{equation}
+where $T$ is the contrastive temperature.
+% and Concept Inversion~\cite{pham2023circumventing}
+To learn a detection prompt that captures the visual characteristics of concept $c$, we draw on the visual knowledge encoded in the frozen diffusion model.
+Inspired by Textual Inversion~\cite{Gal_TextualInversion}, we train the detection prompt through a flow reconstruction objective.
+% Through frozen encoding operations, the trainable soft prompt $\mathbf p_c^d$ produce the text embeddings $\mathbf p_{c,\mathrm{gen}}^d$ supplied to the DiT.
+For images $x\in\mathcal I_c$ representing concept $c$, we obtain $z_0=E(x)$ and sample $z_t$ using \cref{eq:rf_interpolation}.
+The reconstruction objective is
+% \mathbf p_{c,\mathrm{gen}}^d
+\begin{equation}
+    \mathcal L_{\mathrm{TI}}^{(c)}
+    =\mathbb E_{x,\epsilon,t}\!\left[
+    \left\|v_\theta(z_t,t;\mathbf p_{c}^d)-(\epsilon-z_0)\right\|_2^2
+    \right].
+    \label{eq:detection_ti_flow}
+\end{equation}
+This term complements text matching with velocity targets derived from images.
+
+Both objectives train the shared prompt parameters through the joint loss
+\begin{equation}
+    \mathcal L_{\mathrm{det}}^{(c)}
+    =\mathcal L_{\mathrm{TI}}^{(c)}
+    +\lambda\mathcal L_{\mathrm{con}}^{(c)},
+    \label{eq:detection_objective}
+\end{equation}
+where $\lambda$ weights the contrastive term.
+Detection prompts are optimized separately for each concept.
+After training, we cache the detection prompt $\mathbf p_c^d$ for each concept; online detection encodes the input text and evaluates $r_c(q)$.
+
+\subsection{Learning suppression prompts}
+\label{sec:suppression_prompt}
+
+To guide generation away from concept $c$ while retaining unrelated content, we learn a suppression prompt $\mathbf p_c^s$ for CFG's negative branch.
+The prompt consists of learnable embeddings in the output space of the model's text encoding pipeline.
+We initialize it using a generic text prompt $q^s$:
+\begin{equation}
+    \mathbf p_c^{s,(0)}=\mathcal E(q^s).
+    \label{eq:suppression_initialization}
+\end{equation}
+The suppression prompt is shared across all inputs and sampling timesteps for $c$.
+
+We pair an input prompt $q^+$ containing concept $c$ with a reference prompt $q^a$ describing the desired content without $c$.
+We reuse $v^+$ and $v_0$ from \cref{sec:preliminaries}.
+At the same state $(z_t,t)$, the safe reference and suppression prompt yield
+\begin{equation}
+    \begin{aligned}
+        v^a &= v_\theta(z_t,t;\mathcal E(q^a)),\\
+        v^- &= v_\theta(z_t,t;\mathbf p_c^s).
+    \end{aligned}
+    \label{eq:suppression_velocities}
+\end{equation}
+We aim to reproduce the safe reference's generation behavior when combining the original input prompt $q^+$ with the suppression prompt $\mathbf p_c^s$.
+To this end, we place $\mathbf p_c^s$ in CFG's negative branch and match the resulting guided velocity to that obtained from $q^a$:
+\begin{equation}
+    \begin{aligned}
+        v_{\mathrm{ref}} &= v_0+s(v^a-v_0),\\
+        v_{\mathrm{sup}} &= v^-+s(v^+-v^-).
+    \end{aligned}
+    \label{eq:suppression_guidance}
+\end{equation}
+Both predictions use the same guidance scale $s>1$.
+
+We optimize $\mathbf p_c^s$ by minimizing the squared difference between these two guided predictions:
+\begin{equation}
+    \mathcal L_{\mathrm{sup}}^{(c)}
+    =\mathbb E_{(q^+,q^a),z_t,t}\!\left[
+    \left\|v_{\mathrm{sup}}-v_{\mathrm{ref}}\right\|_2^2
+    \right].
+    \label{eq:suppression_objective}
+\end{equation}
+The reference prediction $v_{\mathrm{ref}}$ is held fixed, and gradients pass through the frozen DiT only to $\mathbf p_c^s$.
+
+We obtain training states by starting from Gaussian noise and following the safe reference's CFG trajectory.
+At each timestep, all velocity predictions are evaluated at the same latent, which is treated as fixed when updating $\mathbf p_c^s$.
+Suppression prompts are optimized separately for each concept, independently of detection prompts.
+After training, we cache the suppression prompt $\mathbf p_c^s$ for each concept and activate it for input prompts identified as containing $c$.
+
+\subsection{Selective inference with prompt pairs}
+\label{sec:inference}
+
+At inference time, we load the cached prompt pair $(\mathbf p_c^d,\mathbf p_c^s)$ for each concept $c\in\mathcal C$ and use them with the frozen diffusion model.
+Before sampling an input prompt $q$, we compute its similarity to every detection prompt using \cref{eq:detection_similarity} and retain concepts whose scores reach their thresholds $\tau_c$:
+\begin{equation}
+    \mathcal M(q)=\{c\in\mathcal C:r_c(q)\ge\tau_c\}.
+    \label{eq:inference_matches}
+\end{equation}
+
+When $\mathcal M(q)\ne\varnothing$, we select the highest-scoring concept, $\hat c(q)=\arg\max_{c\in\mathcal M(q)}r_c(q)$; otherwise, we set $\hat c(q)=\varnothing$.
+Let $\mathcal C_{\mathrm{erase}}\subseteq\mathcal C$ denote the concepts enabled for erasure.
+If the selected concept belongs to this set, we activate its paired suppression prompt in CFG's negative branch:
+\begin{equation}
+    \mathbf p^-(q)=
+    \begin{cases}
+        \mathbf p_{\hat c(q)}^s,
+        &\hat c(q)\in\mathcal C_{\mathrm{erase}},\\[4pt]
+        \mathcal E(\varnothing),
+        &\text{otherwise}.
+    \end{cases}
+    \label{eq:inference_negative_embeddings}
+\end{equation}
+
+We retain the original input as $q^+=q$ and use $v^-=v_\theta(z_t,t;\mathbf p^-(q))$ in \cref{eq:negative_cfg_velocity}, yielding
+\begin{equation}
+    \begin{aligned}
+        v_{\mathrm{suppress}} &= s\,v_\theta(z_t,t;\mathcal E(q))\\
+        &\quad -(s-1)v_\theta(z_t,t;\mathbf p^-(q)).
+    \end{aligned}
+    \label{eq:inference_guided_velocity}
+\end{equation}
+Detection and prompt selection are performed once before sampling, and $\mathbf p^-(q)$ remains fixed throughout the trajectory.
+If no concept reaches its threshold or the selected concept is not enabled for erasure, we treat the input prompt as safe for the current erasure setting and apply no suppression.
+The negative branch then uses null-text embeddings, and the model generates images through standard CFG with the original input prompt.
