@@ -1,6 +1,7 @@
 papers/
 aaai27/
 ccfa-workfiles/
+pick/
 
 *.pdf
 tmp/

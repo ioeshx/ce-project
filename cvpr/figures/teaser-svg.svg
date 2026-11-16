@@ -7,10 +7,10 @@
   <!--
     Editable single-column SVG. Width matches the current CVPR template.
     Formal labels: Noto Sans, with Arial and Helvetica fallbacks.
-    Only the two input prompts use the Chilanka handwriting font.
+    The input prompts use the same clear sans-serif family as the labels.
     Arrow shafts use flat caps and slightly overlap the triangular head base.
     The DAS group contains detection and suppression-prompt activation;
-    the frozen diffusion models remain outside the method boundary.
+    one shared frozen diffusion model remains outside the method boundary.
     Photo assets: built-in image generation, 2026-11-15, prompted with
     "A man standing" and "a man standing" plus fully clothed framing.
     Photos are illustrative, not experimental evidence. Their original
@@ -20,7 +20,7 @@
     <style>
       text { font-family: 'Noto Sans', Arial, Helvetica, sans-serif; }
       .heading { font-size: 42px; font-weight: 600; }
-      .prompt { font-family: 'Chilanka', 'Comic Sans MS', cursive; font-size: 53.667px; }
+      .prompt { font-family: 'Noto Sans', Arial, Helvetica, sans-serif; font-size: 50px; }
       .caption { font-size: 42px; }
       .decision { font-size: 37.333px; }
       .model-label { font-size: 42px; }
@@ -108,10 +108,13 @@
     <path d="M345 225 H503" class="safe-flow"/>
   </g>
 
-  <g id="safe-diffusion-model" inkscape:label="Frozen model for safe input">
-    <path d="M603 200 H759" class="safe-flow"/>
-    <use xlink:href="#diffusion-model-shape" x="777" y="134"/>
-    <path d="M1000 200 H1022" class="safe-flow"/>
+  <g id="safe-generation-flow" inkscape:label="Safe route through the shared model">
+    <path d="M603 200 H747 V295 H759" class="safe-flow"/>
+    <path d="M1000 295 H1018 V200 H1022" class="safe-flow"/>
+  </g>
+
+  <g id="shared-diffusion-model" inkscape:label="One shared frozen diffusion model">
+    <use xlink:href="#diffusion-model-shape" x="777" y="259"/>
   </g>
 
   <g id="safe-output" inkscape:label="Illustrative safe photograph">
@@ -128,13 +131,12 @@
     <path d="M345 555 H503" class="flow"/>
   </g>
 
-  <g id="suppressed-diffusion-model" inkscape:label="Frozen model with negative prompt">
-    <path d="M603 450 H759" class="flow"/>
-    <use xlink:href="#diffusion-model-shape" x="777" y="384"/>
-    <path d="M638 572 H875 V536" class="suppression-flow"/>
-    <circle cx="875" cy="555" r="14" fill="#FFFFFF" stroke="#D84B4B" stroke-width="2.7"/>
-    <path d="M867 555 H883" stroke="#D84B4B" stroke-width="3.2" stroke-linecap="round"/>
-    <path d="M1000 450 H1022" class="safe-flow"/>
+  <g id="suppressed-generation-flow" inkscape:label="Suppression joins the unsafe input route">
+    <path d="M603 450 H747 V355 H759" class="flow"/>
+    <path d="M638 572 H700 V462" class="suppression-flow"/>
+    <circle cx="670" cy="572" r="14" fill="#FFFFFF" stroke="#D84B4B" stroke-width="2.7"/>
+    <path d="M662 572 H678" stroke="#D84B4B" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M1000 355 H1018 V450 H1022" class="safe-flow"/>
   </g>
 
   <g id="suppressed-output" inkscape:label="Illustrative suppressed output photograph">

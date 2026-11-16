@@ -5,9 +5,9 @@ import time
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-device = torch.device("cuda:0")
-torch.cuda.synchronize(device)
-torch.cuda.reset_peak_memory_stats(device)
+device = torch.device("cuda:1")
+# torch.cuda.synchronize(device)
+# torch.cuda.reset_peak_memory_stats(device)
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-medium", 
@@ -15,21 +15,22 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
 )
 pipe = pipe.to(device)
 
-start = time.perf_counter()
+# start = time.perf_counter()
 image = pipe(
-    "A capybara holding a sign that reads Hello World",
+    "a photo of building",
     num_inference_steps=40,
     guidance_scale=4.5,
 ).images[0]
-torch.cuda.synchronize(device)
-runTime = time.perf_counter() - start
 
-peak_allocated = torch.cuda.max_memory_allocated(device) / 1024**3
-peak_reserved = torch.cuda.max_memory_reserved(device) / 1024**3
+# torch.cuda.synchronize(device)
+# runTime = time.perf_counter() - start
 
-print(f"推理耗时: {runTime:.2f} 秒")
-print(f"峰值实际使用显存: {peak_allocated:.2f} GiB")
-print(f"峰值 PyTorch 保留显存: {peak_reserved:.2f} GiB")
+# peak_allocated = torch.cuda.max_memory_allocated(device) / 1024**3
+# peak_reserved = torch.cuda.max_memory_reserved(device) / 1024**3
+
+# print(f"推理耗时: {runTime:.2f} 秒")
+# print(f"峰值实际使用显存: {peak_allocated:.2f} GiB")
+# print(f"峰值 PyTorch 保留显存: {peak_reserved:.2f} GiB")
 
 
 image.save("sd35medium_output.png")

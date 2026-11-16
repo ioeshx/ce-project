@@ -1,6 +1,13 @@
 \section{Method}
 \label{sec:method}
 
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/method-overview.pdf}
+    \caption{\textbf{Overview of Detect and Suppress (DAS).} (a) We learn detection prompts using SupCon and TI-flow objectives. (b) We learn suppression prompts by matching guided velocities to a fixed safe reference. (c) At inference, thresholded top-1 detection activates the selected concept's suppression prompt if enabled; otherwise, generation uses null-text negative embeddings. All pretrained models remain frozen.}
+    \label{fig:method_overview}
+\end{figure*}
+
 \subsection{Preliminaries}
 \label{sec:preliminaries}
 
@@ -47,7 +54,7 @@ For $s>1$, $v^{-}$ enters with a negative coefficient, so the guided velocity de
 \subsection{Learning detection prompts}
 \label{sec:detection_prompt}
 
-For each target concept $c$, we independently learn a detection prompt to identify inputs containing $c$ and a suppression prompt to guide generation away from $c$.
+As illustrated in \cref{fig:method_overview}, we independently learn two prompts for each target concept $c$: a detection prompt to identify inputs containing $c$ and a suppression prompt to guide generation away from $c$.
 Before sampling, an input prompt identified as containing concept $c$ activates the corresponding suppression prompt in CFG's negative branch. Safe inputs retain null-text negative prompt and follow the model's standard image generation process.
 All pretrained models remain frozen.
 
@@ -101,6 +108,13 @@ Both objectives train the shared prompt parameters through the joint loss
 \end{equation}
 where $\lambda$ weights the contrastive term.
 Detection prompts are optimized separately for each concept.
+In gradient-descent notation, the detection prompt update is
+\begin{equation}
+    \mathbf p_c^d \leftarrow \mathbf p_c^d
+    -\eta\,\nabla_{\mathbf p_c^d}\mathcal L_{\mathrm{det}}^{(c)},
+    \label{eq:detection_update}
+\end{equation}
+where $\eta$ is the learning rate.
 After training, we cache the detection prompt $\mathbf p_c^d$ for each concept; online detection encodes the input text and evaluates $r_c(q)$.
 
 \subsection{Learning suppression prompts}
@@ -145,6 +159,12 @@ We optimize $\mathbf p_c^s$ by minimizing the squared difference between these t
     \label{eq:suppression_objective}
 \end{equation}
 The reference prediction $v_{\mathrm{ref}}$ is held fixed, and gradients pass through the frozen DiT only to $\mathbf p_c^s$.
+The corresponding suppression prompt update uses the same learning rate:
+\begin{equation}
+    \mathbf p_c^s \leftarrow \mathbf p_c^s
+    -\eta\,\nabla_{\mathbf p_c^s}\mathcal L_{\mathrm{sup}}^{(c)}.
+    \label{eq:suppression_update}
+\end{equation}
 
 We obtain training states by starting from Gaussian noise and following the safe reference's CFG trajectory.
 At each timestep, all velocity predictions are evaluated at the same latent, which is treated as fixed when updating $\mathbf p_c^s$.

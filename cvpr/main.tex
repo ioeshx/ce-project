@@ -45,11 +45,33 @@ First line of institution2 address\\
 
 \begin{document}
 \maketitle
-% \input{sec/0_abstract}
+
+\begin{abstract}
+Text-to-image diffusion models can generate harmful content and reproduce unwanted visual concepts, motivating concept erasure that removes designated concepts while preserving benign generation.
+Existing approaches can alter unrelated content through weight editing or indiscriminate intervention, while manually written negative prompts often fail to suppress target concepts.
+We introduce Detect and Suppress (DAS), a framework that separates deciding when to intervene from learning how to suppress a concept.
+For each concept, DAS independently learns a detection prompt to identify relevant inputs and a suppression prompt to steer generation through the negative branch of classifier-free guidance.
+The detection prompt combines text discrimination with visual reconstruction, while the suppression prompt is trained to align guided predictions with those of safe reference prompts.
+At inference, detection runs once before sampling and activates the paired suppression prompt only for identified inputs; other inputs retain their original sampling process.
+Both the text encoders and the generative model remain frozen throughout training and inference.
+Experiments on Stable Diffusion 3.5 across NSFW content, IP characters, artistic styles, and objects show that DAS outperforms existing methods in balancing concept suppression and benign generation preservation.
+\end{abstract}
+
 \input{sec/1_intro}
 \input{sec/2_related}
 \input{sec/3_method}
 \input{sec/4_exp}
+
+\section{Conclusion}
+\label{sec:conclusion}
+We presented Detect and Suppress (DAS), a concept erasure framework built on independently learned detection and suppression prompts.
+The detection prompt identifies inputs requiring intervention, while its paired suppression prompt provides a negative condition for classifier-free guidance, trained to align guided predictions with safe reference predictions.
+Both the text encoders and the generative model remain frozen, and inputs that bypass detection retain their original sampling process.
+Experiments on Stable Diffusion 3.5 Medium across NSFW content, IP characters, artistic styles, and objects show that DAS outperforms existing methods in balancing target suppression and benign generation preservation.
+These findings highlight the value of treating when to intervene and how to suppress as distinct learning objectives for concept erasure.
+DAS may miss target concepts in exceptionally complex prompts that refer to them only through highly indirect descriptions.
+Future work could strengthen detection of such complex, implicit concept references.
+
 % \input{sec/2_formatting}
 % \input{sec/3_finalcopy}
 {

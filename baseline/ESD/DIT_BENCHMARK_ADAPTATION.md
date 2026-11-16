@@ -37,16 +37,18 @@ FLUX 直接复用当前仓库的 `FluxESDAdapter.training_step` 和公共训练�
 ## 启动命令
 
 ```bash
-# 默认优先 SD3.5 Medium，顺序执行四项实验
-bash /home/shx/code/ce-project/baseline/ESD/scripts/benchmark_dit_all.sh \
-  --device cuda:0 --offline
+# SD3.5 Medium：RTX 3090 24 GB，顺序执行四项实验
+bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
+  --device cuda:0 --offline --gradient-checkpointing --cpu-offload \
+  --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
+  --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
 
 # FLUX.1-dev；gradient checkpointing 作用于训练
-bash /home/shx/code/ce-project/baseline/ESD/scripts/benchmark_dit_all.sh \
+bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
   --model flux1_dev --device cuda:0 --offline --gradient-checkpointing
 
 # 只展开 case 和命令，不加载模型、不创建输出
-bash /home/shx/code/ce-project/baseline/ESD/scripts/benchmark_dit_all.sh --dry-run
+bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh --dry-run
 ```
 
 | 脚本 | 内容 |
@@ -134,6 +136,8 @@ IP 的 task 为 `instance`，其他为 `i2p`、`mscoco`、`style`、`object`。�
 - SD3 的动态时间表和 CFG rollout 在所选时间步 0/1/2 与原生 pipeline 对齐，确认先生成到所选步之前，再计算教师／学生预测，学生分支保留梯度。
 - 临时模型、图片和计划清理，不作为擦除效果证据。
 
-当前 NVIDIA 驱动不可用，尚未运行真实 SD3.5 Medium/FLUX.1-dev 的完整 GPU 训练、BF16 训练或正式指标评测。SD3.5 的擦除强度和保留能力需要正式实验确认，多卡和采样 offload 也未在本机 GPU 验证。
+早期验证时，受限环境中的 NVIDIA 驱动不可访问，因此当时未运行真实 SD3.5 Medium/FLUX.1-dev 的完整 GPU 训练、BF16 训练或正式指标评测。
+
+2026-11-16 运行更新：上述驱动结论来自此前的受限环境；本次在沙箱外确认两张 RTX 3090 可用，CUDA 为 13.0、PyTorch 为 2.13.0+cu130。已使用本文的 SD3.5 命令在 GPU 0 启动完整队列，包含 8 个训练 case、9 项评测任务，训练预算仍为每目标 1,400 步。启动命令和 PID 保存于 `runs/benchmark-dit/sd35_medium/launch.json`，运行日志为同目录的 `all.log`；启动记录不表示训练或评测已完成。
 
 实现依据：[作者 FLUX 入口](https://github.com/rohitgandikota/erasing/blob/main/esd_flux.py)、当前本地 `utils/esd_trainer.py`、[Diffusers 官方 SD3 文档](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_3)及本机原生 pipeline 源码。
