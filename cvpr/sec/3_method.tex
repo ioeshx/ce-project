@@ -14,7 +14,7 @@
 \noindent\textbf{Diffusion Transformer.}
 Diffusion Transformers (DiTs) trained with flow matching~\cite{lipman2022flow} underpin recent text-to-image models such as SD3 and FLUX~\cite{pmlr-v235-esser24a,flux2024}.
 These models learn a velocity field that continuously transports samples between noise and image distributions.
-For an image $x$, a VAE encoder $E$ produces the latent $z_0=E(x)$, while a text encoder $\mathcal E$ maps its prompt $q$ to text embeddings $\mathcal E(q)$.
+For an image $x$, a VAE encoder $E$ produces the latent $z_0=E(x)$, while a text encoder (typically CLIP~\cite{pmlr-v139-radford21a} or T5~\cite{JMLR:v21:20-074}) $\mathcal E$ maps the input prompt $q$ to text embeddings $\mathcal E(q)$.
 Rectified flow~\cite{liu2022flow} defines a linear interpolation between the image latent and Gaussian noise:
 \begin{equation}
     z_t=(1-t)z_0+t\epsilon,
@@ -31,7 +31,7 @@ Its flow matching objective is
     \right].
     \label{eq:flow_matching_objective}
 \end{equation}
-At inference, numerical integration of the learned velocity field transforms an initial Gaussian latent at $t=1$ into an image latent at $t=0$.
+At inference, numerical integration of the learned velocity field transforms an initial Gaussian latent at $t=1$ into an image latent at $t=0$. The latent is then decoded by the VAE decoder $\mathcal{D}$ to produce the final image.
 
 \noindent\textbf{Classifier-free guidance.}
 CFG~\cite{CFG} combines text-guided and unconditional predictions to strengthen adherence to a positive prompt $q^{+}$.
@@ -59,18 +59,17 @@ Before sampling, an input prompt identified as containing concept $c$ activates 
 All pretrained models remain frozen.
 
 We represent the detection prompt by its learnable embedding $\mathbf p_c^d$ in the frozen CLIP text encoder's output space.
-For detection, $\mathcal E(q)$ denotes the CLIP text feature of an input prompt $q$.
-Given a description $q_c^d$ of concept $c$, its initial value is
+Given a description $q_c^d$ of concept $c$, detection prompt's initial value is
 \begin{equation}
     \mathbf p_c^{d,(0)}=\mathcal E(q_c^d).
     \label{eq:detection_initialization}
 \end{equation}
-We measure concept affinity by cosine similarity:
+We measure concept affinity between an input prompt $q$ and the detection prompt $\mathbf p_c^d$ by cosine similarity:
 \begin{equation}
-    r_c(q)=\operatorname{cos}\!\left(\mathcal E(q),\mathbf p_c^d\right).
+    r_c(q)=\operatorname{cos}\!\left(\mathcal E(q),\mathbf p_c^d\right),
     \label{eq:detection_similarity}
 \end{equation}
-
+where $\mathcal E(q)$ denotes the CLIP text feature of an input prompt $q$.
 Using $\mathbf p_c^d$ as the anchor, we adapt supervised contrastive learning (SupCon)~\cite{NEURIPS2020_d89a66c7} to distinguish texts matching $c$ from other inputs.
 Let $\mathcal B_c^{\mathrm{pos}}$ contain prompts describing concept $c$ and $\mathcal B_c^{\mathrm{neg}}$ contain prompts unrelated to $c$, with $\mathcal B_c=\mathcal B_c^{\mathrm{pos}}\cup\mathcal B_c^{\mathrm{neg}}$.
 The contrastive objective is
@@ -121,16 +120,17 @@ After training, we cache the detection prompt $\mathbf p_c^d$ for each concept; 
 \label{sec:suppression_prompt}
 
 To guide generation away from concept $c$ while retaining unrelated content, we learn a suppression prompt $\mathbf p_c^s$ for CFG's negative branch.
-The prompt consists of learnable embeddings in the output space of the model's text encoding pipeline.
+The prompt consists of learnable embeddings in the output space of the model's text encoding pipeline (which is not limited to a CLIP text encoder).
 We initialize it using a generic text prompt $q^s$:
 \begin{equation}
     \mathbf p_c^{s,(0)}=\mathcal E(q^s).
     \label{eq:suppression_initialization}
 \end{equation}
-The suppression prompt is shared across all inputs and sampling timesteps for $c$.
+% The suppression prompt is shared across all inputs and sampling timesteps for $c$.
 
 We pair an input prompt $q^+$ containing concept $c$ with a reference prompt $q^a$ describing the desired content without $c$.
 We reuse $v^+$ and $v_0$ from \cref{sec:preliminaries}.
+%  (derived from~\cref{eq:rf_interpolation})
 At the same state $(z_t,t)$, the safe reference and suppression prompt yield
 \begin{equation}
     \begin{aligned}

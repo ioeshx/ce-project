@@ -16,28 +16,34 @@ We compare our method with UCE~\cite{Gandikota_2024_WACV}, ESD~\cite{Gandikota_2
 
 \noindent\textbf{Implementation details.}
 We optimize both prompt types with AdamW Optimizer\cite{kingma2014adam} at a learning rate of $\eta=10^{-3}$ for up to 5 epochs.
-The SupCon weight and temperature are set to $\lambda=1$ and $T=0.1$, respectively, and the detection threshold is $\tau_c=0.215$.
+The SupCon weight and temperature are set to $\lambda=1$ and $T=0.1$, respectively, and the detection threshold is set to $\tau_c=0.215$ for all concepts.
 Images are generated at $512\times512$ resolution using the model's native flow matching Euler sampler with 40 steps and guidance scale $s=4.5$.
-All methods share the same evaluation prompts, seeds, and base sampling settings.
+All comparison methods share the same input prompts, seeds, and base sampling settings.
 
 \noindent\textbf{Evaluation metrics.}
 CLIP Score (CS)~\cite{hessel-etal-2021-clipscore,pmlr-v139-radford21a} measures image--text semantic similarity in the CLIP embedding space, allowing us to assess whether concept erasure preserves alignment with benign prompts.
 Fr\'echet Inception Distance (FID)~\cite{NIPS2017_8a1d6947} compares the means and covariances of Inception-v3 feature distributions to quantify distributional changes introduced by concept erasure.
 NudeNet~\cite{nudenet} is a pretrained body-part detector used to identify residual nudity in generated images.
-Qwen3-VL-2B-Instruct~\cite{bai2025qwen3vltechnicalreport} is an instruction-tuned vision--language model used to recognize IP characters and artistic styles for assessing target suppression and non-target preservation.
+Qwen3-VL-8B-Instruct~\cite{bai2025qwen3vltechnicalreport} is an instruction-tuned vision--language model used to recognize IP characters and artistic styles for assessing target suppression and non-target preservation.
 ResNet-50~\cite{He_2016_CVPR} is a 50-layer residual convolutional image classifier used to assess target object removal and the retention of unrelated object classes.
 
 \subsection{NSFW erasure and general generation preservation}
 \label{sec:exp_nsfw}
 
-We evaluate NSFW suppression on the 931 prompts which are categorized as sexual in the I2P dataset, generating one image per prompt with its provided seed.
-For general generation preservation, we use the first 10,000 captions in the MS-COCO caption list, generating one image per caption.
-We report the number of images flagged by NudeNet, counting each image once if any of eight exposure categories is detected with confidence at least $0.6$; lower counts indicate stronger suppression.
-On MS-COCO, we use CLIP ViT-B/16 to compute CS as 100 times the mean image--prompt cosine similarity without clipping negative values; higher CS indicates better prompt alignment.
-FID compares each method's outputs with those of the original model under the same sampling protocol; lower FID indicates stronger distribution preservation.
-Both evaluations use the same nudity suppression prompt and detection settings.
-% For ESD, we report its ESD-x attention-editing variant.
-\Cref{tab:nsfw_preservation} reports the number of I2P images flagged by NudeNet alongside MS-COCO CS and FID.
+To evaluate NSFW suppression, we use the 931 prompts categorized as \textit{sexual} in the I2P dataset, generating one image per prompt with its default seed. 
+Suppression efficacy is measured by counting the number of images flagged by NudeNet across eight exposure categories (with a confidence threshold of $0.6$), where a lower count indicates stronger mitigation. 
+In parallel, we assess general generation preservation on the first 10,000 captions of MS-COCO under the exact same nudity detection and suppression settings. 
+Specifically, we compute CLIP Score (CS) using ViT-B/16 to measure prompt alignment, alongside FID against the original SD3.5 Medium outputs to quantify distributional fidelity. 
+The quantitative comparisons across these benchmarks are summarized in \cref{tab:nsfw_preservation}.
+
+% We evaluate NSFW suppression on the 931 prompts which are categorized as sexual in the I2P dataset, generating one image per prompt with its provided seed.
+% For general generation preservation, we use the first 10,000 captions in the MS-COCO caption list, generating one image per caption.
+% We report the number of images flagged by NudeNet, counting each image once if any of eight exposure categories is detected with confidence at least $0.6$; lower counts indicate stronger suppression.
+% On MS-COCO, we use CLIP ViT-B/16 to compute CS as 100 times the mean image--prompt cosine similarity without clipping negative values; higher CS indicates better prompt alignment.
+% FID compares each method's outputs with those of the original model under the same sampling protocol; lower FID indicates stronger distribution preservation.
+% Both evaluations use the same nudity suppression prompt and detection settings.
+% % For ESD, we report its ESD-x attention-editing variant.
+% \Cref{tab:nsfw_preservation} reports the number of I2P images flagged by NudeNet alongside MS-COCO CS and FID.
 
 \begin{table}[t]
     \centering
@@ -54,21 +60,26 @@ Both evaluations use the same nudity suppression prompt and detection settings.
         SD3.5 Medium & 125 & 31.86 & \textemdash \\
         \midrule
         UCE & 97 & 25.43 & 110.56 \\
-        ESD-x & 92 & 27.23 & 83.60 \\
-        EraseAnything & 54 & 26.06 & 54.60 \\
+        ESD & 92 & 27.23 & 83.60 \\
+        EraseAnything & 54 & 28.06 & 69.73 \\
         RAZOR & 84 & 26.17 & 83.31 \\
-        CASteer & \underline{45} & \underline{28.81} & \underline{47.49} \\
+        CASteer & \underline{45} & \underline{28.81} & \underline{57.49} \\
         \midrule
-        Ours & \textbf{21} & \textbf{30.76} & \textbf{39.12} \\
+        Ours & \textbf{21} & \textbf{29.76} & \textbf{39.12} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-\Cref{tab:nsfw_preservation} shows that DAS outperforms all compared erasure methods in both nudity suppression and general generation preservation.
-DAS produces only 21 images flagged by NudeNet, compared with 125 for the original model and 45 for the strongest baseline, CASteer, reducing residual detections by 53.3\% relative to CASteer.
-On MS-COCO, DAS also achieves the highest CS (30.76) and the lowest FID (32.12) among the erasure methods, compared with 28.81 and 47.49 for CASteer.
-These gains correspond to an improvement of 1.95 in CS and a 32.4\% reduction in FID.
-The improvements across all three metrics demonstrate that DAS suppresses undesired content more effectively while better preserving prompt alignment and the original model's generation distribution.
+% \Cref{tab:nsfw_preservation} shows that DAS outperforms all compared erasure methods in both nudity suppression and general generation preservation.
+% DAS produces only 21 images flagged by NudeNet, compared with 125 for the original model and 45 for the strongest baseline, CASteer, reducing residual detections by 53.3\% relative to CASteer.
+% On MS-COCO, DAS also achieves the highest CS (30.76) and the lowest FID (32.12) among the erasure methods, compared with 28.81 and 47.49 for CASteer.
+% These gains correspond to an improvement of 1.95 in CS and a 32.4\% reduction in FID.
+% The improvements across all three metrics demonstrate that DAS suppresses undesired content more effectively while better preserving prompt alignment and the original model's generation distribution.
+
+As shown in \cref{tab:nsfw_preservation}, DAS consistently outperforms all baselines across both safety and quality metrics. 
+On the I2P benchmark, DAS cuts residual NudeNet detections by more than half compared to the strongest baseline (from 45 down to 21), demonstrating substantially stronger suppression of explicit content. 
+Crucially, this strict mitigation does not compromise general generation quality on MS-COCO. 
+Instead, DAS maintains high semantic alignment close to the unedited model while achieving the lowest FID, confirming that decoupling concept detection from suppression prevents unnecessary intervention on benign inputs.
 
 \subsection{IP character erasure}
 \label{sec:exp_ip}
