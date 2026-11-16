@@ -1,0 +1,131 @@
+% Layout preview: newly filled cells marked below are synthetic, not experimental results.
+\begin{table}[!htbp]
+    \centering
+    \small
+    \setlength{\tabcolsep}{2pt}
+    \caption{Artistic style erasure, with a separate setting for each target artist. VLM classification accuracy (\%) is reported as $\mathrm{Acc}_{\mathrm{e}}$ for the erased style and $\mathrm{Acc}_{\mathrm{ir}}$ for unaffected styles. Target styles are italicized. The best results are shown in bold, and the second-best results are underlined.}
+    \label{tab:style_erasure}
+    \begin{subtable}{\columnwidth}
+        \centering
+        \caption{Erasing Van Gogh}
+        \label{tab:style_van_gogh}
+        \begin{tabular}{@{}lcccccc@{}}
+            \toprule
+            Method & \multicolumn{2}{c}{\textit{Van Gogh}} & \multicolumn{2}{c}{Monet} & \multicolumn{2}{c}{Picasso} \\
+            \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+            & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ \\
+            \midrule
+            SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
+            \midrule
+            UCE & 113.14 & 17.78 & 74.48 & 53.33 & 65.30 & 22.22 \\ % Synthetic values for layout preview only.
+            ESD & 153.22 & 38.89 & 43.22 & 42.22 & 83.21 & 23.33 \\ % Synthetic values for layout preview only.
+            EraseAnything & 243.54 & 100.00 & 202.80 & 17.78 & 228.07 & 5.56 \\
+            RAZOR & 70.16 & 54.44 & 34.21 & 57.78 & 59.37 & 20.00 \\
+            CASteer & 228.37 & 0.00 & 193.75 & 3.33 & 228.94 & 12.22 \\
+            \midrule
+            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            \bottomrule
+        \end{tabular}
+    \end{subtable}
+    \par\smallskip
+    \begin{subtable}{\columnwidth}
+        \centering
+        \caption{Erasing Monet}
+        \label{tab:style_monet}
+        \begin{tabular}{@{}lcccccc@{}}
+            \toprule
+            Method & \multicolumn{2}{c}{Van Gogh} & \multicolumn{2}{c}{\textit{Monet}} & \multicolumn{2}{c}{Picasso} \\
+            \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+            & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ \\
+            \midrule
+            SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
+            \midrule
+            UCE & 65.16 & 61.11 & 151.98 & 33.33 & 69.29 & 20.00 \\ % Synthetic values for layout preview only.
+            ESD & 88.27 & 54.44 & 114.66 & 33.33 & 58.22 & 14.44 \\ % Synthetic values for layout preview only.
+            EraseAnything & 158.25 & 83.33 & 152.86 & 30.00 & 171.01 & 21.11 \\
+            RAZOR & 28.24 & 62.22 & 73.34 & 40.00 & 58.83 & 16.67 \\
+            CASteer & 222.98 & 5.56 & 216.44 & 0.00 & 180.36 & 5.56 \\ % Synthetic values for layout preview only.
+            \midrule
+            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            \bottomrule
+        \end{tabular}
+    \end{subtable}
+    \par\smallskip
+    \begin{subtable}{\columnwidth}
+        \centering
+        \caption{Erasing Picasso}
+        \label{tab:style_picasso}
+        \begin{tabular}{@{}lcccccc@{}}
+            \toprule
+            Method & \multicolumn{2}{c}{Van Gogh} & \multicolumn{2}{c}{Monet} & \multicolumn{2}{c}{\textit{Picasso}} \\
+            \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+            & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ \\
+            \midrule
+            SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
+            \midrule
+            UCE & 57.69 & 58.89 & 43.48 & 46.67 & 117.43 & 20.00 \\ % Synthetic values for layout preview only.
+            ESD & 84.15 & 56.67 & 41.62 & 44.44 & 112.43 & 17.78 \\ % Synthetic values for layout preview only.
+            EraseAnything & 138.56 & 75.56 & 148.22 & 26.67 & 202.53 & 11.11 \\
+            RAZOR & 33.60 & 64.44 & 26.69 & 54.44 & 102.66 & 12.22 \\
+            CASteer & 207.34 & 2.22 & 202.96 & 3.33 & 242.16 & 2.22 \\ % Synthetic values for layout preview only.
+            \midrule
+            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            \bottomrule
+        \end{tabular}
+    \end{subtable}
+\end{table}
+
+\begin{table}[!htbp]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \caption{Object erasure over ten ImageNet classes. Accuracies (\%) are averaged over the target or non-target classes: one and nine classes in (a), and five and five in (b). The best results are shown in bold, and the second-best results are underlined.}
+    \label{tab:object_erasure}
+    \begin{subtable}{\columnwidth}
+        \centering
+        \caption{Erasing church}
+        \label{tab:object_single}
+        \begin{tabular}{@{}lccc@{}}
+            \toprule
+            Method & \multicolumn{2}{c}{Target} & Non-target \\
+            \cmidrule(lr){2-3}\cmidrule(lr){4-4}
+            & Top-1 $\downarrow$ & Top-3 $\downarrow$ & Top-1 $\uparrow$ \\
+            \midrule
+            % Original scores use the matching reference images in the EraseAnything and RAZOR evaluations.
+            SD3.5 Medium & 100.00 & 100.00 & 88.00 \\
+            \midrule
+            UCE & 92.00 & 98.00 & 84.22 \\ % Synthetic values for layout preview only.
+            ESD & 96.00 & 98.00 & 83.33 \\ % Synthetic values for layout preview only.
+            EraseAnything & 100.00 & 100.00 & 85.78 \\
+            RAZOR & 100.00 & 100.00 & 87.56 \\
+            CASteer & 98.00 & 98.00 & 84.67 \\ % Synthetic values for layout preview only.
+            \midrule
+            Ours & \emptycell & \emptycell & \emptycell \\
+            \bottomrule
+        \end{tabular}
+    \end{subtable}
+    \par\smallskip
+    \begin{subtable}{\columnwidth}
+        \centering
+        \caption{Erasing five objects}
+        \label{tab:object_multi}
+        \begin{tabular}{@{}lccc@{}}
+            \toprule
+            Method & \multicolumn{2}{c}{Target} & Non-target \\
+            \cmidrule(lr){2-3}\cmidrule(lr){4-4}
+            & Top-1 $\downarrow$ & Top-3 $\downarrow$ & Top-1 $\uparrow$ \\
+            \midrule
+            % Original scores use the matching reference images in the EraseAnything and RAZOR evaluations.
+            SD3.5 Medium & 80.00 & 98.40 & 98.40 \\
+            \midrule
+            UCE & 76.80 & 96.40 & 98.40 \\ % Synthetic values for layout preview only.
+            ESD & 79.60 & 97.20 & 95.20 \\ % Synthetic values for layout preview only.
+            EraseAnything & 82.00 & 99.60 & 98.80 \\
+            RAZOR & 80.40 & 97.60 & 97.60 \\
+            CASteer & 78.00 & 99.60 & 95.20 \\ % Synthetic values for layout preview only.
+            \midrule
+            Ours & \emptycell & \emptycell & \emptycell \\
+            \bottomrule
+        \end{tabular}
+    \end{subtable}
+\end{table}

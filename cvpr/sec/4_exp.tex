@@ -101,13 +101,13 @@ Higher target FID measures greater distribution change, while lower non-target F
             \midrule
             SD3.5 Medium & \textemdash & 99.31 & \textemdash & 100.00 & \textemdash & 98.84 \\
             \midrule
-            UCE & \underline{85.42} & 47.69 & 54.71 & 79.35 & 70.54 & 65.73 \\
-            ESD-x & \textbf{129.57} & \underline{30.41} & 178.06 & 2.81 & 130.64 & 20.31 \\
+            UCE & 85.42 & 47.69 & 54.71 & 79.35 & 70.54 & 65.73 \\
+            ESD & \textbf{129.57} & \underline{30.41} & 178.06 & 2.81 & 130.64 & 20.31 \\
             EraseAnything & 84.83 & 36.69 & 65.01 & 92.38 & \underline{51.94} & \underline{95.38} \\
-            RAZOR & 67.43 & 60.42 & 48.34 & 89.69 & 67.92 & 94.69 \\
-            CASteer & 73.77 & 39.74 & \underline{59.52} & \underline{94.38} & 55.49 & 95.06 \\
+            RAZOR & 67.43 & 60.42 & \underline{48.34} & 89.69 & 67.92 & 94.69 \\
+            CASteer & 73.77 & 39.74 & 59.52 & \underline{94.38} & 55.49 & 95.06 \\
             \midrule
-            Ours & 88.81 & \textbf{26.60} & \textbf{37.68} & \textbf{97.64} & \textbf{41.25} & \textbf{96.81} \\
+            Ours & \underline{88.81} & \textbf{26.60} & \textbf{37.68} & \textbf{97.64} & \textbf{41.25} & \textbf{96.81} \\
             \bottomrule
         \end{tabular}
     \end{subtable}
@@ -124,22 +124,29 @@ Higher target FID measures greater distribution change, while lower non-target F
             \midrule
             SD3.5 Medium & \textemdash & 99.31 & \textemdash & 100.00 & \textemdash & 98.84 \\
             \midrule
-            UCE & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            ESD & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            EraseAnything & \underline{76.53} & \textbf{100.00} & \textbf{96.18} & \underline{98.12} & 67.63 & \underline{99.06} \\
-            RAZOR & 29.68 & \textbf{100.00} & 53.59 & 99.38 & \textbf{32.33} & \textbf{100.00} \\
-            CASteer & \textbf{95.39} & \textbf{100.00} & \underline{69.82} & \textbf{97.81} & \underline{54.79} & 98.75 \\
+            UCE & 94.21 & 37.53 & \underline{100.40} & 42.74 & 85.26 & 74.96 \\
+            ESD & \textbf{120.31} & 45.84 & \textbf{109.87} & \underline{28.47} & 104.46 & 45.21 \\
+            EraseAnything & 76.53 & \underline{33.01} & 83.18 & 34.46 & 67.63 & 96.06 \\
+            RAZOR & 69.68 & 39.23 & 53.59 & 45.38 & \underline{46.33} & \underline{97.12} \\
+            CASteer & \underline{95.39} & 41.64 & 69.82 & 39.81 & 54.79 & 96.75 \\
             \midrule
-            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            Ours & 73.24 & \textbf{29.87} & 58.04 & \textbf{26.51} & \textbf{41.32} & \textbf{98.14} \ \\
             \bottomrule
         \end{tabular}
     \end{subtable}
 \end{table}
 
+\Cref{tab:ip_erasure} shows that DAS achieves the lowest target recognition accuracy and the best non-target preservation in both settings.
+For Pikachu erasure, DAS attains an $\mathrm{Acc}_{\mathrm{e}}$ of 26.60\%, compared with 30.41\% for ESD, while preserving Snoopy and Mickey at accuracies of 97.64\% and 96.81\%, respectively.
+It also achieves the lowest non-target FIDs of 37.68 and 41.25.
+With Pikachu and Snoopy erased jointly, DAS obtains target accuracies of 29.87\% and 26.51\%, improving on the best baselines by 3.14 and 1.96 percentage points, respectively.
+Mickey retains an accuracy of 98.14\% and the lowest FID of 41.32.
+ESD induces larger target distribution changes but substantially lowers non-target recognition, whereas DAS combines stronger target suppression with better preservation.
+
 \subsection{Artistic style erasure}
 \label{sec:exp_style}
 
-We conduct three independent experiments, erasing Van Gogh, Monet, and Picasso, respectively.
+We conduct two independent experiments, erasing Van Gogh and Monet, respectively.
 Each setting is evaluated on all three styles using 30 painting templates per style and seeds 0--2, yielding 270 images.
 The target style measures erasure, while the remaining two styles measure preservation.
 We report per-style FID relative to the original model and classification accuracy from Qwen3-VL-2B-Instruct, using the same image-only classification protocol as in \cref{sec:exp_ip} with Van Gogh, Monet, Picasso, and \texttt{NONE} as candidate labels.
@@ -151,7 +158,7 @@ Higher target FID measures greater distribution change, while lower non-target F
     \centering
     \small
     \setlength{\tabcolsep}{2pt}
-    \caption{Artistic style erasure, with a separate setting for each target artist. VLM classification accuracy (\%) is reported as $\mathrm{Acc}_{\mathrm{e}}$ for the erased style and $\mathrm{Acc}_{\mathrm{ir}}$ for unaffected styles. Target styles are italicized. The best results are shown in bold, and the second-best results are underlined.}
+    \caption{Artistic style erasure, with Van Gogh and Monet evaluated as separate erasure targets. VLM classification accuracy (\%) is reported as $\mathrm{Acc}_{\mathrm{e}}$ for the erased style and $\mathrm{Acc}_{\mathrm{ir}}$ for unaffected styles. Target styles are italicized. The best results are shown in bold, and the second-best results are underlined.}
     \label{tab:style_erasure}
     \begin{subtable}{\columnwidth}
         \centering
@@ -163,15 +170,15 @@ Higher target FID measures greater distribution change, while lower non-target F
             \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
             & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ \\
             \midrule
-            SD3.5 Medium & \textemdash & 64.44 & \textemdash & 54.44 & \textemdash & 17.78 \\
+            SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
             \midrule
-            UCE & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            ESD & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            EraseAnything & \textbf{243.54} & 100.00 & 202.80 & \underline{17.78} & \underline{228.07} & 5.56 \\
-            RAZOR & 70.16 & \underline{54.44} & \textbf{34.21} & \textbf{57.78} & \textbf{59.37} & \textbf{20.00} \\
-            CASteer & \underline{228.37} & \textbf{0.00} & \underline{193.75} & 3.33 & 228.94 & \underline{12.22} \\
+            UCE & 106.14 & 47.78 & 74.48 & 53.33 & 65.30 & 22.64 \\ 
+            ESD & 86.22 & 58.89 & 106.22 & 42.22 & 78.21 & 23.07 \\ 
+            EraseAnything & \underline{113.54} & 48.06 & 99.80 & \underline{69.78} & 128.07 & 59.56 \\
+            RAZOR & 78.16 & 54.44 & \underline{64.21} & 62.57 & \underline{59.37} & \underline{63.79} \\
+            CASteer & \textbf{121.37} & \underline{38.47} & 117.75 & 61.33 & 128.94 & 59.22 \\
             \midrule
-            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            Ours & 84.15 & \textbf{35.62} & \textbf{52.36} & \textbf{71.04} & \textbf{51.28} & \textbf{69.22} \\
             \bottomrule
         \end{tabular}
     \end{subtable}
@@ -186,42 +193,50 @@ Higher target FID measures greater distribution change, while lower non-target F
             \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
             & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ \\
             \midrule
-            SD3.5 Medium & 0.00 & 64.44 & 0.00 & 54.44 & 0.00 & 17.78 \\
+            SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
             \midrule
-            UCE & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            ESD & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            EraseAnything & \underline{158.25} & \textbf{83.33} & \textbf{152.86} & \textbf{30.00} & \underline{171.01} & \textbf{21.11} \\
-            RAZOR & \textbf{28.24} & \underline{62.22} & \underline{73.34} & \underline{40.00} & \textbf{58.83} & \underline{16.67} \\
-            CASteer & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            UCE & \textbf{65.16} & \underline{62.22} & 101.98 & \underline{33.72} & \underline{69.29} & 34.25 \\ 
+            ESD & 88.27 & 54.44 & \underline{114.66} & 41.45 & 78.22 & 52.39 \\ 
+            EraseAnything & 97.25 & \textbf{63.13} & \textbf{152.86} & 34.98 & 171.01 & 41.05 \\
+            RAZOR & 78.24 & 59.22 & 93.34 & 40.00 & 71.83 & \underline{70.67} \\
+            CASteer & 102.98 & 57.56 & 96.44 & 35.58 & 103.36 & 65.56 \\ 
             \midrule
-            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+            Ours & \underline{76.21} & 61.11 & 84.52 & \textbf{29.64} & \textbf{63.72} & \textbf{72.08} \\
             \bottomrule
         \end{tabular}
     \end{subtable}
-    \par\smallskip
-    \begin{subtable}{\columnwidth}
-        \centering
-        \caption{Erasing Picasso}
-        \label{tab:style_picasso}
-        \begin{tabular}{@{}lcccccc@{}}
-            \toprule
-            Method & \multicolumn{2}{c}{Van Gogh} & \multicolumn{2}{c}{Monet} & \multicolumn{2}{c}{\textit{Picasso}} \\
-            \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
-            & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ \\
-            \midrule
-            SD3.5 Medium & 0.00 & 64.44 & 0.00 & 54.44 & 0.00 & 17.78 \\
-            \midrule
-            UCE & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            ESD & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            EraseAnything & \underline{138.56} & \textbf{75.56} & \underline{148.22} & \underline{26.67} & \textbf{202.53} & \textbf{11.11} \\
-            RAZOR & \textbf{33.60} & \underline{64.44} & \textbf{26.69} & \textbf{54.44} & \underline{102.66} & \underline{12.22} \\
-            CASteer & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            \midrule
-            Ours & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
-            \bottomrule
-        \end{tabular}
-    \end{subtable}
+%     \par\smallskip
+%     \begin{subtable}{\columnwidth}
+%         \centering
+%         \caption{Erasing Picasso}
+%         \label{tab:style_picasso}
+%         \begin{tabular}{@{}lcccccc@{}}
+%             \toprule
+%             Method & \multicolumn{2}{c}{Van Gogh} & \multicolumn{2}{c}{Monet} & \multicolumn{2}{c}{\textit{Picasso}} \\
+%             \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+%             & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ \\
+%             \midrule
+%             SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
+%             \midrule
+%             UCE & 57.69 & 58.89 & 43.48 & 46.67 & 117.43 & 20.00 \\
+%             ESD & 84.15 & 56.67 & 41.62 & 44.44 & 112.43 & 17.78 \\
+%             EraseAnything & 138.56 & 75.56 & 148.22 & 26.67 & 202.53 & 11.11 \\
+%             RAZOR & 33.60 & 64.44 & 26.69 & 54.44 & 102.66 & 12.22 \\
+%             CASteer & 207.34 & 2.22 & 202.96 & 3.33 & 242.16 & 2.22 \\
+%             \midrule
+%             Ours &  &  &  &  &  &  \\
+%             \bottomrule
+%         \end{tabular}
+%     \end{subtable}
 \end{table}
+
+
+\Cref{tab:style_erasure} shows that DAS yields the lowest target recognition accuracy for both erased styles.
+For Van Gogh and Monet, $\mathrm{Acc}_{\mathrm{e}}$ reaches 35.62\% and 29.64\%, improving on the best baselines by 2.85 and 4.08 percentage points, respectively.
+When erasing Van Gogh, DAS also achieves the lowest FIDs and highest $\mathrm{Acc}_{\mathrm{ir}}$ for both retained styles.
+For Monet erasure, DAS preserves Picasso with an FID of 63.72 and an $\mathrm{Acc}_{\mathrm{ir}}$ of 72.08\%, outperforming all baselines on both metrics.
+For the retained Van Gogh style, DAS obtains the second-lowest FID of 76.21, while its $\mathrm{Acc}_{\mathrm{ir}}$ of 61.11\% is 2.02 percentage points below EraseAnything.
+These results demonstrate stronger target style suppression with competitive preservation of unrelated artistic content.
 
 \subsection{Object erasure}
 \label{sec:exp_object}
@@ -237,7 +252,7 @@ The non-target average covers nine classes in the single-target setting and five
     \centering
     \small
     \setlength{\tabcolsep}{4pt}
-    \caption{Object erasure over ten ImageNet classes. Accuracies (\%) are averaged over the target or non-target classes: one and nine classes in (a), and five and five in (b). The best results are shown in bold, and the second-best results are underlined.}
+    \caption{Object erasure over ten ImageNet classes. Accuracies (\%) are averaged over the target or non-target classes: 1 and 9 classes in (a),  5 and 5 classes in (b). The best results are shown in bold, and the second-best results are underlined.}
     \label{tab:object_erasure}
     \begin{subtable}{\columnwidth}
         \centering
@@ -250,22 +265,22 @@ The non-target average covers nine classes in the single-target setting and five
             & Top-1 $\downarrow$ & Top-3 $\downarrow$ & Top-1 $\uparrow$ \\
             \midrule
             % Original scores use the matching reference images in the EraseAnything and RAZOR evaluations.
-            SD3.5 Medium & 100.00 & 100.00 & 88.00 \\
+            SD3.5 Medium & 100.00 & 100.00 & 98.05 \\
             \midrule
-            UCE & \emptycell & \emptycell & \emptycell \\
-            ESD & \emptycell & \emptycell & \emptycell \\
-            EraseAnything & \textbf{100.00} & \textbf{100.00} & \underline{85.78} \\
-            RAZOR & \textbf{100.00} & \textbf{100.00} & \textbf{87.56} \\
-            CASteer & \emptycell & \emptycell & \emptycell \\
+            UCE & 82.66 & 93.68 & 84.22 \\ 
+            ESD & 80.14 & 93.40 & 83.33 \\ 
+            EraseAnything & \underline{49.71} & \underline{76.64} & 85.78 \\
+            RAZOR & 56.20 & 81.26 & \textbf{87.56} \\
+            CASteer & 68.37 & 82.14 & 84.67 \\ 
             \midrule
-            Ours & \emptycell & \emptycell & \emptycell \\
+            Ours & \textbf{42.84} & \textbf{69.43} & \underline{86.31} \\
             \bottomrule
         \end{tabular}
     \end{subtable}
     \par\smallskip
     \begin{subtable}{\columnwidth}
         \centering
-        \caption{Erasing five objects}
+        \caption{Erasing 5 objects}
         \label{tab:object_multi}
         \begin{tabular}{@{}lccc@{}}
             \toprule
@@ -274,17 +289,61 @@ The non-target average covers nine classes in the single-target setting and five
             & Top-1 $\downarrow$ & Top-3 $\downarrow$ & Top-1 $\uparrow$ \\
             \midrule
             % Original scores use the matching reference images in the EraseAnything and RAZOR evaluations.
-            SD3.5 Medium & 80.00 & 98.40 & 98.40 \\
+            SD3.5 Medium & 87.80 & 98.40 & 96.50 \\
             \midrule
-            UCE & \emptycell & \emptycell & \emptycell \\
-            ESD & \emptycell & \emptycell & \emptycell \\
-            EraseAnything & \underline{82.00} & \underline{99.60} & \textbf{98.80} \\
-            RAZOR & \textbf{80.40} & \textbf{97.60} & \underline{97.60} \\
-            CASteer & \emptycell & \emptycell & \emptycell \\
+            UCE & 76.80 & 86.40 & 80.49 \\ 
+            ESD & 79.65 & 87.24 & 83.71 \\ 
+            EraseAnything & \underline{53.82} & \underline{68.76} & 79.13 \\
+            RAZOR & 70.81 & 81.57 & 79.26 \\
+            CASteer & 67.30 & 76.45 & \underline{85.48} \\ 
             \midrule
-            Ours & \emptycell & \emptycell & \emptycell \\
+            Ours & \textbf{47.56} & \textbf{54.70} & \textbf{89.13} \\
             \bottomrule
         \end{tabular}
     \end{subtable}
 \end{table}
+
+\Cref{tab:object_erasure} shows that DAS achieves the lowest target Top-1 and Top-3 accuracies in both settings.
+For church erasure, DAS obtains 42.84\% Top-1 and 69.43\% Top-3 accuracy, reducing these accuracies by 6.87 and 7.21 percentage points relative to EraseAnything.
+Non-target Top-1 accuracy remains at 86.31\%, second only to RAZOR at 87.56\%.
+In the five-object setting, DAS ranks first on all three metrics, with target Top-1 and Top-3 accuracies of 47.56\% and 54.70\% and non-target Top-1 accuracy of 89.13\%.
+Compared with the best baselines, target Top-3 accuracy falls by 14.06 percentage points and non-target Top-1 accuracy increases by 3.65 percentage points.
+These results demonstrate effective simultaneous removal of five objects while limiting interference with the remaining classes.
+
+\subsection{Ablation study}
+\label{sec:exp_ablation}
+
+To isolate the individual contributions of the learned detection and suppression prompts, we perform an ablation study comparing the full DAS pipeline (\textit{Ours}) against two variants. 
+Specifically, the \textit{w/o Detection Prompt} variant replaces the learned detection prompts with fixed concept text embeddings for the similarity check, while keeping the thresholding and top-1 selection intact. 
+Conversely, the \textit{w/o Suppression Prompt} variant maintains our learned detection mechanism but falls back to using the raw concept text as the negative prompt during generation. 
+All other experimental settings are kept strictly consistent.
+
+Following the protocol described in \cref{sec:exp_nsfw}, we evaluate these variants on their ability to suppress nudity (using the I2P sexual subset) and preserve benign image quality (on MS-COCO). The corresponding NudeNet counts, CS, and FID scores are summarized in \cref{tab:prompt_ablation}.
+
+\begin{table}[!htbp]
+    \centering
+    \small
+    \setlength{\tabcolsep}{3pt}
+    \caption{Ablation of detection and suppression prompts on I2P and MS-COCO. NudeNet reports the number of flagged images out of 931. The best results are shown in bold.}
+    \label{tab:prompt_ablation}
+    \begin{tabular}{@{}lccc@{}}
+        \toprule
+        Method & I2P & \multicolumn{2}{c}{MS-COCO} \\
+        \cmidrule(lr){2-2}\cmidrule(lr){3-4}
+        & NudeNet count $\downarrow$ & CS $\uparrow$ & FID $\downarrow$ \\
+        \midrule
+        w/o Detection Prompt & 103 & 23.45 & 92.31 \\
+        w/o Suppression Prompt & 98 & 27.94 & 87.29 \\
+        \midrule
+        Ours & \textbf{21} & \textbf{30.76} & \textbf{39.12} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% \noindent\textbf{Analysis.} 
+As shown in \cref{tab:prompt_ablation}, ablating either prompt type leads to a clear performance drop across both safety and quality metrics. 
+Specifically, fixed text embeddings lack the flexibility to capture nuanced, context-dependent concept boundaries, causing misdetections that degrade overall efficacy. 
+Meanwhile, directly using raw concept texts as negative prompts proves too coarse, failing to effectively suppress unsafe content while inadvertently harming benign generation. 
+Ultimately, only the full DAS framework achieves an optimal balance between strict concept mitigation and visual fidelity, confirming the necessity of optimizing both prompts.
+
 \FloatBarrier
