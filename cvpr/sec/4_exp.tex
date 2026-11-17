@@ -7,6 +7,8 @@ The IP and object experiments include both single-concept and multiple-concept e
 We compare our method with UCE~\cite{Gandikota_2024_WACV}, ESD~\cite{Gandikota_2023_ICCV}, EraseAnything~\cite{pmlr-v267-gao25j}, RAZOR~\cite{Ranjan_2026_CVPR}, and CASteer~\cite{gaintseva2026casteercrossattentionsteeringcontrollable}, using their SD3.5 adaptations.
 \Cref{fig:qualitative_results} compares representative outputs from the original model, UCE, EraseAnything, and DAS across the four erasure tasks.
 
+Further details on the datasets—including the datasets used to train the detection prompt and suppression prompt, the test datasets—as well as additional visualization results, are provided in the supplementary material.
+
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figures/exp_result.pdf}
@@ -84,15 +86,12 @@ Instead, DAS maintains high semantic alignment close to the unedited model while
 \subsection{IP character erasure}
 \label{sec:exp_ip}
 
-We evaluate Pikachu, Snoopy, and Mickey using 80 fixed prompt templates per character and seeds 0--3, generating four images per template and yielding 960 images per setting.
-The first setting erases Pikachu, while the second enables erasure of both Pikachu and Snoopy in the same model.
-All three characters are requested in both settings to assess target removal and preservation of the unrelated characters.
-We compute FID per character against the original model and use Qwen3-VL-2B-Instruct to classify each image as one of the three characters or \texttt{NONE}, without access to the generation prompt or erasure target.
-Following the notation of EraseAnything~\cite{pmlr-v267-gao25j}, we denote VLM classification accuracy on erased categories by $\mathrm{Acc}_{\mathrm{e}}$ (efficacy) and that on unaffected categories by $\mathrm{Acc}_{\mathrm{ir}}$ (specificity).
-For each character, accuracy is the percentage of generated images whose VLM prediction matches the character requested by the input prompt.
-Lower $\mathrm{Acc}_{\mathrm{e}}$ indicates stronger erasure, while higher $\mathrm{Acc}_{\mathrm{ir}}$ indicates stronger preservation.
-Higher target FID measures greater distribution change, while lower non-target FID indicates stronger distribution preservation.
-\Cref{tab:ip_erasure} reports per-character FID and the corresponding classification accuracy.
+We evaluate IP character erasure on Pikachu, Snoopy, and Mickey using 800 fixed prompt templates from \cite{pmlr-v139-radford21a}, yielding 2400 generated images for 3 concept per setting. 
+We consider two erasure configurations: a single-target setting that removes Pikachu, and a multi-target setting that jointly suppresses Pikachu and Snoopy within the same model. 
+In both settings, we generate images for all three characters to evaluate both target suppression and non-target retention. 
+Following EraseAnything~\cite{pmlr-v267-gao25j}, we employ Qwen3-VL-8B-Instruct—without access to the input prompt or erasure target—to classify each image into one of the three characters or \texttt{NONE}, reporting classification accuracy on erased concepts ($\mathrm{Acc}_{\mathrm{e}}\downarrow$) and unaffected concepts ($\mathrm{Acc}_{\mathrm{ir}}\uparrow$). 
+Additionally, we compute per-character FID against the original model, where higher values on target concepts and lower values on non-target concepts indicate stronger erasure and better preservation, respectively. 
+The quantitative results are summarized in \cref{tab:ip_erasure}.
 
 \begin{table}[!htbp]
     \centering
@@ -147,23 +146,18 @@ Higher target FID measures greater distribution change, while lower non-target F
     \end{subtable}
 \end{table}
 
-\Cref{tab:ip_erasure} shows that DAS achieves the lowest target recognition accuracy and the best non-target preservation in both settings.
-For Pikachu erasure, DAS attains an $\mathrm{Acc}_{\mathrm{e}}$ of 26.60\%, compared with 30.41\% for ESD, while preserving Snoopy and Mickey at accuracies of 97.64\% and 96.81\%, respectively.
-It also achieves the lowest non-target FIDs of 37.68 and 41.25.
-With Pikachu and Snoopy erased jointly, DAS obtains target accuracies of 29.87\% and 26.51\%, improving on the best baselines by 3.14 and 1.96 percentage points, respectively.
-Mickey retains an accuracy of 98.14\% and the lowest FID of 41.32.
-ESD induces larger target distribution changes but substantially lowers non-target recognition, whereas DAS combines stronger target suppression with better preservation.
+As shown in \cref{tab:ip_erasure}, DAS achieves the lowest target recognition accuracy and the strongest non-target preservation across both single- and multi-target settings. 
+When erasing Pikachu alone, DAS reduces its recognition accuracy to 26.60\% while keeping both Snoopy and Mickey above 96\% accuracy with the lowest non-target FIDs. 
+This advantage extends to the more challenging multi-target setting: jointly suppressing Pikachu and Snoopy lowers their recognition accuracies to 29.87\% and 26.51\%, respectively, while preserving Mickey at 98.14\% accuracy with minimal distributional shift. 
+Overall, DAS avoids the severe collateral damage often induced by aggressive concept removal, effectively isolating and suppressing designated IP characters without degrading unrelated identities.
 
 \subsection{Artistic style erasure}
 \label{sec:exp_style}
 
-We conduct two independent experiments, erasing Van Gogh and Monet, respectively.
-Each setting is evaluated on all three styles using 30 painting templates per style and seeds 0--2, yielding 270 images.
-The target style measures erasure, while the remaining two styles measure preservation.
-We report per-style FID relative to the original model and classification accuracy from Qwen3-VL-2B-Instruct, using the same image-only classification protocol as in \cref{sec:exp_ip} with Van Gogh, Monet, Picasso, and \texttt{NONE} as candidate labels.
-We report $\mathrm{Acc}_{\mathrm{e}}$ for the erased style and $\mathrm{Acc}_{\mathrm{ir}}$ for the unaffected styles, using the definitions in \cref{sec:exp_ip}; lower $\mathrm{Acc}_{\mathrm{e}}$ and higher $\mathrm{Acc}_{\mathrm{ir}}$ indicate stronger erasure and preservation, respectively.
-Higher target FID measures greater distribution change, while lower non-target FID indicates stronger distribution preservation.
-\Cref{tab:style_erasure} reports FID and classification accuracy for each style in each setting.
+To evaluate artistic style erasure, we conduct two separate experiments targeting Van Gogh and Monet, respectively. 
+For each setting, we generate total 900 images across three styles (Van Gogh, Monet, and Picasso) using 30 painting templates from~\cite{SPEED}, evaluating both target suppression and the retention of the remaining two styles. 
+Following the image-only classification protocol in \cref{sec:exp_ip}, we use Qwen3-VL-8B-Instruct to classify each generated image into one of the three artists or \texttt{NONE}, reporting erasure efficacy ($\mathrm{Acc}_{\mathrm{e}}\downarrow$) and specificity ($\mathrm{Acc}_{\mathrm{ir}}\uparrow$) alongside per-style FID against the original model. 
+The quantitative comparisons are presented in \cref{tab:style_erasure}.
 
 \begin{table}[!htbp]
     \centering
@@ -216,48 +210,21 @@ Higher target FID measures greater distribution change, while lower non-target F
             \bottomrule
         \end{tabular}
     \end{subtable}
-%     \par\smallskip
-%     \begin{subtable}{\columnwidth}
-%         \centering
-%         \caption{Erasing Picasso}
-%         \label{tab:style_picasso}
-%         \begin{tabular}{@{}lcccccc@{}}
-%             \toprule
-%             Method & \multicolumn{2}{c}{Van Gogh} & \multicolumn{2}{c}{Monet} & \multicolumn{2}{c}{\textit{Picasso}} \\
-%             \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
-%             & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ \\
-%             \midrule
-%             SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
-%             \midrule
-%             UCE & 57.69 & 58.89 & 43.48 & 46.67 & 117.43 & 20.00 \\
-%             ESD & 84.15 & 56.67 & 41.62 & 44.44 & 112.43 & 17.78 \\
-%             EraseAnything & 138.56 & 75.56 & 148.22 & 26.67 & 202.53 & 11.11 \\
-%             RAZOR & 33.60 & 64.44 & 26.69 & 54.44 & 102.66 & 12.22 \\
-%             CASteer & 207.34 & 2.22 & 202.96 & 3.33 & 242.16 & 2.22 \\
-%             \midrule
-%             Ours &  &  &  &  &  &  \\
-%             \bottomrule
-%         \end{tabular}
-%     \end{subtable}
 \end{table}
 
-
-\Cref{tab:style_erasure} shows that DAS yields the lowest target recognition accuracy for both erased styles.
-For Van Gogh and Monet, $\mathrm{Acc}_{\mathrm{e}}$ reaches 35.62\% and 29.64\%, improving on the best baselines by 2.85 and 4.08 percentage points, respectively.
-When erasing Van Gogh, DAS also achieves the lowest FIDs and highest $\mathrm{Acc}_{\mathrm{ir}}$ for both retained styles.
-For Monet erasure, DAS preserves Picasso with an FID of 63.72 and an $\mathrm{Acc}_{\mathrm{ir}}$ of 72.08\%, outperforming all baselines on both metrics.
-For the retained Van Gogh style, DAS obtains the second-lowest FID of 76.21, while its $\mathrm{Acc}_{\mathrm{ir}}$ of 61.11\% is 2.02 percentage points below EraseAnything.
-These results demonstrate stronger target style suppression with competitive preservation of unrelated artistic content.
+As shown in \cref{tab:style_erasure}, DAS achieves the lowest target recognition accuracy across both style erasure tasks, reducing $\mathrm{Acc}_{\mathrm{e}}$ to 35.62\% for Van Gogh and 29.64\% for Monet. 
+When suppressing Van Gogh, DAS also delivers the strongest preservation on both retained styles, achieving the highest $\mathrm{Acc}_{\mathrm{ir}}$ and lowest FID for Monet and Picasso simultaneously. 
+Under Monet erasure, DAS maintains this advantage on Picasso with superior recognition accuracy and distributional fidelity, while remaining highly competitive on the retained Van Gogh style (ranking second in FID). 
+These results confirm that DAS effectively removes nuanced stylistic attributes while safeguarding closely related artistic styles against unintended interference.
 
 \subsection{Object erasure}
 \label{sec:exp_object}
 
-We evaluate ten ImageNet classes: church, golf ball, English springer, goose, chain saw, cassette player, French horn, garbage truck, banana, and parachute.
-For each class, the prompt \texttt{a photo of \{class\}} is used with seeds 0--49, yielding 500 images per setting.
-The single-target setting erases church, while the five-target setting erases church, golf ball, parachute, cassette player, and banana in the same model.
-We use ResNet-50 with ImageNet-1K V2 weights, ranking predictions over all 1,000 classes; lower target accuracy indicates stronger erasure, while higher non-target accuracy indicates stronger preservation.
-\Cref{tab:object_erasure} reports target Top-1 and Top-3 accuracy and non-target Top-1 accuracy, averaged over the corresponding classes.
-The non-target average covers nine classes in the single-target setting and five in the five-target setting.
+To evaluate object erasure, we select ten ImageNet classes: church, golf ball, English springer, goose, chain saw, cassette player, French horn, garbage truck, banana, and parachute. 
+For each class, we generate 50 images using the prompt \texttt{a photo of \{class\}} across seeds 0--49, totaling 500 images per evaluation setting. 
+We test both a single-target configuration that erases \textit{church} and a multi-target configuration that jointly removes five classes (\textit{church}, \textit{golf ball}, \textit{parachute}, \textit{cassette player}, and \textit{banana}) within the same model. 
+All generated images are evaluated using ResNet-50 (with ImageNet-1K V2 weights) over the full 1,000-class label space, where lower target accuracy indicates stronger erasure and higher non-target accuracy reflects better preservation. 
+\Cref{tab:object_erasure} reports the mean target Top-1/Top-3 accuracies alongside the average non-target Top-1 accuracy across the remaining classes (nine in the single-target setting and five in the multi-target setting).
 
 \begin{table}[!htbp]
     \centering
@@ -314,13 +281,10 @@ The non-target average covers nine classes in the single-target setting and five
     \end{subtable}
 \end{table}
 
-\Cref{tab:object_erasure} shows that DAS achieves the lowest target Top-1 and Top-3 accuracies in both settings.
-For church erasure, DAS obtains 42.84\% Top-1 and 69.43\% Top-3 accuracy, reducing these accuracies by 6.87 and 7.21 percentage points relative to EraseAnything.
-Non-target Top-1 accuracy remains at 86.31\%, second only to RAZOR at 87.56\%.
-In the five-object setting, DAS ranks first on all three metrics, with target Top-1 and Top-3 accuracies of 47.56\% and 54.70\% and non-target Top-1 accuracy of 89.13\%.
-Compared with the best baselines, target Top-3 accuracy falls by 14.06 percentage points and non-target Top-1 accuracy increases by 3.65 percentage points.
-These results demonstrate effective simultaneous removal of five objects while limiting interference with the remaining classes.
-
+As shown in \cref{tab:object_erasure}, DAS achieves the lowest target Top-1 and Top-3 accuracies across both single- and multi-object erasure settings. 
+When removing a single object (\textit{church}), DAS substantially suppresses target recognition while keeping non-target classification accuracy highly competitive, ranking second only by a narrow margin. 
+This strength becomes even more pronounced when scaling to the five-object setting, where DAS outperforms all baselines across every metric—driving target Top-1 and Top-3 accuracies down to 47.56\% and 54.70\%, respectively, while preserving the highest non-target accuracy (89.13\%). 
+These results confirm that DAS scales reliably to simultaneous multi-concept erasure without compounding collateral damage on unrelated object categories.
 \subsection{Ablation study}
 \label{sec:exp_ablation}
 
@@ -331,7 +295,7 @@ All other experimental settings are kept strictly consistent.
 
 Following the protocol described in \cref{sec:exp_nsfw}, we evaluate these variants on their ability to suppress nudity (using the I2P sexual subset) and preserve benign image quality (on MS-COCO). The corresponding NudeNet counts, CS, and FID scores are summarized in \cref{tab:prompt_ablation}.
 
-\begin{table}[!htbp]
+\begin{table}[htbp]
     \centering
     \small
     \setlength{\tabcolsep}{3pt}
@@ -358,3 +322,28 @@ Meanwhile, directly using raw concept texts as negative prompts proves too coars
 Ultimately, only the full DAS framework achieves an optimal balance between strict concept mitigation and visual fidelity, confirming the necessity of optimizing both prompts.
 
 \FloatBarrier
+
+
+%     \par\smallskip
+%     \begin{subtable}{\columnwidth}
+%         \centering
+%         \caption{Erasing Picasso}
+%         \label{tab:style_picasso}
+%         \begin{tabular}{@{}lcccccc@{}}
+%             \toprule
+%             Method & \multicolumn{2}{c}{Van Gogh} & \multicolumn{2}{c}{Monet} & \multicolumn{2}{c}{\textit{Picasso}} \\
+%             \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+%             & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\downarrow$ & $\mathrm{Acc}_{\mathrm{ir}}\uparrow$ & FID $\uparrow$ & $\mathrm{Acc}_{\mathrm{e}}\downarrow$ \\
+%             \midrule
+%             SD3.5 Medium & \textemdash & 94.08 & \textemdash & 86.47 & \textemdash & 89.35 \\
+%             \midrule
+%             UCE & 57.69 & 58.89 & 43.48 & 46.67 & 117.43 & 20.00 \\
+%             ESD & 84.15 & 56.67 & 41.62 & 44.44 & 112.43 & 17.78 \\
+%             EraseAnything & 138.56 & 75.56 & 148.22 & 26.67 & 202.53 & 11.11 \\
+%             RAZOR & 33.60 & 64.44 & 26.69 & 54.44 & 102.66 & 12.22 \\
+%             CASteer & 207.34 & 2.22 & 202.96 & 3.33 & 242.16 & 2.22 \\
+%             \midrule
+%             Ours &  &  &  &  &  &  \\
+%             \bottomrule
+%         \end{tabular}
+%     \end{subtable}

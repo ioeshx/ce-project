@@ -96,7 +96,10 @@ The reconstruction objective is
     \right].
     \label{eq:detection_ti_flow}
 \end{equation}
-This term complements text matching with velocity targets derived from images.
+
+The contrastive objective shapes the anchor's relative similarity to concept-bearing and unrelated texts, 
+while flow reconstruction ties the same embedding to velocity targets derived from concept images. 
+Their combination connects the similarity function used for input detection with visual supervision from the frozen generator.
 
 Both objectives train the shared prompt parameters through the joint loss
 \begin{equation}
@@ -165,7 +168,9 @@ The corresponding suppression prompt update uses the same learning rate:
     -\eta\,\nabla_{\mathbf p_c^s}\mathcal L_{\mathrm{sup}}^{(c)}.
     \label{eq:suppression_update}
 \end{equation}
-
+% Consequently, the suppression prompt is learned in the context of the original positive condition. 
+% Matching both guided predictions at the same latent state provides supervision for changing the target content 
+% while retaining the remaining instructions represented by the safe reference.
 We obtain training states by starting from Gaussian noise and following the safe reference's CFG trajectory.
 At each timestep, all velocity predictions are evaluated at the same latent, which is treated as fixed when updating $\mathbf p_c^s$.
 Suppression prompts are optimized separately for each concept, independently of detection prompts.
@@ -203,6 +208,12 @@ We retain the original input as $q^+=q$ and use $v^-=v_\theta(z_t,t;\mathbf p^-(
     \end{aligned}
     \label{eq:inference_guided_velocity}
 \end{equation}
+
 Detection and prompt selection are performed once before sampling, and $\mathbf p^-(q)$ remains fixed throughout the trajectory.
 If no concept reaches its threshold or the selected concept is not enabled for erasure, we treat the input prompt as safe for the current erasure setting and apply no suppression.
 The negative branch then uses null-text embeddings, and the model generates images through standard CFG with the original input prompt.
+
+
+For activated inputs, the cached suppression prompt occupies the existing negative branch of CFG. 
+The method therefore retains the standard two-branch computation without adding an extra diffusion-model prediction per sampling step. 
+Different erasure settings can share the same pretrained model, with the enabled concept set controlling which cached prompt pairs can be activated.
