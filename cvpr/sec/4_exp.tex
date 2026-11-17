@@ -17,7 +17,7 @@ Further details on the datasets—including the datasets used to train the detec
 \end{figure}
 
 \noindent\textbf{Implementation details.}
-We optimize both prompt types with AdamW Optimizer\cite{kingma2014adam} at a learning rate of $\eta=10^{-3}$ for up to 5 epochs.
+We optimize both prompt types with the AdamW optimizer~\cite{loshchilov2019decoupled} at a learning rate of $\eta=10^{-3}$ for up to 5 epochs.
 The SupCon weight and temperature are set to $\lambda=1$ and $T=0.1$, respectively, and the detection threshold is set to $\tau_c=0.215$ for all concepts.
 Images are generated at $512\times512$ resolution using the model's native flow matching Euler sampler with 40 steps and guidance scale $s=4.5$.
 All comparison methods share the same input prompts, seeds, and base sampling settings.
@@ -80,13 +80,13 @@ The quantitative comparisons across these benchmarks are summarized in \cref{tab
 
 As shown in \cref{tab:nsfw_preservation}, DAS consistently outperforms all baselines across both safety and quality metrics. 
 On the I2P benchmark, DAS cuts residual NudeNet detections by more than half compared to the strongest baseline (from 45 down to 21), demonstrating substantially stronger suppression of explicit content. 
-Crucially, this strict mitigation does not compromise general generation quality on MS-COCO. 
+Crucially, this strict mitigation has only a minor impact on general generation quality on MS-COCO.
 Instead, DAS maintains high semantic alignment close to the unedited model while achieving the lowest FID, confirming that decoupling concept detection from suppression prevents unnecessary intervention on benign inputs.
 
 \subsection{IP character erasure}
 \label{sec:exp_ip}
 
-We evaluate IP character erasure on Pikachu, Snoopy, and Mickey using 800 fixed prompt templates from \cite{pmlr-v139-radford21a}, yielding 2400 generated images for 3 concept per setting. 
+We evaluate IP character erasure on Pikachu, Snoopy, and Mickey using fixed prompt templates from~\cite{pmlr-v139-radford21a}.
 We consider two erasure configurations: a single-target setting that removes Pikachu, and a multi-target setting that jointly suppresses Pikachu and Snoopy within the same model. 
 In both settings, we generate images for all three characters to evaluate both target suppression and non-target retention. 
 Following EraseAnything~\cite{pmlr-v267-gao25j}, we employ Qwen3-VL-8B-Instruct—without access to the input prompt or erasure target—to classify each image into one of the three characters or \texttt{NONE}, reporting classification accuracy on erased concepts ($\mathrm{Acc}_{\mathrm{e}}\downarrow$) and unaffected concepts ($\mathrm{Acc}_{\mathrm{ir}}\uparrow$). 
@@ -155,7 +155,7 @@ Overall, DAS avoids the severe collateral damage often induced by aggressive con
 \label{sec:exp_style}
 
 To evaluate artistic style erasure, we conduct two separate experiments targeting Van Gogh and Monet, respectively. 
-For each setting, we generate total 900 images across three styles (Van Gogh, Monet, and Picasso) using 30 painting templates from~\cite{SPEED}, evaluating both target suppression and the retention of the remaining two styles. 
+For each setting, we generate images in the styles of Van Gogh, Monet, and Picasso using painting templates from~\cite{SPEED} to evaluate target suppression and non-target style preservation.
 Following the image-only classification protocol in \cref{sec:exp_ip}, we use Qwen3-VL-8B-Instruct to classify each generated image into one of the three artists or \texttt{NONE}, reporting erasure efficacy ($\mathrm{Acc}_{\mathrm{e}}\downarrow$) and specificity ($\mathrm{Acc}_{\mathrm{ir}}\uparrow$) alongside per-style FID against the original model. 
 The quantitative comparisons are presented in \cref{tab:style_erasure}.
 
@@ -221,7 +221,7 @@ These results confirm that DAS effectively removes nuanced stylistic attributes 
 \label{sec:exp_object}
 
 To evaluate object erasure, we select ten ImageNet classes: church, golf ball, English springer, goose, chain saw, cassette player, French horn, garbage truck, banana, and parachute. 
-For each class, we generate 50 images using the prompt \texttt{a photo of \{class\}} across seeds 0--49, totaling 500 images per evaluation setting. 
+For each class, we generate images using the prompt \texttt{a photo of \{class\}} with different random seeds.
 We test both a single-target configuration that erases \textit{church} and a multi-target configuration that jointly removes five classes (\textit{church}, \textit{golf ball}, \textit{parachute}, \textit{cassette player}, and \textit{banana}) within the same model. 
 All generated images are evaluated using ResNet-50 (with ImageNet-1K V2 weights) over the full 1,000-class label space, where lower target accuracy indicates stronger erasure and higher non-target accuracy reflects better preservation. 
 \Cref{tab:object_erasure} reports the mean target Top-1/Top-3 accuracies alongside the average non-target Top-1 accuracy across the remaining classes (nine in the single-target setting and five in the multi-target setting).
@@ -310,7 +310,7 @@ Following the protocol described in \cref{sec:exp_nsfw}, we evaluate these varia
         w/o Detection Prompt & 103 & 23.45 & 92.31 \\
         w/o Suppression Prompt & 98 & 27.94 & 87.29 \\
         \midrule
-        Ours & \textbf{21} & \textbf{30.76} & \textbf{39.12} \\
+        Ours & \textbf{21} & \textbf{29.76} & \textbf{39.12} \\
         \bottomrule
     \end{tabular}
 \end{table}

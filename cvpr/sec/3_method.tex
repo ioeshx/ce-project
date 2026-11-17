@@ -4,7 +4,7 @@
 \begin{figure*}[t]
     \centering
     \includegraphics[width=\textwidth]{figures/method-overview.pdf}
-    \caption{\textbf{Overview of Detect and Suppress (DAS).} (a) We learn detection prompts using SupCon and TI-flow objectives. (b) We learn suppression prompts by matching guided velocities to a fixed safe reference. (c) At inference, thresholded top-1 detection activates the selected concept's suppression prompt if enabled; otherwise, generation uses null-text negative embeddings. All pretrained models remain frozen.}
+    \caption{\textbf{Overview of Detect and Suppress (DAS).} (a) We learn detection prompts using supervised contrastive learning (SupCon) and Textual Inversion--inspired flow reconstruction (TI-flow). (b) We learn suppression prompts by matching guided velocities to a fixed safe reference. (c) At inference, thresholded top-1 detection activates the selected concept's suppression prompt if enabled; otherwise, generation uses null-text negative embeddings. All pretrained models remain frozen.}
     \label{fig:method_overview}
 \end{figure*}
 
@@ -14,7 +14,7 @@
 \noindent\textbf{Diffusion Transformer.}
 Diffusion Transformers (DiTs) trained with flow matching~\cite{lipman2022flow} underpin recent text-to-image models such as SD3 and FLUX~\cite{pmlr-v235-esser24a,flux2024}.
 These models learn a velocity field that continuously transports samples between noise and image distributions.
-For an image $x$, a VAE encoder $E$ produces the latent $z_0=E(x)$, while a text encoder (typically CLIP~\cite{pmlr-v139-radford21a} or T5~\cite{JMLR:v21:20-074}) $\mathcal E$ maps the input prompt $q$ to text embeddings $\mathcal E(q)$.
+For an image $x$, the encoder $E$ of a variational autoencoder (VAE)~\cite{kingma2014autoencoding} produces the latent $z_0=E(x)$, while a text encoder (typically CLIP~\cite{pmlr-v139-radford21a} or T5~\cite{JMLR:v21:20-074}) $\mathcal E$ maps the input prompt $q$ to text embeddings $\mathcal E(q)$.
 Rectified flow~\cite{liu2022flow} defines a linear interpolation between the image latent and Gaussian noise:
 \begin{equation}
     z_t=(1-t)z_0+t\epsilon,
@@ -55,11 +55,11 @@ For $s>1$, $v^{-}$ enters with a negative coefficient, so the guided velocity de
 \label{sec:detection_prompt}
 
 As illustrated in \cref{fig:method_overview}, we independently learn two prompts for each target concept $c$: a detection prompt to identify inputs containing $c$ and a suppression prompt to guide generation away from $c$.
-Before sampling, an input prompt identified as containing concept $c$ activates the corresponding suppression prompt in CFG's negative branch. Safe inputs retain null-text negative prompt and follow the model's standard image generation process.
+Before sampling, an input prompt identified as containing concept $c$ activates the corresponding suppression prompt in CFG's negative branch. Safe inputs retain the null-text negative prompt and follow the model's standard image generation process.
 All pretrained models remain frozen.
 
 We represent the detection prompt by its learnable embedding $\mathbf p_c^d$ in the frozen CLIP text encoder's output space.
-Given a description $q_c^d$ of concept $c$, detection prompt's initial value is
+Given a description $q_c^d$ of concept $c$, we initialize the detection prompt as
 \begin{equation}
     \mathbf p_c^{d,(0)}=\mathcal E(q_c^d).
     \label{eq:detection_initialization}
@@ -84,7 +84,7 @@ The contrastive objective is
 where $T$ is the contrastive temperature.
 % and Concept Inversion~\cite{pham2023circumventing}
 To learn a detection prompt that captures the visual characteristics of concept $c$, we draw on the visual knowledge encoded in the frozen diffusion model.
-Inspired by Textual Inversion~\cite{Gal_TextualInversion}, we train the detection prompt through a flow reconstruction objective.
+Inspired by Textual Inversion~\cite{Gal_TextualInversion}, we learn the detection prompt through a flow reconstruction objective, which we refer to as TI-flow.
 % Through frozen encoding operations, the trainable soft prompt $\mathbf p_c^d$ produce the text embeddings $\mathbf p_{c,\mathrm{gen}}^d$ supplied to the DiT.
 For images $x\in\mathcal I_c$ representing concept $c$, we obtain $z_0=E(x)$ and sample $z_t$ using \cref{eq:rf_interpolation}.
 The reconstruction objective is

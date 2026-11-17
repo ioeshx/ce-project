@@ -21,7 +21,7 @@ These limitations motivate learning an effective negative prompt while selective
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{figures/teaser-svg.pdf}
-    \caption{\textbf{An illustration of our Detect and Suppress (DAS).} Safe inputs follow standard generation. When a detection prompt identifies a target concept, its paired suppression prompt is activated in the negative branch of the frozen diffusion model.}
+    \caption{\textbf{An illustration of Detect and Suppress (DAS).} Safe inputs follow standard generation. When a detection prompt identifies a target concept, its paired suppression prompt is activated in the negative branch of the frozen diffusion model.}
     \label{fig:das_teaser}
 \end{figure}
 
@@ -39,7 +39,7 @@ At inference time, detection is performed just once prior to sampling: an activa
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth,trim=45bp 87bp 0bp 60bp,clip]{figures/negative_prompt.pdf}
-    \caption{\textbf{Concept text can fail as a negative prompt.} The original output (left) and the output using ``Pikachu'' as the negative prompt (middle) both contain the character "Pikachu", whereas DAS suppresses it (right).}
+    \caption{\textbf{Concept text can fail as a negative prompt.} The original output (left) and the output using ``Pikachu'' as the negative prompt (middle) both contain the character ``Pikachu'', whereas DAS suppresses it (right).}
     \label{fig:negative_prompt}
 \end{figure}
 
@@ -51,5 +51,5 @@ Our contributions are as follows:
 \begin{itemize}
     \item We formulate selective concept suppression through learned prompt pairs that separate the decision to intervene from the condition used to control generation.
     \item We develop separate objectives for learning a detection prompt from concept discrimination and a suppression prompt from safe reference predictions within a frozen model.
-    \item Extensive experiments on NSFW content, IP character, style show that our method achieve superior performance in suppressing target concepts while preserving benign generation.
+    \item Extensive experiments on NSFW content, IP characters, artistic styles, and objects show that our method achieves superior performance in suppressing target concepts while preserving benign generation.
 \end{itemize}
