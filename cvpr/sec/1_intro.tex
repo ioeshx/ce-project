@@ -4,12 +4,12 @@
 Text-to-image diffusion models learn a denoising process conditioned on natural-language descriptions, predicting how to recover a clean image from noise~\cite{NEURIPS2020_4c5bcfec,Rombach_2022_CVPR,pmlr-v235-esser24a,flux2024}.
 At inference time, this learned model progressively transforms random noise into images that reflect the objects, attributes, and composition specified by a prompt.
 The generative capabilities that models acquire from large-scale datasets also raise concerns:
-they can generate not-safe-for-work (NSFW) content, reproduce recognizable IP characters, or imitate the painting style of a particular artist~\cite{Schramowski_2023_CVPR,Gandikota_2023_ICCV,Cai_2026_CVPR},
+they can generate not-safe-for-work (NSFW) content, reproduce recognizable intellectual property (IP) characters (\eg Pikachu), or imitate the painting style of a particular artist~\cite{Schramowski_2023_CVPR,Gandikota_2023_ICCV},
 posing risks of harmful content exposure, intellectual property disputes, and economic or reputational harm to creators.
 To mitigate these issues, concept erasure has been proposed to selectively suppress designated target concepts while preserving the model's generative capability for unrelated content~\cite{Gandikota_2023_ICCV}.
 
 Existing concept erasure methods typically intervene in either model parameters or the generation process.
-Weight-editing approaches~\cite{Gandikota_2023_ICCV,Gandikota_2024_WACV,Kumari_2023_ICCV,pmlr-v267-gao25j} update model parameters to reduce the likelihood of generating a target concept; however, an update intended for one specific concept often bleeds into unrelated content, causing collateral damage.
+Weight-editing approaches~\cite{Gandikota_2023_ICCV,Gandikota_2024_WACV,Kumari_2023_ICCV,pmlr-v267-gao25j,MACE,AdaVD} update model parameters to reduce the likelihood of generating a target concept; however, an update intended for one specific concept often bleeds into unrelated content, causing collateral damage.
 Inference-time methods~\cite{Schramowski_2023_CVPR,pan2025safecfg,shin2025promptbasedsafetyguidanceineffective,jain2026rethinkingnegativepromptingconcept} offer an alternative by steering the sampling trajectory while keeping model weights fixed,
 yet applying the same suppression condition indiscriminately can still alter generations for inputs that require no such intervention.
 Among inference-time approaches, negative prompting provides a flexible interface for controlling generation through the model's conditioning inputs.

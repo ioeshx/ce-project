@@ -134,8 +134,6 @@
   <g id="suppressed-generation-flow" inkscape:label="Suppression joins the unsafe input route">
     <path d="M603 450 H747 V355 H759" class="flow"/>
     <path d="M638 572 H700 V462" class="suppression-flow"/>
-    <circle cx="670" cy="572" r="14" fill="#FFFFFF" stroke="#D84B4B" stroke-width="2.7"/>
-    <path d="M662 572 H678" stroke="#D84B4B" stroke-width="3.2" stroke-linecap="round"/>
     <path d="M1000 355 H1018 V450 H1022" class="safe-flow"/>
   </g>
 
