@@ -196,3 +196,57 @@ style_detection_training_templates = [
     "a large painting in the style of {}",
 ]
 
+
+detection_negative_concepts = {
+    "Pikachu": {"related": ("Raichu", "Pichu"), "unrelated": ("teapot", "bicycle")},
+    "Snoopy": {"related": ("Droopy", "Brian Griffin"), "unrelated": ("teapot", "bicycle")},
+    "Van Gogh": {"related": ("Monet", "Paul Gauguin"), "unrelated": ("pixel art", "minimalism")},
+    "Monet": {"related": ("Camille Pissarro", "Alfred Sisley"), "unrelated": ("pixel art", "minimalism")},
+    "Picasso": {"related": ("Georges Braque", "Juan Gris"), "unrelated": ("pixel art", "minimalism")},
+    "church": {"related": ("library", "town hall"), "unrelated": ("apple", "butterfly")},
+    "golf ball": {"related": ("tennis ball", "table tennis ball"), "unrelated": ("teapot", "bicycle")},
+    "parachute": {"related": ("umbrella", "hot air balloon"), "unrelated": ("teapot", "bicycle")},
+    "cassette player": {"related": ("radio", "CD player"), "unrelated": ("apple", "butterfly")},
+    "banana": {"related": ("lemon", "pear"), "unrelated": ("teapot", "bicycle")},
+}
+
+# Number of rows per target before the joint loss deduplicates the text pool.
+detection_expansion_counts = {
+    "positive": 30,
+    "related_negative": 10,
+    "unrelated_negative": 10,
+}
+
+
+def expand_detection_prompts(target):
+    """Return the ordered prompt rows with their labels and negative types."""
+    if target in ("Van Gogh", "Monet", "Picasso"):
+        templates = style_detection_training_templates
+    else:
+        templates = detection_training_templates
+
+    negatives = detection_negative_concepts[target]
+    groups = (
+        ("positive", 1, (target,)),
+        ("related_negative", 0, negatives["related"]),
+        ("unrelated_negative", 0, negatives["unrelated"]),
+    )
+    samples = []
+    for kind, label, concepts in groups:
+        # Start each label group at the first template and cycle the substitutions in order.
+        for index in range(detection_expansion_counts[kind]):
+            concept = concepts[index % len(concepts)]
+            template = templates[index % len(templates)]
+            samples.append({"prompt": template.format(concept), "label": label, "kind": kind})
+    return samples
+
+
+# Unique text counts after deduplication in the joint detection objective.
+detection_training_counts = {
+    target: {
+        kind: len({row["prompt"] for row in expand_detection_prompts(target) if row["kind"] == kind})
+        for kind in detection_expansion_counts
+    }
+    for target in detection_negative_concepts
+}
+

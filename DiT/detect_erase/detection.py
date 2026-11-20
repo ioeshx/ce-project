@@ -1,6 +1,7 @@
 """Detection decisions, one-vs-rest confusion counts, and benchmark reports."""
 import csv
 from collections import Counter
+from itertools import groupby
 import json
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from DiT.detect_erase.outputs import experiment_directory
 from DiT.detect_erase.similarity import publish_similarity, read_gates
 
 
-def summarize_gates(manifest, gate_log, nude_keys):
+def summarize_gates(manifest, gate_log, nude_keys, *, include_roc=False):
     """Score actual selected prompts; repeated generation replaces the earlier decision."""
     decisions = read_gates(gate_log)
     targets = {concept_key(target): target for target in manifest["targets"]}
@@ -23,6 +24,8 @@ def summarize_gates(manifest, gate_log, nude_keys):
     by_concept, records = {}, []
     by_erase = {key: Counter(selected_count=0, correct_count=0, wrong_target_count=0, non_target_false_count=0, TP=0, TN=0, FP=0, FN=0)
                 for key in targets}
+    roc_scores = {key: [] for key in targets} if include_roc else {}
+    score_direction = -1 if options.get("similarity") == "l2" else 1
     for record in manifest["records"]:
         key = record["sample_id"], int(record["seed"])
         if manifest["task"] == "mscoco":
@@ -64,6 +67,8 @@ def summarize_gates(manifest, gate_log, nude_keys):
             for target_key, counts in by_erase.items():
                 actual, predicted_target = expected == target_key, target_key in selected
                 counts["TP" if actual and predicted_target else "FN" if actual else "FP" if predicted_target else "TN"] += 1
+                if include_roc and (score := decision["scores"].get(targets[target_key])) is not None:
+                    roc_scores[target_key].append((score_direction * score, actual))
             for selected_key in selected:
                 counts = by_erase[selected_key]
                 counts["selected_count"] += 1
@@ -107,12 +112,17 @@ def summarize_gates(manifest, gate_log, nude_keys):
         row["non_target_false_rate"] = (counts["non_target_false_count"] / overall["non_target_count"]
                                          if overall["non_target_count"] else None)
         row.update(binary_rates(counts))
+        if include_roc:
+            row.update(roc_metrics(roc_scores[key]))
         erase_rows.append(row)
     micro = {name: sum(row[name] for row in erase_rows) for name in ("TP", "TN", "FP", "FN")}
     prediction_rows = [{"detect_prompt": name, "prediction_count": count,
                         "prediction_rate": count / overall["recorded_count"] if overall["recorded_count"] else None}
                        for name, count in predictions.items()]
-    return dict(summary={**rates(overall), **micro, **binary_rates(micro)},
+    summary = {**rates(overall), **micro, **binary_rates(micro)}
+    if include_roc and len(erase_rows) == 1:
+        summary.update({key: erase_rows[0][key] for key in ("auroc", "recall_at_5pct_fpr")})
+    return dict(summary=summary,
                 by_concept=concept_rows, by_erase_prompt=erase_rows, by_prediction=prediction_rows), records
 
 
@@ -122,6 +132,27 @@ def binary_rates(counts):
         ("precision", tp, tp + fp), ("recall", tp, tp + fn), ("F1", 2 * tp, 2 * tp + fp + fn),
         ("false_positive_rate", fp, fp + tn), ("false_negative_rate", fn, fn + tp),
         ("binary_accuracy", tp + tn, tp + tn + fp + fn))}
+
+
+def roc_metrics(scores):
+    """Count tied scores at one threshold and use only attainable FPRs."""
+    positives = sum(label for _, label in scores)
+    negatives = len(scores) - positives
+    if not positives or not negatives:
+        return dict(auroc=None, recall_at_5pct_fpr=None)
+
+    tp = fp = area = recall_at_5pct_fpr = 0
+    ordered = sorted(scores, key=lambda pair: pair[0], reverse=True)
+    for _, tied in groupby(ordered, key=lambda pair: pair[0]):
+        labels = [label for _, label in tied]
+        added_tp = sum(labels)
+        added_fp = len(labels) - added_tp
+        area += added_fp * (tp + added_tp / 2)
+        tp += added_tp
+        fp += added_fp
+        if fp * 20 <= negatives:
+            recall_at_5pct_fpr = tp / positives
+    return dict(auroc=area / (positives * negatives), recall_at_5pct_fpr=recall_at_5pct_fpr)
 
 
 def nude_labels(path):
@@ -174,8 +205,9 @@ def publish_report(directory, manifest, gate_log, nude_keys, label_path, *, dete
     case = manifest["case_id"]
     case_dir = experiment_directory(directory, case)
     prefix = "detect" if detect_only else "trigger"
-    report, records = summarize_gates(manifest, Path(gate_log), nude_keys)
-    similarity = publish_similarity(manifest, gate_log, nude_keys, case_dir / "similarity_plot")
+    report, records = summarize_gates(manifest, Path(gate_log), nude_keys, include_roc=detect_only)
+    similarity = publish_similarity(manifest, gate_log, nude_keys, case_dir / "similarity_plot",
+                                    per_record=detect_only and manifest["task"] == "i2p")
     options = manifest.get("config", {}).get("adapter", {})
     saved_report = dict(report)
     if detect_only:

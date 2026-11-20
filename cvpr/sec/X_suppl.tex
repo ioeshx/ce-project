@@ -5,6 +5,10 @@
 \section{Datasets}
 \label{sec:suppl_datasets}
 
+We used GPT to generate most of the prompts used for training. 
+The corresponding prompt texts and templates are included in the accompanying supplementary files. 
+The training and test sets share no prompts.
+
 \subsection{Detection prompt training data}
 \label{sec:suppl_detection_data}
 
@@ -26,7 +30,7 @@ We provide 50 shared scene templates. Each specifies a setting and leaves one sl
 The 17 detection training templates vary how they describe an artwork, as in \texttt{a painting in the style of \{artist\}} and \texttt{a close-up painting in the style of \{artist\}}. We fill the slot with the target artist for positives and with a related artist or an unrelated style for negatives. For Van Gogh, Monet is a related negative and pixel art is an unrelated negative.
 
 \noindent\textbf{TI-flow images.}
-For each target concept $c$, we condition the frozen base model on text describing $c$ and generate 100 images to form the fixed image set $\mathcal I_c$. At each detection prompt update for $c$, we sample one image from $\mathcal I_c$ to compute the TI-flow loss.
+For each target concept $c$, we use only its name (e.g., \texttt{nudity}) to condition the frozen base model and generate 100 images for the fixed image set $\mathcal I_c$. At each detection prompt update for $c$, we sample one image from $\mathcal I_c$ to compute the TI-flow loss.
 
 \subsection{Suppression prompt training data}
 \label{sec:suppl_suppression_data}
@@ -46,3 +50,81 @@ We insert Van Gogh, Monet, and Picasso into the 30 painting templates from SPEED
 
 \noindent\textbf{Objects.}
 We use \texttt{a photo of \{class\}} for each of the ten ImageNet classes in the object erasure evaluation, yielding prompts such as \texttt{a photo of church} and \texttt{a photo of golf ball}.
+
+
+\section{Ablation Study}
+\label{sec:suppl_ablation}
+
+\subsection{Detection prompts and TI-flow}
+\label{sec:suppl_detection_ablation}
+
+To evaluate how effectively learned detection prompts identify target concepts in user prompts---and 
+whether incorporating TI-flow supervision improves this discrimination---we conduct an ablation study 
+on the 931 prompts from the I2P \textit{sexual} subset~\cite{Schramowski_2023_CVPR}, treating 
+prompts flagged as containing nudity as positive instances.
+
+% We assess how well learned detection prompts identify target concepts in user prompts and whether adding the TI-flow loss further improves classification.
+% We compare three variants on the 931 prompts in the I2P \textit{sexual} subset~\cite{Schramowski_2023_CVPR}.
+% A positive label indicates an input identified as containing nudity.
+
+Each variant encodes the user prompt with the frozen CLIP text encoder and computes its cosine similarity 
+to a reference embedding for the target concept, as in \cref{eq:detection_similarity}.
+A score at or above threshold $\tau$ suggests that the target concept is present.
+The variants differ in how they obtain the reference embedding.
+\emph{Base CLIP} directly uses the frozen CLIP text embedding of the raw target concept description without optimization.
+\emph{SupCon only} optimizes the detection prompt solely with the supervised contrastive loss.
+\emph{SupCon + TI-flow} trains the detection prompt using the complete detection objective in \cref{eq:detection_objective}, 
+incorporating visual textual inversion flow-matching supervision from the concept images in $\mathcal{I}_c$.
+% , adding TI-flow supervision from the concept images described in \cref{sec:suppl_detection_data}
+To ensure a controlled comparison, the two learned variants share the initialization, text training batches, and number of updates.
+
+% \Cref{tab:suppl_detection_ablation} reports how well the cosine scores distinguish positive and negative prompts across decision thresholds.
+% The area under the ROC curve (AUROC) summarizes how consistently positive prompts receive higher scores than negative prompts.
+% R@5\% FPR is the highest recall attained at a threshold that flags at most 5\% of the negative prompts, where FPR denotes the false-positive rate.
+% At the shared threshold $\tau$, accuracy (Acc.) is the fraction of all prompts classified correctly. Recall and FPR are the fractions of positive and negative prompts whose scores reach the threshold, respectively.
+
+\Cref{tab:suppl_detection_ablation} summarizes the classification performance of the three variants across 
+both threshold-free ranking metrics and fixed-threshold operating points. 
+To assess global separability independent of any specific cutoff, we report the area under the ROC curve 
+(AUROC) alongside R@5\% FPR, which measures the maximum recall achievable when the false-positive rate 
+(FPR) is capped at 5\%. To further reflect practical deployment at the decision threshold $\tau$, 
+we also report overall accuracy (Acc.), recall, and FPR.
+
+
+\begin{table}[!htbp]
+    \centering
+    \small
+    \setlength{\tabcolsep}{2pt}
+    \caption{\textbf{Detection prompt and TI-flow ablation for nudity classification.}
+    All three variants score the same 931 prompts in the I2P \textit{sexual} subset using a frozen CLIP text encoder.}
+    \label{tab:suppl_detection_ablation}
+    \begin{tabular}{@{}lccccc@{}}
+        \toprule
+        & \multicolumn{2}{c}{ROC analysis} & \multicolumn{3}{c}{At $\tau$} \\
+        \cmidrule(lr){2-3}\cmidrule(lr){4-6}
+        Variant & AUROC $\uparrow$ & \shortstack{R@5\%\\FPR $\uparrow$} & Acc. $\uparrow$ & Recall $\uparrow$ & FPR $\downarrow$ \\
+        \midrule
+        Base CLIP & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+        SupCon only & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+        SupCon + TI-flow & \emptycell & \emptycell & \emptycell & \emptycell & \emptycell \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+As shown in \cref{tab:suppl_detection_ablation}, performance improves consistently across the three variants. 
+Replacing the fixed text embedding in \emph{Base CLIP} with a prompt learned via \emph{SupCon only} yields 
+substantial gains in both AUROC and recall, confirming that discriminative text supervision sharpens the 
+boundary between concept-bearing and benign prompts. Incorporating visual flow-matching supervision 
+in \emph{SupCon + TI-flow} further improves separation across all metrics. 
+Notably, achieving higher recall under the same strict false-positive constraint 
+(both at 5\% FPR and at $\tau$) demonstrates that visual reconstruction complements contrastive text learning, 
+allowing the detector to capture more subtle nudity-related prompts without increasing false alarms on benign inputs.
+
+% An improvement from \emph{Base CLIP} to \emph{SupCon only} would indicate that learning the reference embedding 
+% from labeled text improves the separation between positive and negative prompts.
+% A further gain with \emph{SupCon + TI-flow} would suggest that supervision from concept images complements the text contrastive objective.
+% Higher recall under the same false-positive constraint would mean that the detector 
+% identifies more prompts containing the target concept within the same false-alarm bound.
+
+% Base CLIP uses a fixed concept embedding, SupCon only learns the detection prompt from labeled text, and SupCon + TI-flow adds supervision from concept images.
+% All metrics are reported as percentages.

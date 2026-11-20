@@ -220,7 +220,9 @@ class TextEncoder:
     @torch.no_grad()
     def prepare_detector(self, entries, options):
         self.entries, self.options = entries, options
-        if options["similarity"] == "cosine":
+        if options.get("base_clip"):
+            self.prototypes = self.features(list(entries))
+        elif options["similarity"] == "cosine":
             features = [self.condition(entry, "detect", features_only=True) for entry in entries.values()]
             self.prototypes = tuple(torch.cat([feature[i] for feature in features]) for i in range(len(self.encoders)))
         else:

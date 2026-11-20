@@ -51,7 +51,7 @@ def detector_thresholds(options, detectors, decisions):
     return {target: thresholds[target] for target in detectors}
 
 
-def publish_similarity(manifest, gate_log, nude_keys, directory):
+def publish_similarity(manifest, gate_log, nude_keys, directory, *, per_record=False):
     """Save one figure per detector; each group is normalized independently."""
     import numpy as np
 
@@ -63,19 +63,21 @@ def publish_similarity(manifest, gate_log, nude_keys, directory):
                  else manifest["targets"])
     decisions = read_gates(gate_log)
     thresholds = detector_thresholds(options, detectors, decisions)
-    unique, sample_counts = {}, Counter()
+    records_by_key, sample_counts = {}, Counter()
     applied = []
     for record in manifest["records"]:
-        decision = decisions.get((record["sample_id"], int(record["seed"])))
+        sample_key = record["sample_id"], int(record["seed"])
+        decision = decisions.get(sample_key)
         if decision is None:
             continue
-        unique[record["prompt"]] = record, decision
+        key = sample_key if per_record else record["prompt"]
+        records_by_key[key] = record, decision
         sample_counts[record["prompt"]] += 1
         # Old all-detector logs predate cosine threshold gating.
         applied.append(decision.get("threshold_applied", not options.get("all_detect_prompts", False)))
     threshold_applied = all(applied) if applied else None
     rows = []
-    for record, decision in unique.values():
+    for record, decision in records_by_key.values():
         scores = decision["scores"]
         top1 = (max if metric == "cosine" else min)(scores, key=scores.get)
         label = prompt_concept(manifest, record, nude_keys)
@@ -86,7 +88,8 @@ def publish_similarity(manifest, gate_log, nude_keys, directory):
             passed = None if threshold is None else (score >= threshold if metric == "cosine" else score <= threshold)
             rows.append(dict(case_id=manifest["case_id"], sample_id=record["sample_id"], seed=record["seed"],
                              prompt=record["prompt"], concept=record["concept"], label_concept=label,
-                             sample_count=sample_counts[record["prompt"]], detector=target, similarity=metric,
+                             sample_count=1 if per_record else sample_counts[record["prompt"]],
+                             detector=target, similarity=metric,
                              group="target" if label == concept_key(target) else "unrelated", score=score,
                              threshold=threshold, passed_threshold=passed, top1=top1 == target,
                              predicted=target in decision.get("predicted", decision["selected"]),
@@ -120,12 +123,14 @@ def publish_similarity(manifest, gate_log, nude_keys, directory):
                                    count=int(number), percentage=100 * int(number) / count if count else 0.0)
                               for left, right, number in zip(edges[:-1], edges[1:], counts))
 
+    unit = "record" if per_record else "unique prompt"
     report = dict(case_id=manifest["case_id"], similarity=metric, all_detect_prompts=options.get("all_detect_prompts", False),
                   threshold_applied=threshold_applied, thresholds=thresholds,
                   total_sample_count=len(manifest["records"]), recorded_sample_count=sum(sample_counts.values()),
                   missing_sample_count=len(manifest["records"]) - sum(sample_counts.values()),
-                  unique_prompt_count=len(unique), deduplication="exact prompt text within this case; latest recorded sample",
-                  normalization="bin count / unique prompt count in this detector's group * 100",
+                  unique_prompt_count=len(sample_counts), unit=unit,
+                  deduplication=("sample ID and seed" if per_record else "exact prompt text within this case; latest recorded sample"),
+                  normalization=f"bin count / {unit} count in this detector's group * 100",
                   label_source="real_nude_mapping" if manifest["task"] == "i2p" else
                                "MSCOCO negative controls" if manifest["task"] == "mscoco" else "benchmark concept",
                   bin_edges=edges.tolist(), x_limits=x_limits, groups=summaries)
@@ -166,12 +171,13 @@ def plot_similarity(report, histograms, directory):
                 label += " (reference; not applied in saved decisions)"
             axis.axvline(threshold, color="#333333", linestyle="--", linewidth=1.4, label=label)
         axis.set(xlabel="Cosine similarity" if report["similarity"] == "cosine" else "RMS distance",
-                 ylabel="Prompts in bin (%)", xlim=report["x_limits"][target], ylim=ylim,
+                 ylabel="Records in bin (%)" if report["unit"] == "record" else "Prompts in bin (%)",
+                 xlim=report["x_limits"][target], ylim=ylim,
                  title=f"{report['case_id']} / {target}")
         axis.yaxis.set_major_formatter(PercentFormatter(xmax=100))
         axis.grid(axis="y", alpha=.2)
         axis.legend(fontsize=9, loc="upper left")
-        fig.text(.12, .025, " | ".join(notes) + "\nOne vote per unique prompt; each nonempty group sums to 100%.", fontsize=9)
+        fig.text(.12, .025, " | ".join(notes) + f"\nOne vote per {report['unit']}; each nonempty group sums to 100%.", fontsize=9)
         fig.tight_layout(rect=(0, .09, 1, 1))
         for suffix in ("png", "pdf"):
             fig.savefig(directory / f"{slug(concept_key(target))}.{suffix}", dpi=160)

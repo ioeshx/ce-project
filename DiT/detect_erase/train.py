@@ -240,14 +240,19 @@ def erase_images(model, entry, args, target):
     return encode_images(model, selected, args.batch_size), str(path)
 
 
-def train_ti_flow(model, entry, rows, parameters, args, tracker, target, stage_dir):
-    joint = args.detect_loss in {"ti-flow-bce", "ti-flow-supcon"}
+def train_detector(model, entry, rows, parameters, args, tracker, target, stage_dir):
+    use_ti_flow = args.detect_loss != "supcon"
+    use_classification = args.detect_loss != "ti-flow"
+    text = model.text if use_ti_flow else model
+    # SupCon-only uses the same update schedule as its TI-flow counterpart.
     positive_rows = [row for row in rows if row["label"] == 1][:args.ti_image_count]
-    clean = ti_images(model, positive_rows, args, stage_dir, target)
-    entry["detect_ti_images"] = len(clean)
-    if joint:
+    examples = len(positive_rows)
+    if use_ti_flow:
+        clean = ti_images(model, positive_rows, args, stage_dir, target)
+        examples = entry["detect_ti_images"] = len(clean)
+    if use_classification:
         text_rows = list({(row["prompt"], row["label"]): row for row in rows}.values())
-        features = encode_dataset(model.text, [row["prompt"] for row in text_rows],
+        features = encode_dataset(text, [row["prompt"] for row in text_rows],
                                   args.classification_batch_size, clip_only=True)
         labels = torch.tensor([row["label"] for row in text_rows], dtype=torch.float32)
         entry["detect_classification_samples"] = len(text_rows)
@@ -261,36 +266,41 @@ def train_ti_flow(model, entry, rows, parameters, args, tracker, target, stage_d
     for epoch in range(1, args.epochs + 1):
         if tracker:
             tracker.start_epoch(target, "detect", epoch)
-        for indices in torch.randperm(len(clean), generator=generator).split(args.batch_size):
-            z0 = clean[indices].to(model.device)
-            noise = torch.randn(z0.shape, generator=generator).to(model.device)
-            sigma = torch.rand((len(indices),), generator=generator).to(model.device)
-            amount = sigma[:, None, None, None]
-            noisy = (1 - amount) * z0 + amount * noise
-            velocity_target = noise - z0
-            if model.flux:
-                noisy = model.pipe._pack_latents(noisy, *noisy.shape)
-                velocity_target = model.pipe._pack_latents(velocity_target, *velocity_target.shape)
+        for indices in torch.randperm(examples, generator=generator).split(args.batch_size):
             optimizer.zero_grad(set_to_none=True)
-            condition = model.text.condition(entry, "detect")
-            prediction = model.velocity(noisy.to(model.dtype), sigma * 1000, condition, model.config["sampling"])
-            ti_loss = torch.nn.functional.mse_loss(prediction.float(), velocity_target.float())
-            loss = ti_loss
-            metrics = {"ti_loss": ti_loss.item()} if tracker else None
-            if joint:
+            metrics, timestep = {}, None
+            if use_ti_flow:
+                z0 = clean[indices].to(model.device)
+                noise = torch.randn(z0.shape, generator=generator).to(model.device)
+                sigma = torch.rand((len(indices),), generator=generator).to(model.device)
+                amount = sigma[:, None, None, None]
+                noisy = (1 - amount) * z0 + amount * noise
+                velocity_target = noise - z0
+                if model.flux:
+                    noisy = model.pipe._pack_latents(noisy, *noisy.shape)
+                    velocity_target = model.pipe._pack_latents(velocity_target, *velocity_target.shape)
+                condition = text.condition(entry, "detect")
+                prediction = model.velocity(noisy.to(model.dtype), sigma * 1000, condition, model.config["sampling"])
+                loss = torch.nn.functional.mse_loss(prediction.float(), velocity_target.float())
+                if tracker:
+                    timestep = float(sigma.mean() * 1000)
+                    metrics["ti_loss"] = loss.item()
+            if use_classification:
                 # No repeated text within a batch; later batches sample independently.
                 text_indices = torch.cat((
                     positive_indices[torch.randperm(len(positive_indices), generator=text_generator)[:per_class]],
                     negative_indices[torch.randperm(len(negative_indices), generator=text_generator)[:per_class]]))
-                batch = tuple(value[text_indices].to(model.text.device) for value in features)
-                truth = labels[text_indices].to(model.text.device)
-                prototype = model.text.split_features(condition[1])
+                batch = tuple(value[text_indices].to(text.device) for value in features)
+                truth = labels[text_indices].to(text.device)
+                prototype = (text.split_features(condition[1]) if use_ti_flow else
+                             text.condition(entry, "detect", features_only=True))
                 scores = cosine_scores(batch, prototype).squeeze(1)
                 if args.detect_loss == "ti-flow-bce":
                     cls_loss = classification_loss(scores, truth, args.tau, args.temperature)
                 else:
                     cls_loss = supervised_contrastive_loss(scores, truth, args.contrastive_temperature)
-                loss = ti_loss + args.classification_weight * cls_loss
+                classification = args.classification_weight * cls_loss
+                loss = loss + classification if use_ti_flow else classification
                 if tracker:
                     metrics.update(classification_loss=cls_loss.item(), classification_batch_size=len(text_indices),
                                    accuracy=((scores >= args.tau) == truth.bool()).float().mean().item(),
@@ -300,16 +310,15 @@ def train_ti_flow(model, entry, rows, parameters, args, tracker, target, stage_d
             optimizer.step()
             step += 1
             if tracker:
-                tracker.log_step(step, loss, optimizer, parameters, len(indices),
-                                 timestep=float(sigma.mean() * 1000), metrics=metrics)
+                tracker.log_step(step, loss, optimizer, parameters, len(indices), timestep=timestep, metrics=metrics)
             if step % 50 == 0:
-                print(f"[{target}:ti-flow] epoch={epoch} update={step} loss={loss.item():.6f}", flush=True)
+                print(f"[{target}:{args.detect_loss}] epoch={epoch} update={step} loss={loss.item():.6f}", flush=True)
             if args.max_steps and step >= args.max_steps:
                 if tracker:
-                    tracker.end_epoch(len(clean))
+                    tracker.end_epoch(examples)
                 return step
         if tracker:
-            tracker.end_epoch(len(clean))
+            tracker.end_epoch(examples)
     return step
 
 
@@ -394,7 +403,7 @@ def main(argv=None):
     parser.add_argument("--targets", nargs="+", help='Optional subset, e.g. --targets nudity "Van Gogh"')
     parser.add_argument("--stage", choices=("all", "detect", "erase"), default="all")
     parser.add_argument("--resume", action="store_true", help="Continue selected concept files in --run-dir with a fresh optimizer")
-    parser.add_argument("--detect-loss", choices=("clip", "ti-flow", "ti-flow-bce", "ti-flow-supcon"),
+    parser.add_argument("--detect-loss", choices=("clip", "supcon", "ti-flow", "ti-flow-bce", "ti-flow-supcon"),
                         help="Required for detect training; no default")
     parser.add_argument("--prompt-space", choices=("condition", "soft", "hidden"),
                         help="Default: condition for detect, hidden for erase; resume uses saved spaces")
@@ -419,8 +428,8 @@ def main(argv=None):
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--max-steps", "--steps", type=int, default=0, help="Optimizer updates per target/stage; 0 disables the cap")
     parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--classification-batch-size", type=int, help="Joint loss: equal positive/negative counts; default 16")
-    parser.add_argument("--classification-weight", type=float, help="Joint classification loss weight; default 1")
+    parser.add_argument("--classification-batch-size", type=int, help="Balanced classification batch for SupCon and joint losses; default 16")
+    parser.add_argument("--classification-weight", type=float, help="Weight of the classification term; default 1")
     parser.add_argument("--contrastive-temperature", type=float, help="SupCon temperature; default 0.1")
     parser.add_argument("--tau", type=float, help="Default: 0.2, or the saved training setting")
     parser.add_argument("--temperature", type=float, help="Default: 0.1, or the saved training setting")
@@ -506,11 +515,11 @@ def main(argv=None):
         parser.error("--soft-template must contain exactly one {} placeholder.")
     if spaces.get("erase") == "condition":
         parser.error("The condition space is for detect only; erase uses soft or hidden.")
-    joint = "detect" in stages and args.detect_loss in {"ti-flow-bce", "ti-flow-supcon"}
-    if joint and spaces["detect"] != "condition":
-        parser.error("Joint detect training requires --prompt-space condition (the detect default).")
-    if joint and (args.classification_batch_size < 2 or args.classification_batch_size % 2
-                  or args.classification_weight <= 0 or args.contrastive_temperature <= 0):
+    balanced_classification = "detect" in stages and args.detect_loss in {"supcon", "ti-flow-bce", "ti-flow-supcon"}
+    if balanced_classification and spaces["detect"] != "condition":
+        parser.error("SupCon and joint detect training require --prompt-space condition (the detect default).")
+    if balanced_classification and (args.classification_batch_size < 2 or args.classification_batch_size % 2
+                                   or args.classification_weight <= 0 or args.contrastive_temperature <= 0):
         parser.error("Use an even classification-batch-size >= 2, positive classification weight and contrastive temperature.")
     if any(value is not None and value <= 0 for value in (args.ti_image_count, args.ti_generation_steps)):
         parser.error("TI image count and generation steps must be positive.")
@@ -577,8 +586,9 @@ def main(argv=None):
             rows = rows[:args.limit_prompts]
             if not rows:
                 parser.error(f"No detect training samples for {target}.")
-            if joint and any(len({row["prompt"] for row in rows if row["label"] == label}) < args.classification_batch_size // 2
-                             for label in (0, 1)):
+            if balanced_classification and any(
+                    len({row["prompt"] for row in rows if row["label"] == label}) < args.classification_batch_size // 2
+                    for label in (0, 1)):
                 parser.error(f"{target} needs at least {args.classification_batch_size // 2} texts per class "
                              "for sampling without replacement within a batch.")
             detect_rows[target] = rows
@@ -626,7 +636,7 @@ def main(argv=None):
                     if args.detect_loss == "clip":
                         updates = train_clip(text, entry, rows, parameters, args, tracker, target)
                     else:
-                        updates = train_ti_flow(model, entry, rows, parameters, args, tracker, target, stage_dir)
+                        updates = train_detector(model, entry, rows, parameters, args, tracker, target, stage_dir)
                 else:
                     rows = erase_data[target]["pairs"][:args.limit_prompts]
                     updates = train_erase(model, entry, rows, parameters, args, tracker, target)
