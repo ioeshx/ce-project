@@ -8,27 +8,41 @@
 \subsection{Detection prompt training data}
 \label{sec:suppl_detection_data}
 
-For each concept $c$, the positive prompt set $\mathcal B_c^{\mathrm{pos}}$ describes scenes containing $c$, and the negative set $\mathcal B_c^{\mathrm{neg}}$ covers both related and unrelated content without $c$. For nudity detection, positive prompts describe unclothed people in varied settings. Negative prompts describe clothed people in similar settings or scenes unrelated to nudity, such as landscapes and still lifes.
+For each concept $c$, the positive prompt set $\mathcal B_c^{\mathrm{pos}}$ describes scenes containing 
+$c$, and the negative set $\mathcal B_c^{\mathrm{neg}}$ covers both related and unrelated content 
+without $c$. 
+% The accompanying code provides nudity prompt texts in \texttt{i2p\_detect.py} and detection training templates for IP characters, objects, and artistic styles in \texttt{datasets.py}.
 
-For IP characters and objects, we provide 50 shared scene templates for constructing the detection training sets. Each template specifies a setting and leaves one slot for the subject, as in \emph{At the edge of a courtyard, place \{concept\} where a band of sunlight crosses the paving.} Filling the slot with the target concept $c$ gives a positive prompt in $\mathcal B_c^{\mathrm{pos}}$. Substituting a related or unrelated concept gives a negative prompt in $\mathcal B_c^{\mathrm{neg}}$ with the same scene description. For the Pikachu detector, the courtyard template can describe Pikachu as a positive example, Raichu as a related negative, or a teapot as an unrelated negative. These training templates use scene descriptions distinct from the IP and object evaluation templates below.
+\noindent\textbf{Nudity.}
+We train the nudity detection prompt using 960 positive prompts and 480 negative prompts. 
+The positive prompts describe full or partial nudity using explicit wording or contextual cues. 
+The negatives include clothed people, scenes where clothing or framing conceals the relevant body areas, 
+related settings without people, and unrelated scenes.
 
-For artistic styles, we use templates such as \texttt{a painting in the style of \{artist\}} with the target artist as a positive and a related artist or an unrelated style as a negative.
+\noindent\textbf{IP characters and objects.}
+We provide 50 shared scene templates. Each specifies a setting and leaves one slot for the subject, as in \emph{At the edge of a courtyard, place \{concept\} where a band of sunlight crosses the paving.} Filling the slot with the target concept gives a positive prompt. Filling it with a related or unrelated concept gives a negative prompt for the same setting. For the Pikachu detector, the example template can describe Pikachu as a positive, Raichu as a related negative, or a teapot as an unrelated negative. These scene templates differ in wording and structure from the IP and object evaluation templates below.
 
-For TI-flow, we sample one image from the frozen base generator for each positive prompt. These images form the fixed concept image set $\mathcal I_c$ used for flow reconstruction.
+\noindent\textbf{Artistic styles.}
+The 17 detection training templates vary how they describe an artwork, as in \texttt{a painting in the style of \{artist\}} and \texttt{a close-up painting in the style of \{artist\}}. We fill the slot with the target artist for positives and with a related artist or an unrelated style for negatives. For Van Gogh, Monet is a related negative and pixel art is an unrelated negative.
+
+\noindent\textbf{TI-flow images.}
+For each target concept $c$, we condition the frozen base model on text describing $c$ and generate 100 images to form the fixed image set $\mathcal I_c$. At each detection prompt update for $c$, we sample one image from $\mathcal I_c$ to compute the TI-flow loss.
 
 \subsection{Suppression prompt training data}
 \label{sec:suppl_suppression_data}
 
-Each training pair consists of a target-bearing prompt $q^+$ and a safe reference prompt $q^a$ that describes the scene with the target content removed or replaced. For nudity, the reference specifies a long-sleeved shirt and trousers for the adult while preserving the original action and setting. For IP and object erasure, the reference describes the remaining background or supporting surface. For instance, we pair \emph{a sculpture of a Pikachu} with \emph{an empty sculpture display base}, and \emph{a cropped photo of the church} with \emph{a cropped photo of an empty background}. For style erasure, we rewrite a prompt for a painting, such as a field with mountains in the background painted in Van Gogh's style, as a prompt for a photograph of the same scene with natural colors and lighting.
+Each training pair consists of a target-bearing prompt $q^+$ and a safe reference prompt $q^a$. The training set contains 50 pairs for nudity, 80 per IP character or object class, and 30 per artist. For nudity, the reference describes the person wearing a long-sleeved shirt and trousers in the original setting. For IP characters and objects, the two prompts share the setting and composition, and only $q^+$ specifies the target subject and its placement. For artistic styles, $q^+$ names an artist's visual style, and $q^a$ describes the same scene as a realistic photograph. The IP, object, and style pairs use scene descriptions distinct from the evaluation prompts in \cref{sec:suppl_evaluation_prompts}.
+
+For example, we pair \emph{An empty rehearsal room contains two low stools and a wall of acoustic panels. Render the scene in the visual style of Van Gogh.} with \emph{An empty rehearsal room contains two low stools and a wall of acoustic panels. Depict the scene as a realistic photograph.}
 
 \subsection{Evaluation prompts}
 \label{sec:suppl_evaluation_prompts}
 
 \noindent\textbf{IP character erasure.}
-We insert Pikachu, Snoopy, and Mickey into the ImageNet prompt templates from CLIP~\cite{pmlr-v139-radford21a}. The templates vary how the character is depicted, for example, \texttt{a close-up photo of a \{character\}.} and \texttt{a sculpture of a \{character\}.}
+We insert Pikachu, Snoopy, and Mickey into the 80 ImageNet prompt templates from CLIP~\cite{pmlr-v139-radford21a}. The templates vary how the character is depicted, for example, \texttt{a close-up photo of a \{character\}.} and \texttt{a sculpture of a \{character\}.}
 
 \noindent\textbf{Artistic styles.}
-We insert Van Gogh, Monet, and Picasso into the painting templates from SPEED~\cite{SPEED}. Each template specifies a scene and an artist, as in \texttt{Wheat field under a swirling sky in the style of \{artist\}.}
+We insert Van Gogh, Monet, and Picasso into the 30 painting templates from SPEED~\cite{SPEED}. Each template specifies a scene and an artist, as in \texttt{Wheat field under a swirling sky in the style of \{artist\}.}
 
 \noindent\textbf{Objects.}
 We use \texttt{a photo of \{class\}} for each of the ten ImageNet classes in the object erasure evaluation, yielding prompts such as \texttt{a photo of church} and \texttt{a photo of golf ball}.
