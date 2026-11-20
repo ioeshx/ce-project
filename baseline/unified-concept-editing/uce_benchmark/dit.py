@@ -181,7 +181,7 @@ def main(argv=None):
             p.error("An erased target cannot also be a preserve concept.")
         if any(target.casefold() == guide.casefold() for target, guide in zip(settings["targets"], settings["guides"])):
             p.error("A target cannot be its own anchor.")
-    with cpu_parent(args, p) as env:
+    with cpu_parent(args, p, shard_flux=args.model == "flux1_dev" and bool(args.device_map)) as env:
         run(args, experiments, env)
     return 0
 

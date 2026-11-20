@@ -49,9 +49,12 @@ FLUX 分支依据本仓库 `trainscripts/uce_flux_edit.py`。**SD3.5 是将这�
 bash /home/shx/code/ce-project/baseline/unified-concept-editing/scripts/benchmark_dit_all.sh \
   --device cuda:0 --offline
 
-# FLUX.1-dev，采样使用 CPU offload 降低显存需求
-bash /home/shx/code/ce-project/baseline/unified-concept-editing/scripts/benchmark_dit_all.sh \
-  --model flux1_dev --device cuda:0 --offline --cpu-offload
+# FLUX.1-dev，两张 3090 分载采样
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/baseline/unified-concept-editing/scripts/benchmark_dit_all.sh \
+  --model flux1_dev --device cuda:0 --offline --device-map balanced \
+  --max-memory '{"0":"12GiB","1":"12GiB"}' \
+  --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
+  --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
 
 # 只展开配置和命令，不加载权重、不创建输出
 bash /home/shx/code/ce-project/baseline/unified-concept-editing/scripts/benchmark_dit_all.sh --dry-run
@@ -76,7 +79,7 @@ bash /home/shx/code/ce-project/baseline/unified-concept-editing/scripts/benchmar
 
 依赖复用 `requirements-benchmark.txt`；评测权重准备见 `benchmark/DIT.md`。IP/style 默认需要 Qwen3-VL-2B-Instruct，Object 需要官方 ResNet-50 V2，I2P 需要 NudeNet，CS/FID 需要 CLIP 和 Inception 权重。支持 `--vlm-model`、`--resnet-weights-path`、`--nudenet-weights` 等本地路径。`--skip-vlm` 显式形成不含 VLM 的评测协议。
 
-采样可选 `--cpu-offload` 或 `--device-map balanced`，二者互斥。FLUX 另支持 `auto`、`--max-memory`、`--gpu-memory-reserve`，均传给公共采样器。当前执行层仅暴露 `--device` 指定的一张 GPU，自动放置也限制在该卡内；其他 GPU 的辅助设备或内存预算在入口报错。编辑默认在同一卡执行，可用 `--edit-device cpu` 改为 CPU；两层闭式求解始终在 CPU 以 FP32 执行。
+FLUX 采样可用 `--device cuda:0 --device-map balanced` 将 transformer 放在前两张可见卡上。原图和方法图使用相同放置方式，采样配置仍关闭 true CFG。可用 `--max-memory` 设置两张逻辑卡的权重预算，也可以单独启用 `--cpu-offload`。编辑阶段只加载文本编码器并读取权重分片里的两层投影。编码默认用第一张卡，可用 `--edit-device cpu` 改用 CPU。闭式求解始终在 CPU 以 FP32 执行。
 
 编辑、采样和评测均在独立子进程执行，总控进程隐藏全部 GPU。编辑结束后子进程退出，CUDA 上下文随之释放，不再让总控保留数百 MB 显存。公共实现为 `benchmark/execution.py`，`dit_editing.py` 只新增运行设备映射，未改闭式公式。执行层升级对旧源码摘要采用明确的 before/after 兼容映射，继续复用原检查点和计划，不改写历史记录；其他参数或算法源码发生变化仍要求新实验。
 
@@ -152,6 +155,6 @@ benchmark/original/<model>/<task>/
 - 1/2/5/50 目标、有/无保留向量的小矩阵求解与上游逐项累积、显式求逆公式一致。
 - 随机初始化的微型原生 SD3/FLUX 模型完成联合编辑、检查点复用、准备清单、部分权重加载、真实 CPU 采样；只有指定两层 weight 改变。覆盖单文件与分片权重。临时图片、模型和计划已清理。
 
-当前环境 NVIDIA 驱动不可用，尚未运行真实 SD3.5 Medium/FLUX.1-dev 的完整 GPU 实验，没有正式擦除效果指标。GPU BF16、多卡和 CPU offload 的实际执行依赖公共采样器，本次未在 GPU 上验证。
+真实 FLUX.1-dev 已在两张 3090 上完成 I2P＋MSCOCO 的双卡小样本验证，分辨率 128×128、采样 2 步，每项各 2 张方法图。图片、指标和图表均已保存。
 
 依据：[作者 FLUX 实现](https://github.com/rohitgandikota/unified-concept-editing/blob/main/trainscripts/uce_flux_edit.py)、[Diffusers 官方 SD3 文档](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_3)，并核对本机 Diffusers 的 `StableDiffusion3Pipeline.encode_prompt` 与 `SD3Transformer2DModel` 源码。

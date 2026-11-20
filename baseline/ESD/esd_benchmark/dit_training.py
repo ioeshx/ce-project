@@ -6,7 +6,7 @@ from pathlib import Path
 import random
 
 import torch
-from diffusers import FluxPipeline, StableDiffusion3Pipeline
+from diffusers import FluxPipeline, FluxTransformer2DModel, StableDiffusion3Pipeline
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import calculate_shift, retrieve_timesteps
 
 from benchmark.adapters import release_memory
@@ -36,15 +36,28 @@ class JointDiTAdapter(FluxESDAdapter):
 
     def load_pipeline(self, config):
         cls = FluxPipeline if self.flux else StableDiffusion3Pipeline
-        pipe = cls.from_pretrained(config.base_model_id, vae=None, torch_dtype=config.torch_dtype,
-                                   revision=self.settings["model_revision"], local_files_only=self.offline)
-        # Keep encoders on the text device; training only places the denoiser on
-        # the training GPU. No VAE or second full teacher model is allocated.
+        load = dict(torch_dtype=config.torch_dtype, revision=self.settings["model_revision"],
+                    local_files_only=self.offline)
+        memory = self.settings.get("train_max_memory")
+        components = {"transformer": None} if memory is not None else {}
+        pipe = cls.from_pretrained(config.base_model_id, vae=None, **components, **load)
+        # Encode text separately from the denoiser. The native training loop
+        # switches teacher/student weights on one transformer.
         for name in ("text_encoder", "text_encoder_2", "text_encoder_3"):
             encoder = getattr(pipe, name, None)
             if encoder is not None:
                 encoder.requires_grad_(False).to(self.text_device)
-        pipe.transformer.to(config.device)
+        if memory is None:
+            pipe.transformer.to(config.device)
+        else:
+            caps = {int(device): limit for device, limit in memory.items()}
+            transformer = FluxTransformer2DModel.from_pretrained(
+                config.base_model_id, subfolder="transformer", device_map="balanced", max_memory=caps, **load)
+            placement = transformer.hf_device_map
+            if set(placement.values()) != set(caps):
+                raise ValueError(f"FLUX training needs a transformer split across both GPUs: {placement}")
+            pipe.register_modules(transformer=transformer)
+            print(f"[training transformer device map] {placement}", flush=True)
         return pipe
 
     def prepare_context(self, pipe, config):
@@ -165,7 +178,11 @@ def train(checkpoint, settings, *, offline=False, cpu_threads=4):
         torch_dtype=getattr(torch, rollout["dtype"]), max_sequence_length=rollout["max_sequence_length"],
         gradient_checkpointing=settings["gradient_checkpointing"])
     adapter = JointDiTAdapter(settings, offline=offline)
-    run_esd_training(config, adapter=adapter)
+    run_esd_training(config, adapter=adapter, adam_foreach=settings.get("adam_foreach"))
+    if settings.get("train_max_memory"):
+        peak = {device: round(torch.cuda.max_memory_reserved(int(device)) / 1024**3, 2)
+                for device in settings["train_max_memory"]}
+        print(f"[peak reserved GiB] {peak}", flush=True)
     weights = load_file(str(weights_path))
     if not all(torch.isfinite(value).all() for value in weights.values()):
         raise RuntimeError("ESD produced non-finite weights; this run cannot be evaluated.")

@@ -160,7 +160,7 @@ bash benchmark/script/dit.sh --model flux1_dev --cases ip \
 
 全部默认512×512、BF16，使用基础模型自身的FlowMatchEulerDiscreteScheduler配置。每条记录先在CPU生成float32噪声，再转为模型精度；FLUX使用原生2×2 latent打包，不随batch或补图改变seed。
 
-FLUX `--device-map balanced/auto` 根据唯一可见 GPU 的剩余显存减去默认2GiB激活预留，推导Transformer预算；文本编码器与VAE也使用该卡。以 `--device cuda:1` 为例，`--max-memory '{"1":"16GiB"}'` 限制该卡的Transformer权重预算；`--gpu-memory-reserve 3` 可调整预留。实际分布记录到 `sampling-runtime.json`。SD3 balanced仍按组件分配，但同样只能使用指定GPU。device map与CPU offload互斥，显存不足时可改用 `--cpu-offload`。
+FLUX `--device-map balanced/auto` 按可见显存分配 transformer 层。文本编码器和 VAE 在主卡上，分配权重前每卡预留 2 GiB 激活空间，可用 `--gpu-memory-reserve` 调整。公共采样入口、UCE 和 EraseAnything 可用 `CUDA_VISIBLE_DEVICES=0,1` 与 `--device cuda:0` 启用双卡，`--max-memory '{"0":"12GiB","1":"12GiB"}'` 设置逻辑卡权重预算。实际分布写入 `sampling-runtime.json`。SD3 的 balanced 模式按组件分配。device map 与 CPU offload 互斥。
 
 生成与评测运行在独立阶段，生成模型释放后才加载CLIP、FID、Qwen或ResNet；Qwen可通过 `--vlm-device cpu` 改用CPU，使用GPU时必须与 `--device` 相同。
 

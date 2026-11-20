@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import torch
 
 from benchmark.adapters import release_memory
-from benchmark.execution import runtime_device
+from benchmark.execution import runtime_device, runtime_memory
 from benchmark.common import file_digest, read_json, slug, write_json
 
 
@@ -101,7 +101,7 @@ def make_batch(concept, images, size, tokenizer, rng):
             "remove_indices": [indices], "synonym_words": [synonym]}
 
 
-def train(checkpoint, data_directory, settings, *, offline=False):
+def train(checkpoint, data_directory, settings, *, offline=False, placement=None):
     from importlib.metadata import version
     from diffusers import AutoencoderKL, FluxPipeline, FluxTransformer2DModel
     from peft import LoraConfig
@@ -137,7 +137,14 @@ def train(checkpoint, data_directory, settings, *, offline=False):
     tokenizer = text_pipe.tokenizer_2
     vae = AutoencoderKL.from_pretrained(settings["base_model"], subfolder="vae", **load).to(device)
     vae.requires_grad_(False)
-    model = FluxTransformer2DModel.from_pretrained(settings["base_model"], subfolder="transformer", **load).to(device)
+    if placement and placement.get("device_map"):
+        from benchmark.flux_placement import load_flux_transformer
+
+        placement = {**placement, "max_memory": runtime_memory(placement.get("max_memory"))}
+        model, _ = load_flux_transformer(settings["base_model"], placement, load)
+        print(f"[training transformer device map] {model.hf_device_map}", flush=True)
+    else:
+        model = FluxTransformer2DModel.from_pretrained(settings["base_model"], subfolder="transformer", **load).to(device)
     model.requires_grad_(False)
     model.add_adapter(LoraConfig(r=settings["rank"], lora_alpha=settings["rank"],
                                 init_lora_weights="gaussian", target_modules=["attn.add_k_proj", "attn.add_q_proj"]))
@@ -178,7 +185,7 @@ def train(checkpoint, data_directory, settings, *, offline=False):
         upper, timestep = calculate_upper_loss(
             args, upper_batch, embeddings, None, None, model, scheduler, upper_batch["prompts"], vae, criteria,
             settings["negative_guidance"], dtype, neg_prompts=concept["anchor"], ddim_steps=settings["training_steps"])
-        loss = settings["loss_weights"][0] * upper[0] + settings["loss_weights"][1] * upper[1]
+        loss = settings["loss_weights"][0] * upper[0] + settings["loss_weights"][1] * upper[1].to(upper[0].device)
         loss.backward()
         optimizer.step()
         upper_values = [float(value.detach()) for value in upper]
@@ -189,7 +196,7 @@ def train(checkpoint, data_directory, settings, *, offline=False):
             args, lower_batch, embeddings, None, None, model, scheduler, lower_batch["prompts"], vae, criteria,
             settings["negative_guidance"], dtype, t_enc_ddpm=timestep, ddim_steps=settings["training_steps"],
             K=3, ir_concept_lst=concept["irrelevant"])
-        loss = settings["loss_weights"][2] * lower[0] + settings["loss_weights"][3] * lower[1]
+        loss = settings["loss_weights"][2] * lower[0] + settings["loss_weights"][3] * lower[1].to(lower[0].device)
         loss.backward()
         optimizer.step()
         counts[concept["name"]]["upper"] += 1

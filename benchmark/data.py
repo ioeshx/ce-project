@@ -106,6 +106,13 @@ def adapter_identity(config):
             raise ImportError(f"Cannot find adapter module: {module}")
         if found.origin and Path(found.origin).is_file():
             spec["plugin_source_sha256"] = file_digest(found.origin)
+            if module == "esd_benchmark.dit_training":
+                from .execution import SOURCE_MIGRATIONS, compatible_source
+                path = "esd_benchmark/dit_training.py"
+                stored = config.get("erasure_parameters", {}).get("sources", {}).get(path)
+                if compatible_source(stored, spec["plugin_source_sha256"], SOURCE_MIGRATIONS["ESD"][path]):
+                    # Training placement changed while create() kept its sampling behavior.
+                    spec["plugin_source_sha256"] = stored
             if spec.get("source_files"):
                 spec["source_sha256"] = {name: file_digest(Path(found.origin).parent / name)
                                          for name in spec["source_files"]}

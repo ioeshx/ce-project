@@ -160,7 +160,7 @@ def run(args, experiments, env):
             if not args.dry_run:
                 run_function("benchmark_training:train",
                              {"checkpoint": str(case_root / "checkpoint"), "data_directory": str(case_root / "training-data"),
-                              "settings": settings, "offline": args.offline},
+                              "settings": settings, "offline": args.offline, "placement": configs[0]["sampling"]},
                              env=env, cwd=WORKSPACE, cpu_threads=args.cpu_threads)
         if args.phase in {"data", "train"}:
             continue
@@ -232,7 +232,7 @@ def main(argv=None):
             if (concept["name"] not in concept["prompt"] or not concept["synonyms"]
                     or len(concept["irrelevant"]) != 3):
                 p.error("Training prompts must contain the target; provide aliases and exactly three irrelevant concepts.")
-    with cpu_parent(args, p) as env:
+    with cpu_parent(args, p, shard_flux=bool(args.device_map)) as env:
         run(args, experiments, env)
     return 0
 

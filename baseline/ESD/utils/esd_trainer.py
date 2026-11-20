@@ -1158,7 +1158,9 @@ def get_adapter(family: str) -> BaseESDAdapter:
         raise ValueError(f"Unsupported ESD family: {family}") from exc
 
 
-def run_esd_training(config: ESDConfig, adapter: Optional[BaseESDAdapter] = None) -> str:
+def run_esd_training(
+    config: ESDConfig, adapter: Optional[BaseESDAdapter] = None, *, adam_foreach: Optional[bool] = None
+) -> str:
     adapter = adapter if adapter is not None else get_adapter(config.family)
     config.train_method = adapter.normalize_train_method(config.train_method)
     if config.allow_tf32 and torch.cuda.is_available():
@@ -1174,7 +1176,7 @@ def run_esd_training(config: ESDConfig, adapter: Optional[BaseESDAdapter] = None
     prepared.use_student()
 
     learning_rate = adapter.resolve_learning_rate(config)
-    optimizer = torch.optim.Adam(prepared.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam(prepared.parameters(), lr=learning_rate, foreach=adam_foreach)
     context = adapter.prepare_context(pipe, config)
 
     pbar = tqdm(range(config.iterations), desc=f"Training ESD ({adapter.family})")

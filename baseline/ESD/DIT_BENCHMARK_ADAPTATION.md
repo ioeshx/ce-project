@@ -1,6 +1,6 @@
 # ESD 的 DiT 实验适配
 
-执行层更新：训练、采样和评测均在独立子进程执行，总控隐藏 GPU，训练子进程退出后释放 CUDA 上下文。公共实现为 `benchmark/execution.py`；训练适配只新增运行设备映射，ESD 目标与优化器未改。全部 CUDA 组件限制在 `--device` 指定的单卡，文本编码或指标仍可使用 CPU；辅助 GPU 和内存预算不能指向其他卡。子进程内该卡编号为 `cuda:0`，保存设置仍使用用户指定的编号。本次执行层升级通过精确源码摘要映射兼容已有检查点和计划，不改写历史记录。
+训练、采样和评测在独立子进程执行，总控隐藏 GPU。默认由 `--device` 选择单卡。FLUX.1-dev 可用 `--train-max-memory` 在两卡间分载训练 transformer。训练结束后释放两卡，采样和指标继续由 `--device` 选择设备。
 
 默认 **SD3.5 Medium**，另支持 **FLUX.1-dev**。方法适配由 ESD 目录中的两个 Python 文件、四个单项脚本和一个总入口组成。公共执行层及 Object 配置同步更新，原生 `utils/` 训练代码和已有 SD1.4 入口保持原样，没有新增测试文件。
 
@@ -43,9 +43,12 @@ bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
   --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
   --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
 
-# FLUX.1-dev；gradient checkpointing 作用于训练
-bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
-  --model flux1_dev --device cuda:0 --offline --gradient-checkpointing
+# FLUX.1-dev，双 RTX 3090 训练，单卡采样和评测
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
+  --model flux1_dev --device cuda:0 --train-max-memory '{"0":"11776MiB","1":"13GiB"}' \
+  --offline --gradient-checkpointing --cpu-offload \
+  --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
+  --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
 
 # 只展开 case 和命令，不加载模型、不创建输出
 bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh --dry-run
@@ -93,7 +96,7 @@ bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh --dry-run
 
 训练初始噪声沿用 ESD 的设备 generator，训练 seed 在每步从 `[0, 2**15]` 抽取；与正式评测的固定 CPU 噪声区别记录在 `training_protocol`。BF16 训练保留上游参数／Adam 精度，没有另行引入 FP32 master weights、LoRA、量化或改变优化目标。
 
-训练仅在 `--device` 对应的单设备执行；FLUX 完整微调还需要教师参数备份、梯度和 Adam 状态，不能按推理显存估算。`--gradient-checkpointing` 可减少训练激活，`--text-device cpu` 避免编码器占用训练显存。`--cpu-offload`、`--device-map`、`--max-memory` 仅控制后续公共采样，不能把训练自动变成 offload 或多卡训练。
+`--train-max-memory` 的键是训练进程内的逻辑 GPU 编号 0、1，值是 transformer 权重的放置预算。训练还要为教师参数备份、梯度和 Adam 状态留显存。双卡模式用 `Adam(foreach=False)` 减少更新时的临时张量，继续使用原 ESD 目标、参数范围及训练预算。`--gradient-checkpointing` 减少激活占用，文本编码默认在 CPU。`--cpu-offload`、`--device-map`、`--max-memory` 控制采样。FLUX 采样仍使用预设内置 guidance 3.5 和 `true_cfg_scale=1.0`。
 
 ## 文件与结果位置
 
@@ -105,7 +108,7 @@ bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh --dry-run
 | `README.md`、`BENCHMARK_ADAPTATION.md`、`requirements-benchmark.txt` | 添加 DiT 说明链接，更新依赖文件的适用范围注释 |
 | `DIT_BENCHMARK_ADAPTATION.md` | 本文档，说明支持范围和迁移差异 |
 
-没有修改原生 ESD 文件。唯一新增 class 继承现有 FLUX 训练适配器，实际用于注入原生训练循环；采样插件直接返回公共采样器，没有再定义采样 class。
+训练适配器继承现有 FLUX 训练适配器，原生训练循环接收可选的 Adam `foreach` 设置。采样仍由公共采样器执行。
 
 检查点和计划：
 

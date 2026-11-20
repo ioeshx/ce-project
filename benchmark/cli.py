@@ -77,7 +77,7 @@ def parser():
         q.add_argument("--device-map", choices=("balanced", "auto"),
                        help="FLUX按Transformer层切分；SD3支持balanced组件分配")
         q.add_argument("--max-memory", type=json.loads,
-                       help='仅限制--device对应GPU的预算，例如 --device cuda:1 --max-memory \'{"1":"16GiB"}\'')
+                       help='GPU 权重预算。双卡 FLUX 示例 \'{"0":"12GiB","1":"12GiB"}\'')
         q.add_argument("--gpu-memory-reserve", dest="gpu_memory_reserve_gib", type=float,
                        help="FLUX按层切分时每卡为激活预留的GiB，默认2；在已加载文本编码器/VAE后计算")
         q.add_argument("--cache-dir", type=Path)
@@ -249,7 +249,9 @@ def main(argv=None):
             binding = argparse.Namespace(**vars(args))
             binding.max_memory = config[group].get("max_memory")
             binding.vlm_device = config["evaluation"].get("vlm_device")
-            with cpu_parent(binding, p, device=config[group]["device"]) as env:
+            sharded = (group == "sampling" and config["model_name"].startswith("flux1_")
+                       and bool(config[group].get("device_map")))
+            with cpu_parent(binding, p, device=config[group]["device"], shard_flux=sharded) as env:
                 # Replace this process before importing CUDA/model libraries.
                 os.execvpe(sys.executable, [sys.executable, "-m", "benchmark", *(argv or sys.argv[1:])], env)
         import torch

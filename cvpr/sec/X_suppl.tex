@@ -2,16 +2,33 @@
 \setcounter{page}{1}
 \maketitlesupplementary
 
+\section{Datasets}
+\label{sec:suppl_datasets}
 
-\section{Rationale}
-\label{sec:rationale}
-% 
-Having the supplementary compiled together with the main paper means that:
-% 
-\begin{itemize}
-\item The supplementary can back-reference sections of the main paper, for example, we can refer to \cref{sec:intro};
-\item The main paper can forward reference sub-sections within the supplementary explicitly (e.g. referring to a particular experiment); 
-\item When submitted to arXiv, the supplementary will already included at the end of the paper.
-\end{itemize}
-% 
-To split the supplementary pages from the main paper, you can use \href{https://support.apple.com/en-ca/guide/preview/prvw11793/mac#:~:text=Delete%20a%20page%20from%20a,or%20choose%20Edit%20%3E%20Delete).}{Preview (on macOS)}, \href{https://www.adobe.com/acrobat/how-to/delete-pages-from-pdf.html#:~:text=Choose%20%E2%80%9CTools%E2%80%9D%20%3E%20%E2%80%9COrganize,or%20pages%20from%20the%20file.}{Adobe Acrobat} (on all OSs), as well as \href{https://superuser.com/questions/517986/is-it-possible-to-delete-some-pages-of-a-pdf-document}{command line tools}.
+\subsection{Detection prompt training data}
+\label{sec:suppl_detection_data}
+
+For each concept $c$, the positive prompt set $\mathcal B_c^{\mathrm{pos}}$ describes scenes containing $c$, and the negative set $\mathcal B_c^{\mathrm{neg}}$ covers both related and unrelated content without $c$. For nudity detection, positive prompts describe unclothed people in varied settings. Negative prompts describe clothed people in similar settings or scenes unrelated to nudity, such as landscapes and still lifes.
+
+For IP characters and objects, we provide 50 shared scene templates for constructing the detection training sets. Each template specifies a setting and leaves one slot for the subject, as in \emph{At the edge of a courtyard, place \{concept\} where a band of sunlight crosses the paving.} Filling the slot with the target concept $c$ gives a positive prompt in $\mathcal B_c^{\mathrm{pos}}$. Substituting a related or unrelated concept gives a negative prompt in $\mathcal B_c^{\mathrm{neg}}$ with the same scene description. For the Pikachu detector, the courtyard template can describe Pikachu as a positive example, Raichu as a related negative, or a teapot as an unrelated negative. These training templates use scene descriptions distinct from the IP and object evaluation templates below.
+
+For artistic styles, we use templates such as \texttt{a painting in the style of \{artist\}} with the target artist as a positive and a related artist or an unrelated style as a negative.
+
+For TI-flow, we sample one image from the frozen base generator for each positive prompt. These images form the fixed concept image set $\mathcal I_c$ used for flow reconstruction.
+
+\subsection{Suppression prompt training data}
+\label{sec:suppl_suppression_data}
+
+Each training pair consists of a target-bearing prompt $q^+$ and a safe reference prompt $q^a$ that describes the scene with the target content removed or replaced. For nudity, the reference specifies a long-sleeved shirt and trousers for the adult while preserving the original action and setting. For IP and object erasure, the reference describes the remaining background or supporting surface. For instance, we pair \emph{a sculpture of a Pikachu} with \emph{an empty sculpture display base}, and \emph{a cropped photo of the church} with \emph{a cropped photo of an empty background}. For style erasure, we rewrite a prompt for a painting, such as a field with mountains in the background painted in Van Gogh's style, as a prompt for a photograph of the same scene with natural colors and lighting.
+
+\subsection{Evaluation prompts}
+\label{sec:suppl_evaluation_prompts}
+
+\noindent\textbf{IP character erasure.}
+We insert Pikachu, Snoopy, and Mickey into the ImageNet prompt templates from CLIP~\cite{pmlr-v139-radford21a}. The templates vary how the character is depicted, for example, \texttt{a close-up photo of a \{character\}.} and \texttt{a sculpture of a \{character\}.}
+
+\noindent\textbf{Artistic styles.}
+We insert Van Gogh, Monet, and Picasso into the painting templates from SPEED~\cite{SPEED}. Each template specifies a scene and an artist, as in \texttt{Wheat field under a swirling sky in the style of \{artist\}.}
+
+\noindent\textbf{Objects.}
+We use \texttt{a photo of \{class\}} for each of the ten ImageNet classes in the object erasure evaluation, yielding prompts such as \texttt{a photo of church} and \texttt{a photo of golf ball}.

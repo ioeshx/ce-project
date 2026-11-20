@@ -10,7 +10,7 @@ import sys
 
 from benchmark.common import ROOT, configuration, file_digest
 from benchmark.dit_cases import definitions, select_cases
-from benchmark.execution import compatible_settings, cpu_parent, run_function
+from benchmark.execution import DEVICE_ENV, compatible_settings, cpu_parent, run_function
 from benchmark.model_profiles import profile, resolve_scheduler
 from benchmark.plugin_plans import plugin_plan
 from . import METHOD_ROOT, WORKSPACE
@@ -29,6 +29,9 @@ def parser():
     p.add_argument("--model-revision")
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--text-device", default="cpu", help="Text encoder device; independent of denoiser training")
+    p.add_argument("--train-max-memory", type=json.loads,
+                   help='Shard FLUX training over the first two visible GPUs with weight caps, '
+                        'e.g. \'{"0":"11776MiB","1":"13GiB"}\'. Sampling placement is separate.')
     p.add_argument("--train-method", choices=("esd-x", "esd-x-strict"), default="esd-x")
     p.add_argument("--iterations-per-concept", type=int, default=1400)
     p.add_argument("--iterations", type=int, help="Override total updates per case")
@@ -89,6 +92,8 @@ def case_configs(args, case_id, case):
                     Path(__file__), Path(__file__).with_name("dit_training.py"),
                     METHOD_ROOT / "esd_flux.py", METHOD_ROOT / "utils/esd_trainer.py",
                     METHOD_ROOT / "utils/flux_utils.py", METHOD_ROOT / "utils/esd_checkpoint.py")}}
+    if args.train_max_memory is not None:
+        settings.update(train_max_memory=args.train_max_memory, adam_foreach=False)
     settings = compatible_settings(args.run_root / args.model / case_id, settings, METHOD_ROOT.name)
     configs = []
     for task in case["tasks"]:
@@ -127,19 +132,25 @@ def case_configs(args, case_id, case):
     return settings, configs
 
 
-def run(args, experiments, env):
+def run(args, experiments, env, *, training_visibility=None):
     env["PYTHONPATH"] = os.pathsep.join((str(METHOD_ROOT), str(WORKSPACE), env.get("PYTHONPATH", "")))
+    training_env = env
+    if training_visibility is not None:
+        training_env = {**env, "CUDA_VISIBLE_DEVICES": training_visibility}
+        del training_env[DEVICE_ENV]
     for case_id, settings, configs in experiments:
         case_root = args.run_root / args.model / case_id
         print(f"[ESD:{args.model}:{case_id}] {settings['targets']}; "
               f"{settings['train_method']}, {settings['iterations']} updates", flush=True)
         if args.phase in {"all", "train"}:
-            print(f"[train] {case_root / 'checkpoint'}", flush=True)
+            placement = (f" | CUDA_VISIBLE_DEVICES={training_visibility}; weight caps={settings['train_max_memory']}; "
+                         "Adam foreach=False" if training_visibility is not None else "")
+            print(f"[train] {case_root / 'checkpoint'}{placement}", flush=True)
             if not args.dry_run:
                 run_function("esd_benchmark.dit_training:train",
                              {"checkpoint": str(case_root / "checkpoint"), "settings": settings,
                               "offline": args.offline, "cpu_threads": args.cpu_threads},
-                             env=env, cwd=WORKSPACE, cpu_threads=args.cpu_threads)
+                             env=training_env, cwd=WORKSPACE, cpu_threads=args.cpu_threads)
         if args.phase == "train":
             continue
         for cfg in configs:
@@ -186,6 +197,17 @@ def main(argv=None):
             or not math.isfinite(args.training_guidance) or args.training_guidance < 0
             or args.training_resolution % 16 or not 0 <= args.training_seed < 2**32):
         p.error("Guidance must be finite/nonnegative; training resolution divisible by 16; seed in [0, 2**32).")
+    training_visibility = None
+    if args.train_max_memory is not None:
+        if (args.model != "flux1_dev" or args.device not in {"cuda", "cuda:0"}
+                or not isinstance(args.train_max_memory, dict) or set(args.train_max_memory) != {"0", "1"}):
+            p.error("--train-max-memory requires FLUX.1-dev, --device cuda:0 and weight caps for GPUs 0 and 1.")
+        if args.phase in {"all", "train"}:
+            visible = os.environ.get("CUDA_VISIBLE_DEVICES", "0,1").split(",")
+            devices = [device.strip() for device in visible if device.strip() not in {"", "-1"}]
+            if len(set(devices[:2])) != 2:
+                p.error("--train-max-memory requires two GPUs in CUDA_VISIBLE_DEVICES.")
+            training_visibility = ",".join(devices[:2])
     args.tasks = [task.strip() for task in args.tasks.split(",")] if args.tasks else None
     cases = definitions()["cases"]
     selected = select_cases(args.cases)
@@ -197,7 +219,7 @@ def main(argv=None):
         if settings["iterations"] < len(settings["targets"]):
             p.error("Training iterations must cover every target at least once.")
     with cpu_parent(args, p) as env:
-        run(args, experiments, env)
+        run(args, experiments, env, training_visibility=training_visibility)
     return 0
 
 

@@ -2,7 +2,7 @@
 
 本页记录 FLUX.1-dev 适配。SD3.5 Medium 使用独立入口 `scripts/benchmark_sd35_all.sh`，详见 [SD35_ADAPTATION.md](SD35_ADAPTATION.md)。
 
-执行层更新：训练图生成、训练、采样和评测均使用独立子进程，总控隐藏 GPU；阶段结束时退出进程以释放 CUDA 上下文。公共实现为 `benchmark/execution.py`。全部 CUDA 组件仅能使用 `--device` 指定的一张卡，其他组件可选 CPU；辅助 GPU 和内存预算不能指向其他卡，自动放置也限制在单卡内。训练适配只新增设备编号映射，原四项损失未改。执行层升级通过精确源码摘要映射兼容已有训练数据、权重和计划，不修改历史 JSON。
+训练图生成、训练、采样和评测在独立子进程执行。指定 `--device-map balanced` 时，训练图生成、LoRA 训练和评测采样共用前两张可见卡的 transformer 分载。指标在 `--device` 指定的卡上计算。
 
 当前工作区原先没有 EraseAnything，已从[作者仓库](https://github.com/tomguluson92/EraseAnything)下载源码，上游提交为 `67d8c0bd5b153ff0e394b45e893b6671bc40e30b`。
 
@@ -34,9 +34,12 @@ FLUX 方法适配由本目录中的两个 Python 文件、四个单项脚本和�
 ## 启动入口
 
 ```bash
-# 一次依次执行四项实验，默认 FLUX.1-dev
-bash /home/shx/code/ce-project/baseline/EraseAnything/scripts/benchmark_dit_all.sh \
-  --device cuda:0 --offline
+# FLUX.1-dev，两张 3090 分载训练和采样
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/baseline/EraseAnything/scripts/benchmark_dit_all.sh \
+  --model flux1_dev --device cuda:0 --offline --gradient-checkpointing \
+  --device-map balanced --max-memory '{"0":"12GiB","1":"12GiB"}' \
+  --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
+  --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
 
 # 只查看 case 和命令，不创建数据或加载权重
 bash /home/shx/code/ce-project/baseline/EraseAnything/scripts/benchmark_dit_all.sh --dry-run
@@ -60,7 +63,7 @@ bash /home/shx/code/ce-project/baseline/EraseAnything/scripts/benchmark_dit_ip.s
 
 `--offline` 限制资源读取为本地或缓存，尚未下载完整模型时去掉它。依赖为 `requirements-benchmark.txt`，指标权重准备见 `benchmark/DIT.md`。支持 `--vlm-model`、`--resnet-weights-path`、`--skip-vlm` 等公共评测选项。
 
-`--cpu-offload`、`--device-map balanced/auto`、`--max-memory` 控制训练图片生成及后续评测采样；训练 denoiser 仍位于单个 `--device`，这些选项不启用训练 offload。文本编码器默认使用 CPU，可用 `--text-device cuda:0` 改为 GPU；`--gradient-checkpointing` 作用于训练。完整模型、注意力图和梯度仍需要足够显存。
+`--device-map balanced/auto` 和 `--max-memory` 用于训练图生成、LoRA 训练和评测采样。显存预算按两张逻辑卡设置。训练时文本编码器默认在 CPU，`--gradient-checkpointing` 可减少激活占用。训练保持原四项损失，在对应卡计算后合并标量。训练图和评测采样都关闭 true CFG。`--cpu-offload` 单独使用时仅影响图像生成。
 
 ## 保留的算法与必要核心修改
 
@@ -149,4 +152,4 @@ IP 的 task 为 `instance`。同一方法、同一 case 成功评测后更新该
 - 双目标完成上下层交替训练、gradient checkpointing、保存、复用、公共 LoRA 加载／融合和真实 CPU 采样；未选择的模型层不变。
 - 临时模型、训练图和评测图片均清理，没有生成正式实验指标或新测试文件。
 
-当前 NVIDIA 驱动不可用，尚未执行真实 FLUX.1-dev 的完整 GPU/BF16 实验或正式指标计算。微型验证说明接口和计算路径可用，不证明真实擦除效果。SD3.5 的实现和独立验证记录见 [SD35_ADAPTATION.md](SD35_ADAPTATION.md)。
+真实 FLUX.1-dev 已在两张 3090 上跑通训练图生成、一对 LoRA 上下层更新和 I2P＋MSCOCO 小样本评测。小样本以 128×128、2 步采样，每项各生成 2 张方法图。另外以正式的 512×512、28 步配置生成了一张训练图，完成一对上下层更新并保存 LoRA。SD3.5 的实现和独立验证记录见 [SD35_ADAPTATION.md](SD35_ADAPTATION.md)。

@@ -432,7 +432,7 @@ def calculate_upper_loss(args, batch, compute_text_embeddings, text_encoders, to
         return_dict=False,
     )[0:2]
 
-    attn_map_mask = torch.ones_like(attn_maps).to(transformer.device)
+    attn_map_mask = torch.ones_like(attn_maps)
     attn_map_mask[..., remove_indices] = 0
     attn_map_mask = 1 - attn_map_mask
     # import pdb; pdb.set_trace()

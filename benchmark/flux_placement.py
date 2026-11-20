@@ -26,20 +26,9 @@ def transformer_memory_budget(options):
     return budgets
 
 
-def load_sharded_flux(source, options, load_kwargs):
-    import torch
-    from diffusers import FluxPipeline, FluxTransformer2DModel
+def load_flux_transformer(source, options, load_kwargs):
+    from diffusers import FluxTransformer2DModel
 
-    # Place resident components first, so their actual allocations count against
-    # the GPU hosting the text encoders and VAE when computing transformer caps.
-    pipe = FluxPipeline.from_pretrained(source, transformer=None, **load_kwargs)
-    component_device = torch.device(options["device"])
-    components = {}
-    for name in ("text_encoder", "text_encoder_2", "vae", "image_encoder"):
-        module = getattr(pipe, name, None)
-        if module is not None:
-            module.to(component_device)
-            components[name] = str(next(module.parameters()).device)
     budgets = transformer_memory_budget(options)
     print("[transformer memory budgets] " + str({k: round(v / 1024**3, 3) for k, v in budgets.items()}) +
           " GiB (resident components and activation reserve already excluded)", flush=True)
@@ -50,10 +39,27 @@ def load_sharded_flux(source, options, load_kwargs):
         raise ValueError("The FLUX transformer does not fit in the available GPU budgets. "
                          "Free GPU memory or adjust max_memory/gpu_memory_reserve_gib. "
                          f"Resulting device map: {device_map}")
+    return transformer, budgets
+
+
+def load_sharded_flux(source, options, load_kwargs):
+    import torch
+    from diffusers import FluxPipeline
+
+    # Account for resident text encoders and VAE before placing transformer blocks.
+    pipe = FluxPipeline.from_pretrained(source, transformer=None, **load_kwargs)
+    component_device = torch.device(options["device"])
+    components = {}
+    for name in ("text_encoder", "text_encoder_2", "vae", "image_encoder"):
+        module = getattr(pipe, name, None)
+        if module is not None:
+            module.to(component_device)
+            components[name] = str(next(module.parameters()).device)
+    transformer, budgets = load_flux_transformer(source, options, load_kwargs)
     pipe.register_modules(transformer=transformer)
     # Keep Accelerate's per-block hooks; never call pipe.to() or transformer.to().
     info = {"scope": "transformer_blocks", "strategy": options["device_map"],
-            "components": components, "transformer_device_map": {k: str(v) for k, v in device_map.items()},
+            "components": components, "transformer_device_map": {k: str(v) for k, v in transformer.hf_device_map.items()},
             "transformer_max_memory_bytes": {str(k): v for k, v in budgets.items()},
             "gpu_memory_reserve_gib": options.get("gpu_memory_reserve_gib", 2.0)}
     return pipe, info
