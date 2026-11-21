@@ -29,7 +29,8 @@ SOURCE_MIGRATIONS = {
         "esd_benchmark/dit.py": [
             "dd8bf25ac4e4eb6467ceab7e993ff62c66759f1e5d9e09dea5541eb71f9105ea",
             "5aacb058190bf9f45a9e7cddd2898d9364568e7441ccc812a0cf4c674dfd8bc4",
-            "e6e3e5436b0564184cb7d67de9d36b3e273bd88659245af5ff9ea2a86215e559"
+            "e6e3e5436b0564184cb7d67de9d36b3e273bd88659245af5ff9ea2a86215e559",
+            "80241480cfb770d4ac4d9ad6dc81f3442409b08aafc75d2d3b569efba5174e9a"
         ],
         "esd_benchmark/dit_training.py": [
             "ecf785857fddb7370da44546852fe9014ca22b4efbda17a895cea6c37859e9b5",

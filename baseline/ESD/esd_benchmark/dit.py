@@ -134,6 +134,9 @@ def case_configs(args, case_id, case):
 
 def run(args, experiments, env, *, training_visibility=None):
     env["PYTHONPATH"] = os.pathsep.join((str(METHOD_ROOT), str(WORKSPACE), env.get("PYTHONPATH", "")))
+    sampling_env = env
+    if args.model == "flux1_dev" and args.device_map:
+        env = {**env, "CUDA_VISIBLE_DEVICES": env["CUDA_VISIBLE_DEVICES"].split(",")[0]}
     training_env = env
     if training_visibility is not None:
         training_env = {**env, "CUDA_VISIBLE_DEVICES": training_visibility}
@@ -172,7 +175,8 @@ def run(args, experiments, env, *, training_visibility=None):
             for command in commands:
                 print("[command] " + shlex.join(command), flush=True)
                 if not args.dry_run:
-                    subprocess.run(command, cwd=WORKSPACE, env=env, check=True)
+                    worker_env = sampling_env if command[len(prefix)] == "sample" else env
+                    subprocess.run(command, cwd=WORKSPACE, env=worker_env, check=True)
 
 
 def main(argv=None):
@@ -218,7 +222,7 @@ def main(argv=None):
     for _, settings, _ in experiments:
         if settings["iterations"] < len(settings["targets"]):
             p.error("Training iterations must cover every target at least once.")
-    with cpu_parent(args, p) as env:
+    with cpu_parent(args, p, shard_flux=args.model == "flux1_dev" and bool(args.device_map)) as env:
         run(args, experiments, env, training_visibility=training_visibility)
     return 0
 

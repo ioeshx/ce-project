@@ -170,8 +170,8 @@ def encode_images(model, records, batch_size):
     return torch.cat(latents)
 
 
-def ti_images(model, rows, args, stage_dir, target):
-    """Generate one fixed base-model image per positive prompt, and reuse the cache."""
+def ti_images(model, prompts, args, stage_dir, target):
+    """Generate fixed base-model images and reuse the cache."""
     from benchmark.adapters import atomic_image
     from benchmark.data import valid_image
     from benchmark.dit_adapter import DiTAdapter
@@ -182,8 +182,8 @@ def ti_images(model, rows, args, stage_dir, target):
     sampling = {**model.config["sampling"], "negative_prompt": ""}
     sampling["steps"] = args.ti_generation_steps or sampling["steps"]
     seed = args.seed if args.ti_seed is None else args.ti_seed
-    records = [{"prompt": row["prompt"], "seed": seed + index,
-                "image": str(directory / f"positive_{index:03d}.png")} for index, row in enumerate(rows)]
+    records = [{"prompt": prompt, "seed": seed + index,
+                "image": str(directory / f"positive_{index:03d}.png")} for index, prompt in enumerate(prompts)]
     identity = dict(base_model=model.config["base_model"], sampling=canonical_protocol(sampling), records=records)
     path = directory / "images.json"
     if path.exists() and read_json(path) != identity:
@@ -245,10 +245,13 @@ def train_detector(model, entry, rows, parameters, args, tracker, target, stage_
     use_classification = args.detect_loss != "ti-flow"
     text = model.text if use_ti_flow else model
     # SupCon-only uses the same update schedule as its TI-flow counterpart.
-    positive_rows = [row for row in rows if row["label"] == 1][:args.ti_image_count]
-    examples = len(positive_rows)
+    if args.ti_image_source == "concept-name":
+        image_prompts = [target] * args.ti_image_count
+    else:
+        image_prompts = [row["prompt"] for row in rows if row["label"] == 1][:args.ti_image_count]
+    examples = len(image_prompts)
     if use_ti_flow:
-        clean = ti_images(model, positive_rows, args, stage_dir, target)
+        clean = ti_images(model, image_prompts, args, stage_dir, target)
         examples = entry["detect_ti_images"] = len(clean)
     if use_classification:
         text_rows = list({(row["prompt"], row["label"]): row for row in rows}.values())
@@ -420,7 +423,10 @@ def main(argv=None):
                         help="Reuse compatible concept images; --no-erase-reuse-images generates a new random-seed batch")
     parser.add_argument("--soft-template", help="One {} placeholder; default: {}")
     parser.add_argument("--clip-projection-model", help="FLUX contrastive CLIP head; default: openai/clip-vit-large-patch14")
-    parser.add_argument("--ti-image-count", type=int, help="Positive images per concept; default: all positive rows")
+    parser.add_argument("--ti-image-source", choices=("positive-prompts", "concept-name"),
+                        help="Condition TI images on positive training prompts (default) or the raw concept name")
+    parser.add_argument("--ti-image-count", type=int,
+                        help="TI images per concept; default: all positive rows or 100 for concept-name")
     parser.add_argument("--ti-generation-steps", type=int, help="Base-model steps for cached TI images; default: sampling steps")
     parser.add_argument("--ti-seed", type=int, help="TI image seeds start here; default: seed")
     # training hyperparameters
@@ -472,6 +478,9 @@ def main(argv=None):
     info = read_json(directory / "run.json") if directory and (directory / "run.json").exists() else {}
     saved_detect = directory / "train_detect/training.json" if directory else None
     defaults = read_json(saved_detect) if saved_detect and saved_detect.exists() else {}
+    args.ti_image_source = args.ti_image_source or defaults.get("ti_image_source", "positive-prompts")
+    if args.ti_image_source == "concept-name" and args.ti_image_count is None:
+        args.ti_image_count = defaults.get("ti_image_count") or 100
     stage_defaults = {}
     for stage in stages:
         path = directory / f"train_{stage}/training.json" if directory else None
@@ -581,7 +590,7 @@ def main(argv=None):
     if "detect" in stages:
         for _, target in wanted:
             rows = detect_data[target]["samples"]
-            if args.detect_loss == "ti-flow":
+            if args.detect_loss == "ti-flow" and args.ti_image_source == "positive-prompts":
                 rows = [row for row in rows if row["label"] == 1][:args.ti_image_count]
             rows = rows[:args.limit_prompts]
             if not rows:

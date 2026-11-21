@@ -128,3 +128,82 @@ allowing the detector to capture more subtle nudity-related prompts without incr
 
 % Base CLIP uses a fixed concept embedding, SupCon only learns the detection prompt from labeled text, and SupCon + TI-flow adds supervision from concept images.
 % All metrics are reported as percentages.
+
+\subsection{Detection Threshold \texorpdfstring{$\tau$}{tau}}
+\label{sec:suppl_detection_threshold}
+
+The detection threshold $\tau_c$ is the minimum cosine similarity required to treat concept $c$ as a candidate match for an input prompt $q$.
+Before image sampling, DAS retains concepts with $r_c(q)\geq\tau_c$ and selects the highest-scoring concept, as described in \cref{sec:inference}.
+If the selected concept is enabled for erasure, DAS uses its suppression prompt in the negative branch. Otherwise, the negative branch uses null-text embeddings.
+
+We illustrate the selection of threshold using  two example concepts, Pikachu from the IP character erasure experiment and Monet from the artistic style erasure experiment (\cref{sec:exp_ip,sec:exp_style}).
+For each experiment group, we use the same target and non-target prompts as in the corresponding erasure evaluation and compute their cosine similarity to the learned detection prompt for the target concept.
+We compare the two score distributions and choose a cutoff to separate higher target scores from lower non-target scores.
+As shown in \cref{fig:suppl_detection_threshold}, the target and non-target score distributions are clearly separated in both examples, with the selected cutoff lying between their observed score ranges.
+
+\begin{figure}[!htbp]
+    \centering
+    \begin{subfigure}{0.93\columnwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/pikachu-score-distribution.pdf}
+        \caption{Pikachu detector}
+    \end{subfigure}\par\medskip
+    \begin{subfigure}{0.93\columnwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/monet-score-distribution.pdf}
+        \caption{Monet detector}
+    \end{subfigure}
+    \caption{\textbf{Cosine similarity distributions for Pikachu and Monet.}
+    The non-target group pools Snoopy and Mickey prompts in (a) and Van Gogh and Picasso prompts in (b).
+    Each curve shows Gaussian-smoothed percentages in $0.02$-wide score windows, normalized separately for each group.
+    The dashed lines mark the IP character and artistic style thresholds listed in \cref{tab:suppl_detection_thresholds}.}
+    \label{fig:suppl_detection_threshold}
+\end{figure}
+
+\FloatBarrier
+The separation in \cref{fig:suppl_detection_threshold} is already present in the cosine scores produced by the trained detection prompts before thresholding.
+With the detection prompts fixed, we use the score distributions to choose one cutoff per experiment group (\cref{tab:suppl_detection_thresholds}).
+All target concepts within a group share that cutoff, including when multiple concepts are eligible for erasure.
+
+% Keep the two wide floats close together on the supplementary float page.
+\begingroup
+\makeatletter
+\setlength{\@dblfptop}{0pt}
+\setlength{\@dblfpsep}{14pt}
+\makeatother
+\begin{table*}[!t]
+    \centering
+    \small
+    \caption{\textbf{Detection thresholds by experiment group.}}
+    \label{tab:suppl_detection_thresholds}
+    \begin{tabular}{@{}lc@{}}
+        \toprule
+        Experiment group & threshold $\tau$ \\
+        \midrule
+        I2P (nudity) & $0.255$ \\
+        IP character erasure & $0.55$ \\
+        Object erasure & $0.65$ \\
+        Artistic style erasure & $0.4$ \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]
+    \centering
+    \begin{subfigure}{0.44\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/snoopy-score-distribution.pdf}
+        \caption{Snoopy (IP)}
+    \end{subfigure}\qquad
+    \begin{subfigure}{0.44\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{figures/van-gogh-score-distribution.pdf}
+        \caption{Van Gogh (artistic style)}
+    \end{subfigure}
+    \caption{\textbf{Additional cosine similarity distributions for Snoopy and Van Gogh.}
+    The non-target group pools Pikachu and Mickey prompts in (a) and Monet and Picasso prompts in (b).
+    The dashed lines mark the IP character and artistic style thresholds in \cref{tab:suppl_detection_thresholds}.}
+    \label{fig:suppl_additional_score_distributions}
+\end{figure*}
+\clearpage
+\endgroup

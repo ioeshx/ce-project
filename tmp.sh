@@ -1,9 +1,19 @@
-CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
+CUDA_VISIBLE_DEVICES=0,1 bash baseline/ESD/scripts/benchmark_dit_all.sh \
   --model flux1_dev --device cuda:0 \
   --train-max-memory '{"0":"11776MiB","1":"13GiB"}' \
-  --offline --gradient-checkpointing --cpu-offload \
-  --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
-  --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
+  --offline --gradient-checkpointing \
+  --device-map balanced --max-memory '{"0":"12GiB","1":"12GiB"}' \
+  > baseline/ESD/flux_all.log 2>&1
+
+CUDA_VISIBLE_DEVICES=0,1 bash /home/shx/code/ce-new/baseline/ESD/scripts/benchmark_dit_all.sh \
+  --model flux1_dev  \
+  --train-max-memory '{"0":"11776MiB","1":"13GiB"}' \
+  --offline --gradient-checkpointing  > baseline/ESD/flux_all.log 2>&1
+  # --device cuda:0
+  # --vlm-model /home/shx/code/ce-new/benchmark/weights/Qwen3-VL-2B-Instruct \
+  # --resnet-weights-path /home/shx/code/ce-new/benchmark/weights/resnet50_v2.pth
+
+# --cpu-offload
 
 CUDA_VISIBLE_DEVICES=1 TAU=0.2 bash /home/shx/code/ce-new/DiT/detect_erase/scripts/run_i2p_detection_ablation.sh
 
